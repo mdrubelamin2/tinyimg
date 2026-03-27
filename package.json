@@ -19,15 +19,8 @@
     "commitlint": "commitlint --from=HEAD~1 --to=HEAD --verbose"
   },
   "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "tsc --noEmit"
-    ],
-    "*.{js,jsx}": [
+    "*.{ts,tsx,js,jsx}": [
       "eslint --fix"
-    ],
-    "*.{css,json,md,html}": [
-      "prettier --write"
     ]
   },
   "dependencies": {
