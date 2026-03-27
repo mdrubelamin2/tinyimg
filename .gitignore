@@ -25,3 +25,7 @@ dist-ssr
 
 # E2E export dir for quality gate
 test-output
+
+# Release artifacts
+.next/
+.vercel/
