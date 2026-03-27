@@ -1,0 +1,4 @@
+{
+  // Optional per-file, per-format size tolerance override (multiplier). Default 1.10 (10%).
+  // Empty = all use 1.10×. See docs/ACCEPTANCE-CRITERIA.md.
+}

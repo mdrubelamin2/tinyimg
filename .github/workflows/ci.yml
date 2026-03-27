@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+
+      - name: Install dependencies
+      run: npm install
+
+      - name: Install Playwright browsers
+      run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Lint
+      run: npm run lint
+
+      - name: Typecheck
+      run: npm run typecheck
+
+      - name: Unit tests
+      run: npm run test
+
+      - name: Build
+      run: npm run build
+
+      - name: E2E tests
+      run: npm run test:e2e
+
+      - name: Quality gates
+      run: npm run test:quality
+

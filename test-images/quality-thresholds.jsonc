@@ -1,0 +1,3 @@
+{
+  "_comment": "Optional per-file overrides: ssimMin, psnrMin; or formats[format].ssimMin/psnrMin. Default 0.98 and 30 dB. Quality gate also applies adaptive rules (palette vs truecolor, transparent+webp) so no entries needed for normal benchmark set."
+}

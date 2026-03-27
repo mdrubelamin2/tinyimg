@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0F172A;
+  --color-secondary: #334155;
+  --color-cta: #0369A1;
+  --color-background: #F8FAFC;
+  --color-text: #020617;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+  }
+  
+  .glass-dark {
+    @apply bg-slate-900/70 backdrop-blur-md border border-slate-700/30 shadow-2xl;
+  }
+
+  .btn-primary {
+    @apply bg-cta text-white px-6 py-2.5 rounded-lg font-medium 
+           transition-all duration-200 hover:opacity-90 hover:scale-[1.02] active:scale-95
+           shadow-lg shadow-cta/20 cursor-pointer;
+  }
+
+  .config-block {
+    @apply p-4 rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+}

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="180" viewBox="0 0 240 180" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="240" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827" />
+      <stop offset="1" stop-color="#2563EB" />
+    </linearGradient>
+  </defs>
+  <rect width="240" height="180" rx="20" fill="url(#bg)" />
+  <image
+    x="24"
+    y="24"
+    width="96"
+    height="96"
+    preserveAspectRatio="none"
+    href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2NkYGD4DwABBAEAAP4n3gAAAABJRU5ErkJggg=="
+  />
+  <circle cx="176" cy="84" r="42" fill="#22D3EE" fill-opacity="0.8" />
+  <text x="24" y="152" fill="white" font-size="22" font-family="Arial, sans-serif">Hybrid SVG</text>
+</svg>

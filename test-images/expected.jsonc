@@ -1,0 +1,11 @@
+{
+  // 2026 single source of truth for size ceilings. Baselines = TinyPNG manual upload or our quality-mode reference run; update when presets change.
+  // E2E allows actualSize <= expected * 1.10 (or size-overrides.jsonc). See docs/ACCEPTANCE-CRITERIA.md.
+  // svg - 2x raster, wrapped or optimized svg. Wrapper used only if smaller than optimized SVG * WRAPPER_SIZE_THRESHOLD (0.95).
+  "svg-raster.svg": { "webp": "19.1KB", "avif": "12.2KB", "png": "42.7KB" },
+  "svg-vector.svg": "0.7KB",
+  // Raster: quality-mode ceilings (update from reference run if needed)
+  "png-1.png": {"png": "26KB", "webp": "26KB", "avif": "20KB", "jpeg": "42KB"},
+  "png-2.png": {"png": "611KB", "webp": "90KB", "avif": "78KB", "jpeg": "160KB"},
+  "png-3.png": {"png": "2MB", "webp": "50KB", "avif": "29KB", "jpeg": "138KB"}
+}
