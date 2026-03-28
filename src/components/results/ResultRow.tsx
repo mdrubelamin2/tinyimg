@@ -1,4 +1,5 @@
 import { useStore } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { Sparkles, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ export interface ResultRowProps {
 
 export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
   // Use highly specific selector to only re-render when THIS item changes
-  const item = useStore(useImageStore, (state) => state.items.get(id));
+  const item = useStore(useImageStore, useShallow((state) => state.items.get(id)));
 
   if (!item) return null;
 
