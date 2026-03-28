@@ -24,6 +24,7 @@ import {
   resetItemResultsForOptions,
 } from '@/lib/queue/queue-item';
 import { revokeResultUrls, buildAndDownloadZip } from '@/lib/download';
+import OptimizerWorkerUrl from '@/workers/optimizer.worker.ts?worker&url';
 import { useSettingsStore } from './settings-store';
 
 /**
@@ -63,7 +64,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   if (pool) return pool;
-  const workerUrl = new URL('../workers/optimizer.worker.ts', import.meta.url);
+  const workerUrl = new URL(OptimizerWorkerUrl, import.meta.url);
   pool = new WorkerPool(workerUrl, computeConcurrency(), {
     onMessage: (_workerIndex, data) => {
       // Bridge: convert WorkerOutbound to legacy WorkerResponse
