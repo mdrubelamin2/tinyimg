@@ -9,6 +9,8 @@ import {
   WRAPPER_SIZE_THRESHOLD,
 } from '@/constants/index';
 import type { SvgInternalFormat } from '@/constants/index';
+import { optimizeSvg, svgByteLength } from '@/lib/optimizer/svg-optimizer';
+import { Logger } from './logger';
 import { ensureResvg } from './optimizer-wasm';
 import { classifyContent } from './classify';
 import {
@@ -97,14 +99,16 @@ export async function processSvg(
   const text = await file.text();
 
   const svgoStart = nowMs();
-  const { optimize } = await import('svgo');
-  const svgoResult = optimize(text, {
-    multipass: true,
-    plugins: ['preset-default', 'removeDimensions'],
-  });
-  const optimizedSvg = svgoResult.data;
-  const optimizedSvgSize = new TextEncoder().encode(optimizedSvg).length;
+  const { data: optimizedSvg, engine } = await optimizeSvg(text);
+  const optimizedSvgSize = svgByteLength(optimizedSvg);
   const svgoMs = nowMs() - svgoStart;
+
+  Logger.debug('SVG optimization complete', {
+    engine,
+    originalSize: text.length,
+    optimizedSize: optimizedSvgSize,
+    timeMs: Math.round(svgoMs),
+  });
 
   const naturalSizeStart = nowMs();
   const { width, height } = await readSvgNaturalSize(optimizedSvg);
