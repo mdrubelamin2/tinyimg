@@ -3,13 +3,15 @@
  */
 
 import type { ImageItem } from '@/lib/queue/types';
-import { STATUS_SUCCESS, STATUS_ERROR } from '@/constants/index';
+import { STATUS_SUCCESS, STATUS_ERROR, STATUS_PROCESSING } from '@/constants/index';
 
 export interface QueueStats {
   savingsPercent: string;
   allDone: boolean;
   successfulCount: number;
   hasFinishedItems: boolean;
+  processingCount: number;
+  doneCount: number;
 }
 
 export function useQueueStats(items: ImageItem[]): QueueStats {
@@ -38,6 +40,8 @@ export function useQueueStats(items: ImageItem[]): QueueStats {
   const hasFinishedItems = items.some(
     i => i.status === STATUS_SUCCESS || i.status === STATUS_ERROR
   );
+  const processingCount = items.filter(i => i.status === STATUS_PROCESSING).length;
+  const doneCount = successfulCount;
 
-  return { savingsPercent, allDone, successfulCount, hasFinishedItems };
+  return { savingsPercent, allDone, successfulCount, hasFinishedItems, processingCount, doneCount };
 }

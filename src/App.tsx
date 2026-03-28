@@ -73,7 +73,7 @@ const App: React.FC = () => {
 
   const [preview, setPreview] = useState<PreviewState | null>(null);
 
-  const { savingsPercent, allDone, hasFinishedItems } = useQueueStats(itemsArray);
+  const { savingsPercent, allDone, hasFinishedItems, processingCount, doneCount } = useQueueStats(itemsArray);
 
   // Confetti on all-done
   useEffect(() => {
@@ -134,6 +134,8 @@ const App: React.FC = () => {
               itemIds={itemIds}
               savingsPercent={savingsPercent}
               hasFinishedItems={hasFinishedItems}
+              processingCount={processingCount}
+              doneCount={doneCount}
               onClearFinished={clearFinished}
               onDownloadAll={() => void downloadAll()}
               onClear={clearAll}
