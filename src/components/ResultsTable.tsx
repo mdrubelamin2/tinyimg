@@ -86,7 +86,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
 
       <CardContent className="p-0">
         <div ref={scrollRef} className="max-h-[600px] overflow-auto">
-          <Table className="w-full text-left min-w-[700px]" aria-label="Processing queue with file names, sizes, and download links">
+          <Table className="w-full text-left min-w-[700px] relative" aria-label="Processing queue with file names, sizes, and download links">
             <TableHeader className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest sticky top-0 z-10 border-b border-border backdrop-blur-sm">
               <TableRow>
                 <TableHead className="px-8 py-4">File Name</TableHead>
