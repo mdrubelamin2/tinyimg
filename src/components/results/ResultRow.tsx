@@ -1,4 +1,3 @@
-import React from 'react';
 import { useStore } from 'zustand';
 import { Sparkles, Download, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -17,7 +16,7 @@ export interface ResultRowProps {
   onPreview?: ((item: ImageItem, format: string) => void) | undefined;
 }
 
-export const ResultRow = React.memo(({ id, onRemove, onPreview }: ResultRowProps) => {
+export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
   // Use highly specific selector to only re-render when THIS item changes
   const item = useStore(useImageStore, (state) => state.items.get(id));
 
@@ -140,6 +139,5 @@ export const ResultRow = React.memo(({ id, onRemove, onPreview }: ResultRowProps
       </TableCell>
     </TableRow>
   );
-});
+};
 
-ResultRow.displayName = 'ResultRow';

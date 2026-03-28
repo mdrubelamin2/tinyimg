@@ -18,7 +18,7 @@ export interface ResultsTableProps {
   onPreview?: ((item: ImageItem, format: string) => void) | undefined;
 }
 
-export const ResultsTable: React.FC<ResultsTableProps> = React.memo(({
+export const ResultsTable: React.FC<ResultsTableProps> = ({
   itemIds,
   savingsPercent,
   hasFinishedItems,
@@ -106,4 +106,4 @@ export const ResultsTable: React.FC<ResultsTableProps> = React.memo(({
       </CardContent>
     </Card>
   );
-});
+};

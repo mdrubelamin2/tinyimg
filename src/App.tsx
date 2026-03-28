@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { preload, prefetchDNS } from 'react-dom';
 import { useImageStore, selectItemCount, selectOrderedItems } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -99,7 +99,7 @@ const App: React.FC = () => {
     }
   }, [options, itemCount, applyGlobalOptions]);
 
-  const handlePreview = useCallback((item: ImageItem, format: string) => {
+  const handlePreview = (item: ImageItem, format: string) => {
     const result = item.results[format];
     if (!result?.downloadUrl || !item.previewUrl) return;
     setPreview({
@@ -110,7 +110,7 @@ const App: React.FC = () => {
       format: result.label ?? format,
       fileName: item.file.name,
     });
-  }, []);
+  };
 
   useKeyboardShortcuts({
     onDownload: hasFinishedItems ? () => void downloadAll() : undefined,
