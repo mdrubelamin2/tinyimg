@@ -21,7 +21,7 @@ test.describe('TinyIMG Basic Flow', () => {
       dropzone.click(),
     ]);
     await fileChooser.setFiles(filePath);
-    const row = page.locator('[role="row"]').filter({ has: page.locator('[data-testid="filename"]').first().locator('text=png-1.png').first() }).first();
+    const row = page.locator('[role="row"]').filter({ has: page.locator('[data-testid="filename"]').filter({ hasText: 'png-1.png' }).first() }).first();
     await expect(row).toBeVisible({ timeout: E2E_DEFAULT_TIMEOUT_MS });
     await expect(row.getByText(/KB/i).first()).toBeVisible({ timeout: E2E_OPTIMIZATION_TIMEOUT_MS });
   });
