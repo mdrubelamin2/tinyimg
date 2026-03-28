@@ -3,8 +3,8 @@ import { Download, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
-import { Table, TableBody, TableHead, TableHeader, TableRow } from './ui/table';
-import { ResultRow } from './results/ResultRow';
+import { Table, TableHead, TableHeader, TableRow } from './ui/table';
+import { VirtualizedTableBody } from './results/VirtualizedTableBody';
 import type { ImageItem } from '@/lib/queue/types';
 
 export interface ResultsTableProps {
@@ -82,27 +82,24 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
         </div>
       </div>
 
-      <CardContent className="p-0 overflow-x-auto">
-        <Table className="text-left min-w-[700px]" aria-label="Processing queue with file names, sizes, and download links">
-          <TableHeader className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest sticky top-0 z-10 border-b border-border backdrop-blur-sm">
-            <TableRow>
-              <TableHead className="px-8 py-4">File Name</TableHead>
-              <TableHead className="px-6 py-4">Original</TableHead>
-              <TableHead className="px-6 py-4">Status & Formats</TableHead>
-              <TableHead className="px-8 py-4 text-right pr-12">Remove</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className="divide-y divide-border/50 bg-surface/20">
-            {itemIds.map(id => (
-              <ResultRow 
-                key={id} 
-                id={id} 
-                onRemove={onRemoveItem} 
-                onPreview={onPreview} 
-              />
-            ))}
-          </TableBody>
-        </Table>
+      <CardContent className="p-0">
+        <div className="max-h-[600px] overflow-auto">
+          <Table className="text-left min-w-[700px] block" aria-label="Processing queue with file names, sizes, and download links">
+            <TableHeader className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest sticky top-0 z-10 border-b border-border backdrop-blur-sm">
+              <TableRow>
+                <TableHead className="px-8 py-4">File Name</TableHead>
+                <TableHead className="px-6 py-4">Original</TableHead>
+                <TableHead className="px-6 py-4">Status & Formats</TableHead>
+                <TableHead className="px-8 py-4 text-right pr-12">Remove</TableHead>
+              </TableRow>
+            </TableHeader>
+            <VirtualizedTableBody 
+              itemIds={itemIds} 
+              onRemove={onRemoveItem} 
+              onPreview={onPreview} 
+            />
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
