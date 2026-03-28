@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand';
+import { startTransition } from 'react';
 import type { ImageItem, ImageResult, WorkerResponse, Task } from '@/lib/queue/types';
 import type { GlobalOptions } from '@/constants';
 import {
@@ -15,7 +16,6 @@ import {
   OUTPUT_QUALITY_MAX,
   OUTPUT_QUALITY_MIN,
   UPDATE_OPTIONS_DEBOUNCE_MS,
-  BYTES_PER_KB,
 } from '@/constants/index';
 import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
 import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
@@ -36,6 +36,7 @@ interface ImageStoreState {
   items: Map<string, ImageItem>;
   itemOrder: string[];
   pendingIds: Set<string>;
+  visibleItemIds: Set<string>;
 }
 
 interface ImageStoreActions {
@@ -46,6 +47,7 @@ interface ImageStoreActions {
   reorderItems: (fromIndex: number, toIndex: number) => void;
   setItemOutputFormats: (id: string, formats: string[] | null, options: GlobalOptions) => void;
   setItemQualityPercent: (id: string, percent: number | null, options: GlobalOptions) => void;
+  setVisibleItems: (ids: string[]) => void;
   downloadAll: () => Promise<void>;
 
   /** Called when global options change (debounced). Re-enqueues items. 
@@ -126,12 +128,13 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
   items: new Map(),
   itemOrder: [],
   pendingIds: new Set(),
+  visibleItemIds: new Set(),
 
   addFiles: async (files, options) => {
     const newItems = await collectItemsFromFiles(files, {
       createItem: (file: File) => {
         const item = createQueueItem(file, options);
-        item.formattedOriginalSize = (item.originalSize / BYTES_PER_KB).toFixed(1);
+        // item.formattedOriginalSize = (item.originalSize / BYTES_PER_KB).toFixed(1);
         return item;
       },
     });
@@ -302,6 +305,10 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     get()._processNext(options);
   },
 
+  setVisibleItems: (ids) => {
+    set({ visibleItemIds: new Set(ids) });
+  },
+
   downloadAll: async () => {
     const { items, itemOrder } = get();
     const arr = itemsToArray(items, itemOrder);
@@ -367,96 +374,95 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
     let shouldProcessNext = false;
 
-    set((state) => {
-      const nextItems = new Map(state.items);
-      const nextPending = new Set(state.pendingIds);
+    startTransition(() => {
+      set((state) => {
+        const nextItems = new Map(state.items);
+        const nextPending = new Set(state.pendingIds);
 
-      // Process successful results
-      for (const response of responses) {
-        const item = nextItems.get(response.id);
-        if (!item) continue;
+        // Process successful results
+        for (const response of responses) {
+          const item = nextItems.get(response.id);
+          if (!item) continue;
 
-        const format = response.format;
-        const result = item.results[format];
-        if (!result) continue;
+          const format = response.format;
+          const result = item.results[format];
+          if (!result) continue;
 
-        const nextItem = { ...item };
-        if (response.status === STATUS_SUCCESS) {
-          if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
-          const downloadUrl = URL.createObjectURL(response.blob);
-          const savingsPercent = Math.abs(
-            ((item.originalSize - response.size) / item.originalSize) * 100
-          );
+          const nextItem = { ...item };
+          if (response.status === STATUS_SUCCESS) {
+            if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
+            const downloadUrl = URL.createObjectURL(response.blob);
 
-          nextItem.results = {
-            ...item.results,
-            [format]: {
-              ...result,
-              status: STATUS_SUCCESS,
-              size: response.size,
-              formattedSize: (response.size / BYTES_PER_KB).toFixed(1),
-              savingsPercent: Math.round(savingsPercent),
-              blob: response.blob,
-              label: response.label,
-              downloadUrl,
-              timing: response.timing,
-            },
-          };
-        } else {
-          nextItem.results = {
-            ...item.results,
-            [format]: { ...result, status: STATUS_ERROR, error: response.error },
-          };
+            nextItem.results = {
+              ...item.results,
+              [format]: {
+                ...result,
+                status: STATUS_SUCCESS,
+                size: response.size,
+                formattedSize: response.formattedSize,
+                savingsPercent: response.savingsPercent,
+                blob: response.blob,
+                label: response.label,
+                downloadUrl,
+                timing: response.timing,
+              },
+            };
+          } else {
+            nextItem.results = {
+              ...item.results,
+              [format]: { ...result, status: STATUS_ERROR, error: response.error },
+            };
+          }
+
+          if (isTerminal(nextItem)) {
+            const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
+            nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
+            nextItem.progress = 100;
+            nextPending.delete(response.id);
+            shouldProcessNext = true;
+          }
+
+          nextItems.set(response.id, nextItem);
         }
 
-        if (isTerminal(nextItem)) {
-          const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
-          nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
-          nextItem.progress = 100;
-          nextPending.delete(response.id);
-          shouldProcessNext = true;
+        // Process errors
+        for (const task of errors) {
+          if (!task) continue;
+          const item = nextItems.get(task.id);
+          if (!item) continue;
+
+          const result = item.results[task.format];
+          const nextItem = { ...item };
+          if (result) {
+            nextItem.results = {
+              ...item.results,
+              [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
+            };
+          }
+
+          if (isTerminal(nextItem)) {
+            nextItem.status = STATUS_ERROR;
+            nextItem.progress = 100;
+            nextPending.delete(task.id);
+            shouldProcessNext = true;
+          }
+
+          nextItems.set(task.id, nextItem);
         }
 
-        nextItems.set(response.id, nextItem);
+        return { items: nextItems, pendingIds: nextPending };
+      });
+
+      if (shouldProcessNext) {
+        get()._processNext(useSettingsStore.getState().options);
       }
-
-      // Process errors
-      for (const task of errors) {
-        if (!task) continue;
-        const item = nextItems.get(task.id);
-        if (!item) continue;
-
-        const result = item.results[task.format];
-        const nextItem = { ...item };
-        if (result) {
-          nextItem.results = {
-            ...item.results,
-            [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
-          };
-        }
-
-        if (isTerminal(nextItem)) {
-          nextItem.status = STATUS_ERROR;
-          nextItem.progress = 100;
-          nextPending.delete(task.id);
-          shouldProcessNext = true;
-        }
-
-        nextItems.set(task.id, nextItem);
-      }
-
-      return { items: nextItems, pendingIds: nextPending };
     });
-
-    if (shouldProcessNext) {
-      get()._processNext(useSettingsStore.getState().options);
-    }
   },
 
   _getPool: () => getPool(api),
 
   _processNext: (options) => {
-    const { items, itemOrder, pendingIds } = get();
+    const { items, itemOrder, pendingIds, visibleItemIds } = get();
 
     if (pendingIds.size === 0) return;
 
@@ -465,16 +471,23 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
     if (currentPendingArray.length === 0) return;
 
-    // Sort by file size if enabled
-    let sortedIds = currentPendingArray;
-    if (options.smallFilesFirst) {
-      sortedIds = [...currentPendingArray].sort((a, b) => {
+    // Sort by priority: Visible items first, then small files if enabled
+    const sortedIds = [...currentPendingArray].sort((a, b) => {
+      const aVisible = visibleItemIds.has(a);
+      const bVisible = visibleItemIds.has(b);
+
+      if (aVisible && !bVisible) return -1;
+      if (!aVisible && bVisible) return 1;
+
+      if (options.smallFilesFirst) {
         const itemA = items.get(a);
         const itemB = items.get(b);
         if (!itemA || !itemB) return 0;
         return itemA.originalSize - itemB.originalSize;
-      });
-    }
+      }
+
+      return 0;
+    });
 
     const nextId = sortedIds[0];
     if (!nextId) return;
