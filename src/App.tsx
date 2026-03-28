@@ -1,25 +1,31 @@
 import { useEffect, useState } from 'react';
 import { preload, prefetchDNS } from 'react-dom';
-import { useImageStore, selectItemCount, selectOrderedItems } from './store/image-store';
-import { useSettingsStore } from './store/settings-store';
-import { Dropzone } from './components/Dropzone';
-import { ConfigPanel } from './components/ConfigPanel';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { AppHeader } from './components/AppHeader';
-import { ResultsTable } from './components/ResultsTable';
-import { ImagePreview } from './components/preview/ImagePreview';
-import { useQueueStats } from './hooks/useQueueStats';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useImageStore, selectItemCount, selectOrderedItems } from '@/store/image-store';
+import { useSettingsStore } from '@/store/settings-store';
+import { Dropzone } from '@/components/Dropzone';
+import { ConfigPanel } from '@/components/ConfigPanel';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { AppHeader } from '@/components/AppHeader';
+import { ResultsTable } from '@/components/ResultsTable';
+import { ImagePreview } from '@/components/preview/ImagePreview';
+import { useQueueStats } from '@/hooks/useQueueStats';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import confetti from 'canvas-confetti';
 import { Zap } from 'lucide-react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import {
   CONFETTI_PARTICLE_COUNT,
   CONFETTI_SPREAD,
   CONFETTI_ORIGIN_Y,
   CONFETTI_COLORS,
   STATUS_ERROR,
-} from './constants/index';
-import type { ImageItem } from './lib/queue/types';
+} from '@/constants/index';
+import type { ImageItem } from '@/lib/queue/types';
 
 preload('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap', {
   as: 'style',
@@ -161,14 +167,14 @@ const App: React.FC = () => {
             <h3 className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-6 text-center">
               FAQ
             </h3>
-            <dl className="space-y-4 text-left text-sm text-muted-foreground">
+            <Accordion type="single" collapsible className="w-full">
               {FAQ_DATA.map((faq, i) => (
-                <div key={i} className="p-4 rounded-xl bg-surface/50 border border-border/50">
-                  <dt className="font-bold text-foreground mb-1">{faq.question}</dt>
-                  <dd className="text-muted-foreground/80">{faq.answer}</dd>
-                </div>
+                <AccordionItem key={i} value={`item-${i}`}>
+                  <AccordionTrigger>{faq.question}</AccordionTrigger>
+                  <AccordionContent>{faq.answer}</AccordionContent>
+                </AccordionItem>
               ))}
-            </dl>
+            </Accordion>
           </section>
           <p className="py-6 text-center text-muted-foreground/60 text-[10px] uppercase tracking-widest font-bold border-t border-border/50">
             &copy; 2026 TinyIMG &bull; Industrial Strength &bull; Pure WASM
