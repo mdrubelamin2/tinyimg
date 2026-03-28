@@ -20,10 +20,17 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; engi
       enable_viewboxing: true, // true here means keep/normalize the viewBox
       shorten_ids: true,
       strip_ids: true,
-      precision: 2,
+      precision: 1, // Aggressive precision
     });
     if (typeof tidyResult === 'string' && tidyResult.length > 0) {
       const tidySize = new TextEncoder().encode(tidyResult).length;
+      const svgoData = await runSvgoFallback(svgText);
+      const svgoSize = new TextEncoder().encode(svgoData).length;
+
+      if (svgoSize < tidySize && svgoSize < originalSize) {
+        return { data: svgoData, engine: 'svgo' };
+      }
+
       if (tidySize < originalSize) {
         return { data: tidyResult, engine: 'svgtidy' };
       }
@@ -32,6 +39,11 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; engi
     // svgtidy failed — fall through to SVGO
   }
 
+  const svgoData = await runSvgoFallback(svgText);
+  return { data: svgoData, engine: 'svgo' };
+}
+
+async function runSvgoFallback(svgText: string): Promise<string> {
   // SVGO fallback (slower but more thorough)
   try {
     const { optimize: svgoOptimize } = await import('svgo');
@@ -48,22 +60,49 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; engi
                 remove: true, // strip_ids = True
               },
               convertPathData: {
-                floatPrecision: 2, // precision = 2
+                floatPrecision: 1, // Aggressive precision
+                noSpaceAfterFlags: true, // Extreme compression
+                forceRelative: true,
               },
             },
           },
-        },
+        } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
         'removeDimensions', // Use viewBox instead of fixed dimensions
+        'removeStyleElement',
+        'removeScripts',
+        'mergePaths',
+        'collapseGroups',
+        'removeEmptyAttrs',
+        'removeRedundantAttrs',
+        'sortAttrs',
+        {
+          name: 'convertColors',
+          params: {
+            shorthex: true,
+            rgb2hex: true,
+          },
+        },
+        {
+          name: 'cleanupNumericValues',
+          params: {
+            floatPrecision: 1,
+          },
+        },
+        {
+          name: 'convertShapeToPath',
+          params: {
+            convertArcs: true,
+          },
+        },
       ],
     });
     if (svgoResult.data && svgoResult.data.length > 0) {
-      return { data: svgoResult.data, engine: 'svgo' };
+      return svgoResult.data;
     }
   } catch {
-    // Both failed — return original
+    // ignore
   }
-
-  return { data: svgText, engine: 'svgo' };
+  return svgText;
 }
 
 /**
