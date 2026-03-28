@@ -23,7 +23,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
 
   return (
     <>
-      <div className="px-8 py-5 flex items-center gap-3 min-w-[300px] flex-1">
+      <div className="px-8 py-5 flex items-center gap-3 w-[40%]">
         <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm">
           {item.previewUrl ? (
             <img
@@ -47,7 +47,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
       <div className="px-6 py-5 text-xs font-medium text-muted-foreground w-[100px] shrink-0">
         {(item.originalSize / BYTES_PER_KB).toFixed(1)} KB
       </div>
-      <div className="px-6 py-5 flex-1 min-w-[200px]">
+      <div className="px-6 py-5 flex-1">
         <div className="flex flex-wrap gap-2">
           {Object.values(item.results).map(res => {
             const chipClassName = cn(

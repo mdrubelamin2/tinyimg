@@ -86,13 +86,13 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
 
       <CardContent className="p-0">
         <div ref={scrollRef} className="max-h-[600px] overflow-auto">
-          <div ref={tableRef} className="min-w-[700px]">
+          <div ref={tableRef} className="w-full">
             {/* Header */}
             <div className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-b border-border backdrop-blur-sm sticky top-0 z-10">
               <div className="flex w-full">
-                <div className="px-8 py-4 min-w-[300px] flex-1">File Name</div>
+                <div className="px-8 py-4 w-[40%]">File Name</div>
                 <div className="px-6 py-4 w-[100px] shrink-0">Original</div>
-                <div className="px-6 py-4 flex-1 min-w-[200px]">Status & Formats</div>
+                <div className="px-6 py-4 flex-1">Status & Formats</div>
                 <div className="px-8 py-4 text-right w-[60px] shrink-0">Remove</div>
               </div>
             </div>
