@@ -130,6 +130,8 @@ export interface WorkerOutboundResult {
   blob: Blob;
   size: number;
   label: string;
+  formattedSize: string;
+  savingsPercent: number;
   timing?: StageTiming | undefined;
 }
 
@@ -154,6 +156,8 @@ export interface WorkerResponseSuccess {
   blob: Blob;
   size: number;
   label: string;
+  formattedSize: string;
+  savingsPercent: number;
   status: 'success';
   timing?: StageTiming | undefined;
 }

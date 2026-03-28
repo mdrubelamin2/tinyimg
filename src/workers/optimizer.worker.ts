@@ -144,6 +144,8 @@ self.onmessage = async (e: MessageEvent) => {
       size: resultBlob.size,
       format: requestedFormat,
       label,
+      formattedSize: (resultBlob.size / 1024).toFixed(1),
+      savingsPercent: Math.round(Math.abs(((file.size - resultBlob.size) / file.size) * 100)),
       status: 'success',
       timing,
     });

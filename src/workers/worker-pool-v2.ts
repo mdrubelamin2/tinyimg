@@ -19,8 +19,9 @@ interface WorkerSlot {
 }
 
 export function computeConcurrency(): number {
+  const cores = navigator.hardwareConcurrency ?? CONCURRENCY_DEFAULT;
   return Math.min(
-    Math.max(navigator.hardwareConcurrency ?? CONCURRENCY_DEFAULT, CONCURRENCY_MIN),
+    Math.max(cores > 1 ? cores - 1 : 1, CONCURRENCY_MIN),
     CONCURRENCY_MAX
   );
 }
