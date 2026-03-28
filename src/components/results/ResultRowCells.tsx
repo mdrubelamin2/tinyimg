@@ -23,7 +23,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
 
   return (
     <>
-      <div className="px-8 py-5 flex items-center gap-3 min-w-0" role="cell">
+      <div className="px-8 py-5 flex items-center gap-3 min-w-0" role="cell" data-testid="filename-cell">
         <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm">
           {item.previewUrl ? (
             <img
@@ -36,7 +36,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
           )}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground truncate max-w-[150px] md:max-w-[250px]">
+          <p className="text-sm font-semibold text-foreground truncate max-w-[150px] md:max-w-[250px]" data-testid="filename">
             {item.file.name}
           </p>
           <p className="text-[10px] text-muted-foreground font-mono tracking-tighter uppercase">
