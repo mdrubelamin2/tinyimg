@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ResultRowCells } from './ResultRowCells';
+import { useImageStore } from '@/store/image-store';
 import type { ImageItem } from '@/lib/queue/types';
 
 const ROW_HEIGHT = 88;
@@ -20,6 +22,7 @@ export const VirtualizedTableBody = ({
   scrollRef,
   gridClass,
 }: VirtualizedTableBodyProps) => {
+  const setVisibleItems = useImageStore(state => state.setVisibleItems);
   const virtualizer = useVirtualizer({
     count: itemIds.length,
     getScrollElement: () => scrollRef.current,
@@ -29,6 +32,13 @@ export const VirtualizedTableBody = ({
 
   const virtualRows = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
+
+  useEffect(() => {
+    const visibleIds = virtualRows
+      .map(row => itemIds[row.index])
+      .filter((id): id is string => !!id);
+    setVisibleItems(visibleIds);
+  }, [virtualRows, itemIds, setVisibleItems]);
 
   if (itemIds.length === 0) {
     return null;

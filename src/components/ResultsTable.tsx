@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useDeferredValue } from 'react';
 import { Download, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -35,9 +35,12 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const deferredSavings = useDeferredValue(savingsPercent);
+  const deferredDoneCount = useDeferredValue(doneCount);
+
   if (itemIds.length === 0) return null;
 
-  const savingsValue = Number(savingsPercent);
+  const savingsValue = Number(deferredSavings);
   const isPositiveSavings = savingsValue > 0;
 
   return (
@@ -48,11 +51,11 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
           <p className="text-sm text-muted-foreground">Wait for completion to batch download.</p>
         </div>
         <div className="flex items-center gap-2 md:gap-4 text-sm w-full sm:w-auto justify-center sm:justify-end">
-          {doneCount > 0 && (
+          {deferredDoneCount > 0 && (
             <div className="text-center sm:text-right hidden sm:block mr-4">
               <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">Optimized</p>
               <p className="font-black text-xl leading-none mt-1 text-foreground">
-                {doneCount}/{totalCount}
+                {deferredDoneCount}/{totalCount}
               </p>
             </div>
           )}
