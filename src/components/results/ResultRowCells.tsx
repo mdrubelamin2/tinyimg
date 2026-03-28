@@ -23,7 +23,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
 
   return (
     <>
-      <div className="px-8 py-5 flex items-center gap-3 min-w-0">
+      <div className="px-8 py-5 flex items-center gap-3 min-w-0" role="cell">
         <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm">
           {item.previewUrl ? (
             <img
@@ -44,10 +44,10 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
           </p>
         </div>
       </div>
-      <div className="px-6 py-5 text-xs font-medium text-muted-foreground">
+      <div className="px-6 py-5 text-xs font-medium text-muted-foreground min-w-0" role="cell">
         {(item.originalSize / BYTES_PER_KB).toFixed(1)} KB
       </div>
-      <div className="px-6 py-5 min-w-0 overflow-hidden">
+      <div className="px-6 py-5 min-w-0 overflow-hidden" role="cell">
         <div className="flex flex-wrap gap-2 max-w-full">
           {Object.values(item.results).map(res => {
             const chipClassName = cn(
@@ -57,7 +57,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
                 : 'bg-muted/50 border-border opacity-60 cursor-default'
             );
             const downloadFilename = `tinyimg-${item.file.name.substring(0, item.file.name.lastIndexOf('.'))}.${res.format === 'jpeg' ? DOWNLOAD_EXT_JPEG : res.format}`;
-            
+
             return res.status === STATUS_SUCCESS ? (
               <a
                 key={res.format}
@@ -108,10 +108,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
                     </Badge>
                   ) : (
                     <div className="w-12 h-1 bg-muted rounded-full overflow-hidden mt-1">
-                      <div
-                        className="h-full bg-primary animate-pulse-subtle"
-                        style={{ width: '40%' }}
-                      />
+                      <div className="h-2/5 bg-primary animate-pulse-subtle" />
                     </div>
                   )}
                 </div>
@@ -120,12 +117,12 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
           })}
         </div>
       </div>
-      <div className="px-8 py-5 text-right flex items-center justify-end">
+      <div className="px-6 py-5 flex items-center justify-end min-w-0" role="cell">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => onRemove(item.id)}
-          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200"
+          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200 w-10 h-10"
           title="Remove item"
           aria-label={`Remove ${item.file.name}`}
         >

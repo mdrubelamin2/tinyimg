@@ -17,6 +17,8 @@ export interface ResultsTableProps {
   onPreview?: ((item: ImageItem, format: string) => void) | undefined;
 }
 
+const TABLE_GRID_COLUMNS = 'grid-cols-[minmax(0,2fr)_150px_minmax(0,3fr)_100px]';
+
 export const ResultsTable: React.FC<ResultsTableProps> = ({
   itemIds,
   savingsPercent,
@@ -28,11 +30,14 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
   onPreview,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  
+
   if (itemIds.length === 0) return null;
 
+  const savingsValue = Number(savingsPercent);
+  const isPositiveSavings = savingsValue > 0;
+
   return (
-    <Card className="glass rounded-3xl overflow-hidden border border-border/70 shadow-2xl shadow-primary/5 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+    <Card className="glass rounded-3xl overflow-hidden border border-border/70 shadow-2xl shadow-primary/5 animate-slide-up delay-100">
       <div className="px-6 md:px-8 py-5 md:py-6 bg-surface/50 border-b border-border flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="text-center sm:text-left">
           <h3 className="text-lg font-bold text-foreground tracking-tight">Processing Queue</h3>
@@ -41,17 +46,14 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
         <div className="flex items-center gap-2 md:gap-4 text-sm w-full sm:w-auto justify-center sm:justify-end">
           <div className="text-center sm:text-right hidden sm:block mr-4">
             <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">Total Savings</p>
-            <p
-              className={cn(
-                'font-black text-xl leading-none mt-1',
-                Number(savingsPercent) > 0 ? 'text-success' : 'text-warning'
-              )}
-            >
-              {Number(savingsPercent) > 0 ? '-' : '+'}
-              {Math.abs(Number(savingsPercent))}%
+            <p className={cn(
+              'font-black text-xl leading-none mt-1',
+              isPositiveSavings ? 'text-success' : 'text-warning'
+            )}>
+              {isPositiveSavings ? '-' : '+'}{Math.abs(savingsValue)}%
             </p>
           </div>
-          {hasFinishedItems ? (
+          {hasFinishedItems && (
             <Button
               variant="secondary"
               size="sm"
@@ -62,10 +64,10 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
             >
               <CheckCircle2 size={16} /> <span className="hidden xl:inline">Clear Optimized</span>
             </Button>
-          ) : null}
+          )}
           <Button
             onClick={onDownloadAll}
-            className="py-2 text-sm shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-colors duration-200 cursor-pointer"
+            className="py-2 text-sm shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-colors cursor-pointer"
             aria-label="Download all as ZIP"
           >
             <Download size={18} /> <span className="hidden sm:inline">Download All (ZIP)</span>
@@ -74,7 +76,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
             variant="ghost"
             size="icon"
             onClick={onClear}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors"
             title="Clear All"
             aria-label="Clear all items from queue"
           >
@@ -86,21 +88,20 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
       <CardContent className="p-0">
         <div ref={scrollRef} className="max-h-[600px] overflow-auto">
           <div className="w-full">
-            {/* Header */}
             <div className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-b border-border backdrop-blur-sm sticky top-0 z-10">
-              <div className="grid w-full" style={{ gridTemplateColumns: 'minmax(0, 2fr) 100px minmax(0, 3fr) 60px' }}>
-                <div className="px-8 py-4 text-left">File Name</div>
-                <div className="px-6 py-4 text-left">Original</div>
-                <div className="px-6 py-4 text-left">Status & Formats</div>
-                <div className="px-8 py-4 text-right">Remove</div>
+              <div className={`grid w-full ${TABLE_GRID_COLUMNS}`}>
+                <div className="px-8 py-4">File Name</div>
+                <div className="px-6 py-4 min-w-0">Original</div>
+                <div className="px-6 py-4">Status &amp; Formats</div>
+                <div className="px-6 py-4 min-w-0 text-right">Remove</div>
               </div>
             </div>
-            {/* Virtualized Body */}
-            <VirtualizedTableBody 
-              itemIds={itemIds} 
-              onRemove={onRemoveItem} 
+            <VirtualizedTableBody
+              itemIds={itemIds}
+              onRemove={onRemoveItem}
               onPreview={onPreview}
               scrollRef={scrollRef}
+              gridClass={TABLE_GRID_COLUMNS}
             />
           </div>
         </div>
