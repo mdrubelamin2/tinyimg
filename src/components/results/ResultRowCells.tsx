@@ -44,7 +44,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
           </p>
         </div>
       </div>
-      <div className="px-6 py-5 text-xs font-medium text-muted-foreground min-w-0" role="cell">
+      <div className="px-6 py-5 text-xs font-medium text-muted-foreground min-w-0 flex items-center" role="cell">
         {(item.originalSize / BYTES_PER_KB).toFixed(1)} KB
       </div>
       <div className="px-6 py-5 min-w-0 overflow-hidden" role="cell">
@@ -108,7 +108,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
                     </Badge>
                   ) : (
                     <div className="w-12 h-1 bg-muted rounded-full overflow-hidden mt-1">
-                      <div className="h-2/5 bg-primary animate-pulse-subtle" />
+                      <div className="w-full h-full bg-gradient-to-r from-transparent via-primary/60 to-transparent animate-shimmer" />
                     </div>
                   )}
                 </div>
