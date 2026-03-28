@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { preload, prefetchDNS } from 'react-dom';
 import { useImageStore, selectItemCount, selectOrderedItems } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -59,6 +59,7 @@ const FAQ_DATA = [
 ];
 
 const App: React.FC = () => {
+  const itemIds = useImageStore(state => state.itemOrder);
   const itemsArray = useImageStore(selectOrderedItems);
   const itemCount = useImageStore(selectItemCount);
   const addFiles = useImageStore(state => state.addFiles);
@@ -88,9 +89,6 @@ const App: React.FC = () => {
     }
   }, [allDone, itemsArray]);
 
-  // Process next queue item when previous ones finish (this logic is now handled within store actions)
-  // Removed the problematic useEffect that was causing the loop.
-
   const handleFilesAdded = (files: File[] | DataTransferItem[]) => {
     void addFiles(files, options);
   };
@@ -101,7 +99,7 @@ const App: React.FC = () => {
     }
   }, [options, itemCount, applyGlobalOptions]);
 
-  const handlePreview = (item: ImageItem, format: string) => {
+  const handlePreview = useCallback((item: ImageItem, format: string) => {
     const result = item.results[format];
     if (!result?.downloadUrl || !item.previewUrl) return;
     setPreview({
@@ -112,7 +110,7 @@ const App: React.FC = () => {
       format: result.label ?? format,
       fileName: item.file.name,
     });
-  };
+  }, []);
 
   useKeyboardShortcuts({
     onDownload: hasFinishedItems ? () => void downloadAll() : undefined,
@@ -133,7 +131,7 @@ const App: React.FC = () => {
             <Dropzone onFilesAdded={handleFilesAdded} />
 
             <ResultsTable
-              items={itemsArray}
+              itemIds={itemIds}
               savingsPercent={savingsPercent}
               hasFinishedItems={hasFinishedItems}
               onClearFinished={clearFinished}
@@ -198,6 +196,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-
-

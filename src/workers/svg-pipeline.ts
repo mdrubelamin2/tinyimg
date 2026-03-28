@@ -3,17 +3,12 @@
  */
 
 import { Resvg } from '@resvg/resvg-wasm';
-import picaFactory from 'pica';
 import {
   MAX_PIXELS,
   SVG_INTERNAL_SSAA_SCALE,
-  SVG_DOWNSCALE_QUALITY,
-  SVG_DOWNSCALE_UNSHARP_AMOUNT,
-  SVG_DOWNSCALE_UNSHARP_RADIUS,
-  SVG_DOWNSCALE_UNSHARP_THRESHOLD,
   WRAPPER_SIZE_THRESHOLD,
-} from '../constants';
-import type { SvgInternalFormat } from '../constants';
+} from '../constants/index';
+import type { SvgInternalFormat } from '../constants/index';
 import { ensureResvg } from './optimizer-wasm';
 import { classifyContent } from './classify';
 import {
@@ -28,9 +23,6 @@ import { BrowserSvgRasterError, rasterizeSvgWithBrowser } from './svg-browser-ra
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SVG_DISPLAY_DPR_MIN = 1;
 const SVG_DISPLAY_DPR_MAX = 3;
-let picaInstance:
-  | ReturnType<typeof picaFactory>
-  | undefined;
 
 type SvgRasterizer = 'auto' | 'browser' | 'resvg';
 type SvgExportDensity = 'legacy' | 'display';
@@ -140,7 +132,7 @@ export async function processSvg(
   const encodeMs = nowMs() - encodeStart;
   await assertEncodedDimensions(internalBytes, mimeType, raster.bitmapWidth, raster.bitmapHeight);
 
-  const internalBase64 = toBase64(internalBytes);
+  const internalBase64 = await toBase64(internalBytes);
   const svgWrapper = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="${SVG_NS}">
   <image href="data:${mimeType};base64,${internalBase64}" width="${width}" height="${height}" />
 </svg>`;
@@ -351,6 +343,9 @@ export function computeInternalRenderSize(
   return { renderWidth, renderHeight };
 }
 
+/** 
+ * Phase 4: Native GPU-accelerated image downscaling replacing pica
+ */
 async function downscaleImageData(
   imageData: ImageData,
   targetWidth: number,
@@ -361,37 +356,21 @@ async function downscaleImageData(
   }
   checkPixelLimit(targetWidth, targetHeight);
 
-  const sourceCanvas = new OffscreenCanvas(imageData.width, imageData.height);
-  const sourceCtx = sourceCanvas.getContext('2d');
-  if (!sourceCtx) throw new Error('Could not get source 2d context');
-  sourceCtx.putImageData(imageData, 0, 0);
+  // Use hardware-accelerated createImageBitmap to resize instantly on GPU
+  const bitmap = await createImageBitmap(imageData, {
+    resizeWidth: targetWidth,
+    resizeHeight: targetHeight,
+    resizeQuality: 'high'
+  });
 
   const targetCanvas = new OffscreenCanvas(targetWidth, targetHeight);
-  const pica = getPica();
-  await pica.resize(
-    sourceCanvas as unknown as HTMLCanvasElement,
-    targetCanvas as unknown as HTMLCanvasElement,
-    {
-      quality: SVG_DOWNSCALE_QUALITY,
-      unsharpAmount: SVG_DOWNSCALE_UNSHARP_AMOUNT,
-      unsharpRadius: SVG_DOWNSCALE_UNSHARP_RADIUS,
-      unsharpThreshold: SVG_DOWNSCALE_UNSHARP_THRESHOLD,
-    }
-  );
-
-  const targetCtx = targetCanvas.getContext('2d');
+  const targetCtx = targetCanvas.getContext('2d', { willReadFrequently: true });
   if (!targetCtx) throw new Error('Could not get target 2d context');
+  
+  targetCtx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  
   return targetCtx.getImageData(0, 0, targetWidth, targetHeight);
-}
-
-function getPica(): ReturnType<typeof picaFactory> {
-  if (!picaInstance) {
-    picaInstance = picaFactory({
-      createCanvas: (width, height) =>
-        new OffscreenCanvas(width, height) as unknown as HTMLCanvasElement,
-    });
-  }
-  return picaInstance;
 }
 
 function assertDimensions(

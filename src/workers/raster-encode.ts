@@ -8,7 +8,7 @@ import * as avif from '@jsquash/avif';
 import * as jpeg from '@jsquash/jpeg';
 import * as png from '@jsquash/oxipng';
 import { ImageQuantizer, encode_palette_to_png } from 'libimagequant-wasm/wasm/libimagequant_wasm.js';
-import { MAX_PIXELS, LOSSLESS_SIZE_GUARD_RATIO } from '../constants';
+import { MAX_PIXELS, LOSSLESS_SIZE_GUARD_RATIO } from '../constants/index';
 import { ensureQuant } from './optimizer-wasm';
 import type { ContentPreset } from './classify';
 import { isSmallAndTransparent } from './classify';
@@ -17,7 +17,6 @@ const AVIFTune = { auto: 0, psnr: 1, ssim: 2 } as const;
 const WEBP_QUALITY_TRANSPARENT = 77;
 const PNG_MILD_QUANT_MIN = 90;
 const PNG_MILD_QUANT_MAX = 98;
-const BASE64_CHUNK_SIZE = 8192;
 
 /** High-fidelity preset for SVG display-density mode (aligns with convert_logos WebP q≈100 intent). */
 const SVG_DISPLAY_VECTOR_PRESET = {
@@ -149,7 +148,7 @@ interface RasterEncodePreset {
 
 export async function getImageData(bitmap: ImageBitmap): Promise<ImageData> {
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Could not get 2d context');
   ctx.drawImage(bitmap, 0, 0);
   return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
@@ -168,16 +167,20 @@ export function normalizeOutputFormat(requested: string, ext: string | undefined
   return requested === 'jpg' ? 'jpeg' : requested;
 }
 
-export function toBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let out = '';
-  for (let i = 0; i < bytes.length; i += BASE64_CHUNK_SIZE) {
-    const end = Math.min(i + BASE64_CHUNK_SIZE, bytes.length);
-    for (let j = i; j < end; j++) {
-      out += String.fromCharCode(bytes[j]!);
-    }
-  }
-  return btoa(out);
+/** Native zero-memory-spike base64 encoding using FileReader */
+export async function toBase64(buffer: ArrayBuffer): Promise<string> {
+  const blob = new Blob([buffer]);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1];
+      if (base64) resolve(base64);
+      else reject(new Error('Failed to parse base64 from Data URL'));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 export function toErrorMessage(error: unknown, fallback: string): string {
@@ -185,19 +188,23 @@ export function toErrorMessage(error: unknown, fallback: string): string {
   return String(error ?? fallback);
 }
 
-/** Composite ImageData onto white background (Porter-Duff source-over). Used for PNG→JPEG so transparent pixels become white like TinyPNG. */
-export function compositeImageDataOnWhite(imageData: ImageData): ImageData {
-  const { width, height, data } = imageData;
-  const out = new ImageData(width, height);
-  const outData = out.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const a = data[i + 3]! / 255;
-    outData[i] = Math.round((1 - a) * 255 + a * data[i]!);
-    outData[i + 1] = Math.round((1 - a) * 255 + a * data[i + 1]!);
-    outData[i + 2] = Math.round((1 - a) * 255 + a * data[i + 2]!);
-    outData[i + 3] = 255;
-  }
-  return out;
+/** GPU-accelerated Alpha Pre-multiplication on White background */
+export async function compositeImageDataOnWhite(imageData: ImageData): Promise<ImageData> {
+  const canvas = new OffscreenCanvas(imageData.width, imageData.height);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Could not get 2d context for composite');
+  
+  // Fill background with white
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, imageData.width, imageData.height);
+  
+  // Draw the image data on top with source-over
+  const bitmap = await createImageBitmap(imageData);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  
+  return ctx.getImageData(0, 0, imageData.width, imageData.height);
 }
 
 function hasTransparency(data: Uint8ClampedArray): boolean {
@@ -252,7 +259,7 @@ async function encodeLossless(
     }
     case 'jpeg': {
       const jpegInput = hasTransparency(imageData.data)
-        ? compositeImageDataOnWhite(imageData)
+        ? await compositeImageDataOnWhite(imageData)
         : imageData;
       return jpeg.encode(jpegInput, {
         quality: 100,
@@ -331,7 +338,7 @@ async function encodeRasterWithPreset(
     }
     case 'jpeg': {
       const jpegInput = hasTransparency(imageData.data)
-        ? compositeImageDataOnWhite(imageData)
+        ? await compositeImageDataOnWhite(imageData)
         : imageData;
       return jpeg.encode(jpegInput, {
         quality: pTry.jpeg.quality,
