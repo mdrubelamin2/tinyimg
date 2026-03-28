@@ -4,6 +4,20 @@ import { resizeImage } from '../../workers/raster-encode';
 describe('GPU Fallback', () => {
   it('falls back to CPU when GPU is unavailable', async () => {
     vi.stubGlobal('navigator', { gpu: undefined });
+    vi.stubGlobal('OffscreenCanvas', class OffscreenCanvas {
+      width: number;
+      height: number;
+      constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+      }
+      getContext() {
+        return {
+          drawImage: () => {},
+          getImageData: () => ({ data: new Uint8ClampedArray(this.width * this.height * 4), width: this.width, height: this.height }),
+        };
+      }
+    });
     
     const mockBitmap = {
       width: 100,
