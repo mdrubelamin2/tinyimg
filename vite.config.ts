@@ -22,6 +22,6 @@ export default defineConfig({
     format: 'es'
   },
   optimizeDeps: {
-    exclude: ['@resvg/resvg-wasm']
+    exclude: ['@resvg/resvg-wasm', 'svgo']
   }
 });
