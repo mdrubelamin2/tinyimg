@@ -2,6 +2,8 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
   resolve: {
@@ -10,6 +12,8 @@ export default defineConfig({
     },
   },
   plugins: [
+    wasm(),
+    topLevelAwait(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (react as any)({
       babel: {
@@ -19,7 +23,11 @@ export default defineConfig({
     tailwindcss(),
   ],
   worker: {
-    format: 'es'
+    format: 'es',
+    plugins: () => [
+      wasm(),
+      topLevelAwait()
+    ]
   },
   optimizeDeps: {
     exclude: ['@resvg/resvg-wasm', 'svgo', 'svgtidy']
