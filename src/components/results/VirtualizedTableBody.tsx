@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ResultRow } from './ResultRow';
+import { ResultRowCells } from './ResultRowCells';
 import type { ImageItem } from '@/lib/queue/types';
 
 export interface VirtualizedTableBodyProps {
@@ -26,18 +26,16 @@ export const VirtualizedTableBody = ({
 
   if (virtualRows.length === 0 && itemIds.length > 0) {
     return (
-      <tbody>
-        <tr>
-          <td colSpan={4} style={{ padding: '20px', textAlign: 'center' }}>
-            Loading...
-          </td>
-        </tr>
-      </tbody>
+      <tr>
+        <td colSpan={4} style={{ padding: '20px', textAlign: 'center' }}>
+          Loading...
+        </td>
+      </tr>
     );
   }
 
   return (
-    <tbody>
+    <>
       {virtualRows.map(virtualRow => {
         const id = itemIds[virtualRow.index];
         if (!id) return null;
@@ -54,10 +52,10 @@ export const VirtualizedTableBody = ({
               transform: `translateY(${virtualRow.start}px)`,
             }}
           >
-            <ResultRow id={id} onRemove={onRemove} onPreview={onPreview} />
+            <ResultRowCells id={id} onRemove={onRemove} onPreview={onPreview} />
           </tr>
         );
       })}
-    </tbody>
+    </>
   );
 };
