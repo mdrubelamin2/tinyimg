@@ -12,6 +12,11 @@ import { MAX_PIXELS, LOSSLESS_SIZE_GUARD_RATIO } from '@/constants/index';
 import { ensureQuant } from './optimizer-wasm';
 import type { ContentPreset } from './classify';
 import { isSmallAndTransparent } from './classify';
+import { GpuResizeClient } from '@/lib/gpu/gpu-worker-client';
+import { probeHardwareSupport, type HardwareCapabilities } from '@/lib/hardware';
+
+let gpuClient: GpuResizeClient | null = null;
+let hardwareCaps: HardwareCapabilities | null = null;
 
 const AVIFTune = { auto: 0, psnr: 1, ssim: 2 } as const;
 const WEBP_QUALITY_TRANSPARENT = 77;
@@ -144,6 +149,34 @@ interface RasterEncodePreset {
     quantMax: number;
     oxipngLevel: number;
   };
+}
+
+export async function resizeImage(
+  bitmap: ImageBitmap,
+  width: number,
+  height: number
+): Promise<ImageData> {
+  if (!hardwareCaps) {
+    hardwareCaps = await probeHardwareSupport();
+  }
+
+  if (hardwareCaps.webGpu && !gpuClient) {
+    gpuClient = new GpuResizeClient();
+  }
+
+  if (gpuClient) {
+    try {
+      return await gpuClient.resize(bitmap, width, height);
+    } catch (e) {
+      console.warn('GPU resize failed, falling back to CPU', e);
+    }
+  }
+
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not get 2d context for resize');
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  return ctx.getImageData(0, 0, width, height);
 }
 
 export async function getImageData(bitmap: ImageBitmap): Promise<ImageData> {

@@ -30,6 +30,8 @@ export async function probeHardwareSupport(): Promise<HardwareCapabilities> {
     } catch {
       webGpu = false;
     }
+  } else {
+    webGpu = false;
   }
 
   return { webCodecsAv1, webGpu };
