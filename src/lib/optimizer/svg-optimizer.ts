@@ -27,6 +27,9 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; engi
       const svgoData = await runSvgoFallback(svgText);
       const svgoSize = new TextEncoder().encode(svgoData).length;
 
+      // Log sizes for internal debugging (optional, can be removed)
+      // console.log('--- Sizes:', { tidy: tidySize, svgo: svgoSize, original: originalSize });
+
       if (svgoSize < tidySize && svgoSize < originalSize) {
         return { data: svgoData, engine: 'svgo' };
       }
@@ -63,11 +66,12 @@ async function runSvgoFallback(svgText: string): Promise<string> {
                 floatPrecision: 1, // Aggressive precision
                 noSpaceAfterFlags: true, // Extreme compression
                 forceRelative: true,
+                smartArcConversion: true, // Use efficient 'a' commands
               },
             },
           },
         } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        'removeDimensions', // Use viewBox instead of fixed dimensions
+        'removeDimensions',
         'removeStyleElement',
         'removeScripts',
         'mergePaths',
@@ -92,8 +96,13 @@ async function runSvgoFallback(svgText: string): Promise<string> {
           name: 'convertShapeToPath',
           params: {
             convertArcs: true,
+            floatPrecision: 1,
           },
         },
+        'convertEllipseToCircle',
+        'convertTransform',
+        'removeUnusedNS',
+        'reusePaths',
       ],
     });
     if (svgoResult.data && svgoResult.data.length > 0) {
