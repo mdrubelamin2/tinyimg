@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { Settings, RefreshCcw, CheckCircle, FileType } from 'lucide-react';
 import { useImageStore } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -19,6 +19,8 @@ export const ConfigPanel: React.FC = () => {
   const options = useSettingsStore(state => state.options);
   const setOptions = useSettingsStore(state => state.setOptions);
   const applyGlobalOptions = useImageStore(state => state.applyGlobalOptions);
+
+  const [isPending, startTransition] = useTransition();
 
   const [draft, setDraft] = useState<GlobalOptions>({ ...options });
 
@@ -57,7 +59,9 @@ export const ConfigPanel: React.FC = () => {
 
   const handleApplyToAll = () => {
     setOptions(draft);
-    applyGlobalOptions(draft, true);
+    startTransition(() => {
+      applyGlobalOptions(draft, true);
+    });
   };
 
   const handleResetToDefaults = () => {
@@ -203,11 +207,15 @@ export const ConfigPanel: React.FC = () => {
         <Button
           variant="default"
           onClick={handleApplyToAll}
-          disabled={!hasChanges}
+          disabled={!hasChanges || isPending}
           className="w-full text-[10px] uppercase tracking-widest cursor-pointer disabled:cursor-not-allowed transition-colors duration-200"
         >
-          <CheckCircle size={14} strokeWidth={3} className="mr-2" />
-          Apply to All
+          {isPending ? (
+            <RefreshCcw size={14} className="mr-2 animate-spin" />
+          ) : (
+            <CheckCircle size={14} strokeWidth={3} className="mr-2" />
+          )}
+          {isPending ? 'Applying...' : 'Apply to All'}
         </Button>
         <Button
           variant="secondary"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useDeferredValue, useCallback } from 'react';
 import { preload, prefetchDNS } from 'react-dom';
 import { useImageStore, selectItemCount, selectOrderedItems } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -70,6 +70,7 @@ const App: React.FC = () => {
   const applyGlobalOptions = useImageStore(state => state.applyGlobalOptions);
 
   const options = useSettingsStore(state => state.options);
+  const deferredItemIds = useDeferredValue(itemIds);
 
   const [preview, setPreview] = useState<PreviewState | null>(null);
 
@@ -89,9 +90,9 @@ const App: React.FC = () => {
     }
   }, [allDone, itemsArray]);
 
-  const handleFilesAdded = (files: File[] | DataTransferItem[]) => {
+  const handleFilesAdded = useCallback((files: File[] | DataTransferItem[]) => {
     void addFiles(files, options);
-  };
+  }, [addFiles, options]);
 
   useEffect(() => {
     if (itemCount > 0) {
@@ -99,7 +100,7 @@ const App: React.FC = () => {
     }
   }, [options, itemCount, applyGlobalOptions]);
 
-  const handlePreview = (item: ImageItem, format: string) => {
+  const handlePreview = useCallback((item: ImageItem, format: string) => {
     const result = item.results[format];
     if (!result?.downloadUrl || !item.previewUrl) return;
     setPreview({
@@ -110,10 +111,14 @@ const App: React.FC = () => {
       format: result.label ?? format,
       fileName: item.file.name,
     });
-  };
+  }, []);
+
+  const handleDownloadAll = useCallback(() => {
+    void downloadAll();
+  }, [downloadAll]);
 
   useKeyboardShortcuts({
-    onDownload: hasFinishedItems ? () => void downloadAll() : undefined,
+    onDownload: hasFinishedItems ? handleDownloadAll : undefined,
     onEscape: preview ? () => setPreview(null) : undefined,
   });
 
@@ -131,13 +136,13 @@ const App: React.FC = () => {
             <Dropzone onFilesAdded={handleFilesAdded} />
 
             <ResultsTable
-              itemIds={itemIds}
+              itemIds={deferredItemIds}
               savingsPercent={savingsPercent}
               hasFinishedItems={hasFinishedItems}
               doneCount={doneCount}
               totalCount={itemCount}
               onClearFinished={clearFinished}
-              onDownloadAll={() => void downloadAll()}
+              onDownloadAll={handleDownloadAll}
               onClear={clearAll}
               onRemoveItem={removeItem}
               onPreview={handlePreview}

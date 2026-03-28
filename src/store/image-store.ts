@@ -34,6 +34,7 @@ import { useSettingsStore } from './settings-store';
 interface ImageStoreState {
   items: Map<string, ImageItem>;
   itemOrder: string[];
+  pendingIds: Set<string>;
 }
 
 interface ImageStoreActions {
@@ -54,6 +55,7 @@ interface ImageStoreActions {
   /** Internal: called by worker pool bridge */
   _applyWorkerResult: (response: WorkerResponse) => void;
   _applyWorkerError: (task: Task | null) => void;
+  _batchApplyResults: () => void;
   _getPool: () => WorkerPool;
   _processNext: (options: GlobalOptions) => void;
 }
@@ -64,6 +66,11 @@ export type ImageStore = ImageStoreState & ImageStoreActions;
 let pool: WorkerPool | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingForceAll = false;
+
+// Update batching buffers
+let responseBuffer: WorkerResponse[] = [];
+let errorBuffer: (Task | null)[] = [];
+let flushScheduled = false;
 
 function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   if (pool) return pool;
@@ -117,6 +124,7 @@ function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem
 export const useImageStore = create<ImageStore>()((set, get, api) => ({
   items: new Map(),
   itemOrder: [],
+  pendingIds: new Set(),
 
   addFiles: async (files, options) => {
     const newItems = await collectItemsFromFiles(files, {
@@ -126,11 +134,13 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     set((state) => {
       const nextItems = new Map(state.items);
       const nextOrder = [...state.itemOrder];
+      const nextPending = new Set(state.pendingIds);
       for (const item of newItems) {
         nextItems.set(item.id, item);
         nextOrder.push(item.id);
+        nextPending.add(item.id);
       }
-      return { items: nextItems, itemOrder: nextOrder };
+      return { items: nextItems, itemOrder: nextOrder, pendingIds: nextPending };
     });
 
     get()._processNext(options);
@@ -147,9 +157,12 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     set((state) => {
       const nextItems = new Map(state.items);
       nextItems.delete(id);
+      const nextPending = new Set(state.pendingIds);
+      nextPending.delete(id);
       return {
         items: nextItems,
         itemOrder: state.itemOrder.filter(i => i !== id),
+        pendingIds: nextPending,
       };
     });
   },
@@ -158,18 +171,22 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     set((state) => {
       const nextItems = new Map<string, ImageItem>();
       const nextOrder: string[] = [];
+      const nextPending = new Set<string>();
       for (const id of state.itemOrder) {
         const item = state.items.get(id);
         if (!item) continue;
         if (item.status === STATUS_PROCESSING || item.status === STATUS_PENDING) {
           nextItems.set(id, item);
           nextOrder.push(id);
+          if (item.status === STATUS_PENDING) {
+            nextPending.add(id);
+          }
           continue;
         }
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
         revokeResultUrls(item);
       }
-      return { items: nextItems, itemOrder: nextOrder };
+      return { items: nextItems, itemOrder: nextOrder, pendingIds: nextPending };
     });
   },
 
@@ -181,7 +198,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     }
     if (pool) pool.destroy();
     pool = null;
-    set({ items: new Map(), itemOrder: [] });
+    set({ items: new Map(), itemOrder: [], pendingIds: new Set() });
   },
 
   reorderItems: (fromIndex, toIndex) => {
@@ -195,6 +212,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
       const nextOrder = [...state.itemOrder];
       const [removed] = nextOrder.splice(fromIndex, 1);
       nextOrder.splice(toIndex, 0, removed!);
+
       return { itemOrder: nextOrder };
     });
   },
@@ -226,7 +244,12 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
       const nextItems = new Map(state.items);
       nextItems.set(id, nextItem);
-      return { items: nextItems };
+      const nextPending = new Set(state.pendingIds);
+      nextPending.add(id);
+      return {
+        items: nextItems,
+        pendingIds: nextPending,
+      };
     });
 
     get()._processNext(options);
@@ -263,7 +286,12 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
       const nextItems = new Map(state.items);
       nextItems.set(id, nextItem);
-      return { items: nextItems };
+      const nextPending = new Set(state.pendingIds);
+      nextPending.add(id);
+      return {
+        items: nextItems,
+        pendingIds: nextPending,
+      };
     });
 
     get()._processNext(options);
@@ -286,14 +314,17 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
       set((state) => {
         const nextItems = new Map<string, ImageItem>();
+        const nextPending = new Set<string>();
         for (const [id, item] of state.items) {
           if (isForced || item.status === STATUS_PENDING || item.status === STATUS_PROCESSING) {
-            nextItems.set(id, resetItemResultsForOptions(item, options));
+            const nextItem = resetItemResultsForOptions(item, options);
+            nextItems.set(id, nextItem);
+            nextPending.add(id);
           } else {
             nextItems.set(id, item);
           }
         }
-        return { items: nextItems };
+        return { items: nextItems, pendingIds: nextPending };
       });
 
       get()._processNext(options);
@@ -301,83 +332,109 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
   },
 
   _applyWorkerResult: (response) => {
-    let shouldProcessNext = false;
-
-    set((state) => {
-      const item = state.items.get(response.id);
-      if (!item) return state;
-
-      const format = response.format;
-      const result = item.results[format];
-      if (!result) return state;
-
-      const nextItem = { ...item };
-      if (response.status === STATUS_SUCCESS) {
-        if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
-        const downloadUrl = URL.createObjectURL(response.blob);
-        nextItem.results = {
-          ...item.results,
-          [format]: {
-            ...result,
-            status: STATUS_SUCCESS,
-            size: response.size,
-            blob: response.blob,
-            label: response.label,
-            downloadUrl,
-            timing: response.timing,
-          },
-        };
-      } else {
-        nextItem.results = {
-          ...item.results,
-          [format]: { ...result, status: STATUS_ERROR, error: response.error },
-        };
-      }
-
-      if (isTerminal(nextItem)) {
-        const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
-        nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
-        nextItem.progress = 100;
-        shouldProcessNext = true;
-      }
-
-      const nextItems = new Map(state.items);
-      nextItems.set(response.id, nextItem);
-      return { items: nextItems };
-    });
-
-    if (shouldProcessNext) {
-      get()._processNext(useSettingsStore.getState().options);
+    responseBuffer.push(response);
+    if (!flushScheduled) {
+      flushScheduled = true;
+      requestAnimationFrame(() => {
+        get()._batchApplyResults();
+      });
     }
   },
 
   _applyWorkerError: (task) => {
-    if (!task) return;
+    errorBuffer.push(task);
+    if (!flushScheduled) {
+      flushScheduled = true;
+      requestAnimationFrame(() => {
+        get()._batchApplyResults();
+      });
+    }
+  },
+
+  _batchApplyResults: () => {
+    const responses = [...responseBuffer];
+    const errors = [...errorBuffer];
+    responseBuffer = [];
+    errorBuffer = [];
+    flushScheduled = false;
+
+    if (responses.length === 0 && errors.length === 0) return;
 
     let shouldProcessNext = false;
 
     set((state) => {
-      const item = state.items.get(task.id);
-      if (!item) return state;
-
-      const result = item.results[task.format];
-      const nextItem = { ...item };
-      if (result) {
-        nextItem.results = {
-          ...item.results,
-          [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
-        };
-      }
-
-      if (isTerminal(nextItem)) {
-        nextItem.status = STATUS_ERROR;
-        nextItem.progress = 100;
-        shouldProcessNext = true;
-      }
-
       const nextItems = new Map(state.items);
-      nextItems.set(task.id, nextItem);
-      return { items: nextItems };
+      const nextPending = new Set(state.pendingIds);
+
+      // Process successful results
+      for (const response of responses) {
+        const item = nextItems.get(response.id);
+        if (!item) continue;
+
+        const format = response.format;
+        const result = item.results[format];
+        if (!result) continue;
+
+        const nextItem = { ...item };
+        if (response.status === STATUS_SUCCESS) {
+          if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
+          const downloadUrl = URL.createObjectURL(response.blob);
+          nextItem.results = {
+            ...item.results,
+            [format]: {
+              ...result,
+              status: STATUS_SUCCESS,
+              size: response.size,
+              blob: response.blob,
+              label: response.label,
+              downloadUrl,
+              timing: response.timing,
+            },
+          };
+        } else {
+          nextItem.results = {
+            ...item.results,
+            [format]: { ...result, status: STATUS_ERROR, error: response.error },
+          };
+        }
+
+        if (isTerminal(nextItem)) {
+          const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
+          nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
+          nextItem.progress = 100;
+          nextPending.delete(response.id);
+          shouldProcessNext = true;
+        }
+
+        nextItems.set(response.id, nextItem);
+      }
+
+      // Process errors
+      for (const task of errors) {
+        if (!task) continue;
+        const item = nextItems.get(task.id);
+        if (!item) continue;
+
+        const result = item.results[task.format];
+        const nextItem = { ...item };
+        if (result) {
+          nextItem.results = {
+            ...item.results,
+            [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
+          };
+        }
+
+        if (isTerminal(nextItem)) {
+          nextItem.status = STATUS_ERROR;
+          nextItem.progress = 100;
+          nextPending.delete(task.id);
+          shouldProcessNext = true;
+        }
+
+        nextItems.set(task.id, nextItem);
+      }
+
+      return { items: nextItems, pendingIds: nextPending };
     });
 
     if (shouldProcessNext) {
@@ -388,20 +445,19 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
   _getPool: () => getPool(api),
 
   _processNext: (options) => {
-    const { items, itemOrder } = get();
+    const { items, itemOrder, pendingIds } = get();
 
-    // Find pending items
-    const pendingIds = itemOrder.filter(id => {
-      const item = items.get(id);
-      return item?.status === STATUS_PENDING;
-    });
+    if (pendingIds.size === 0) return;
 
-    if (pendingIds.length === 0) return;
+    // Use pendingIds to avoid O(N) filtering of itemOrder
+    const currentPendingArray = itemOrder.filter(id => pendingIds.has(id));
+
+    if (currentPendingArray.length === 0) return;
 
     // Sort by file size if enabled
-    let sortedIds = pendingIds;
+    let sortedIds = currentPendingArray;
     if (options.smallFilesFirst) {
-      sortedIds = [...pendingIds].sort((a, b) => {
+      sortedIds = [...currentPendingArray].sort((a, b) => {
         const itemA = items.get(a);
         const itemB = items.get(b);
         if (!itemA || !itemB) return 0;
@@ -412,7 +468,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     const nextId = sortedIds[0];
     if (!nextId) return;
     const nextItem = items.get(nextId);
-    if (!nextItem) return;
+    if (!nextItem || nextItem.status !== STATUS_PENDING) return;
 
     // Mark as processing
     const processingItem: ImageItem = { ...nextItem, status: STATUS_PROCESSING };

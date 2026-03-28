@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { Sparkles, Download, Trash2 } from 'lucide-react';
@@ -16,7 +17,7 @@ export interface ResultRowCellsProps {
   onPreview?: ((item: ImageItem, format: string) => void) | undefined;
 }
 
-export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps) => {
+export const ResultRowCells = memo(({ id, onRemove, onPreview }: ResultRowCellsProps) => {
   const item = useStore(useImageStore, useShallow((state) => state.items.get(id)));
 
   if (!item) return null;
@@ -131,4 +132,4 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
       </div>
     </>
   );
-};
+});
