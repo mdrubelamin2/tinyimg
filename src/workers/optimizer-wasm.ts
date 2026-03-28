@@ -24,7 +24,7 @@ export async function ensureQuant(): Promise<void> {
   if (quantInitialized) return;
   const wasmRes = await fetch(QUANT_WASM_URL);
   const wasmBuffer = await wasmRes.arrayBuffer();
-  await initQuant(wasmBuffer);
+  await initQuant({ wasmBinary: wasmBuffer });
   quantInitialized = true;
 }
 

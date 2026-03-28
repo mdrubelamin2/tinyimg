@@ -149,12 +149,26 @@ self.onmessage = async (e: MessageEvent) => {
       status: 'success',
       timing,
     });
-  } catch (error) {
-    finish({
-      id,
-      format: requestedFormat,
-      status: 'error',
-      error: toErrorMessage(error, 'Optimization failed'),
-    });
-  }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('[optimizer.worker] Error details:', {
+          fileName,
+          extension,
+          requestedFormat,
+          error: error instanceof Error ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            cause: (error as Error & { cause?: unknown }).cause,
+          } : error
+        });
+      }
+      finish({
+        id,
+        format: requestedFormat,
+        status: 'error',
+        error: toErrorMessage(error, 'Optimization failed'),
+      });
+    }
+
 };
