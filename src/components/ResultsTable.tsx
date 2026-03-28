@@ -49,9 +49,11 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
         </div>
         <div className="flex items-center gap-2 md:gap-4 text-sm w-full sm:w-auto justify-center sm:justify-end">
           {doneCount > 0 && (
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/30 border border-border/50">
-              <CheckCircle2 size={14} className="text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground">{doneCount}/{totalCount} optimized</span>
+            <div className="text-center sm:text-right hidden sm:block mr-4">
+              <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">Optimized</p>
+              <p className="font-black text-xl leading-none mt-1 text-foreground">
+                {doneCount}/{totalCount}
+              </p>
             </div>
           )}
           <div className="text-center sm:text-right hidden sm:block mr-4">
