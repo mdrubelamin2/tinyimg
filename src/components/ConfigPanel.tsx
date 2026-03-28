@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Settings, RefreshCcw, CheckCircle, FileType } from 'lucide-react';
+import { useImageStore } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
 import type { GlobalOptions } from '@/constants';
 import { SVG_INTERNAL_FORMATS } from '@/constants';
@@ -17,6 +18,7 @@ import {
 export const ConfigPanel: React.FC = () => {
   const options = useSettingsStore(state => state.options);
   const setOptions = useSettingsStore(state => state.setOptions);
+  const applyGlobalOptions = useImageStore(state => state.applyGlobalOptions);
 
   const [draft, setDraft] = useState<GlobalOptions>({ ...options });
 
@@ -55,6 +57,7 @@ export const ConfigPanel: React.FC = () => {
 
   const handleApplyToAll = () => {
     setOptions(draft);
+    applyGlobalOptions(draft, true);
   };
 
   const handleResetToDefaults = () => {

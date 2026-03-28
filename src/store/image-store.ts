@@ -46,8 +46,10 @@ interface ImageStoreActions {
   setItemQualityPercent: (id: string, percent: number | null, options: GlobalOptions) => void;
   downloadAll: () => Promise<void>;
 
-  /** Called when global options change (debounced). Re-enqueues all pending items. */
-  applyGlobalOptions: (options: GlobalOptions) => void;
+  /** Called when global options change (debounced). Re-enqueues items. 
+   * @param forceAll - If true, resets ALL items. If false, only resets pending/processing items.
+   */
+  applyGlobalOptions: (options: GlobalOptions, forceAll?: boolean) => void;
 
   /** Internal: called by worker pool bridge */
   _applyWorkerResult: (response: WorkerResponse) => void;
@@ -61,6 +63,7 @@ export type ImageStore = ImageStoreState & ImageStoreActions;
 // --- Worker pool singleton (initialized lazily) ---
 let pool: WorkerPool | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingForceAll = false;
 
 function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   if (pool) return pool;
@@ -272,15 +275,23 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     await buildAndDownloadZip(arr);
   },
 
-  applyGlobalOptions: (options) => {
+  applyGlobalOptions: (options, forceAll = false) => {
+    if (forceAll) pendingForceAll = true;
+
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
+      const isForced = pendingForceAll;
+      pendingForceAll = false;
       debounceTimer = null;
 
       set((state) => {
         const nextItems = new Map<string, ImageItem>();
         for (const [id, item] of state.items) {
-          nextItems.set(id, resetItemResultsForOptions(item, options));
+          if (isForced || item.status === STATUS_PENDING || item.status === STATUS_PROCESSING) {
+            nextItems.set(id, resetItemResultsForOptions(item, options));
+          } else {
+            nextItems.set(id, item);
+          }
         }
         return { items: nextItems };
       });

@@ -95,7 +95,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (itemCount > 0) {
-      applyGlobalOptions(options);
+      applyGlobalOptions(options, false);
     }
   }, [options, itemCount, applyGlobalOptions]);
 
