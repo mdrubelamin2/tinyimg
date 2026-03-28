@@ -6,11 +6,10 @@ import { Resvg } from '@resvg/resvg-wasm';
 import {
   MAX_PIXELS,
   SVG_INTERNAL_SSAA_SCALE,
-  WRAPPER_SIZE_THRESHOLD,
 } from '@/constants/index';
 import type { SvgInternalFormat } from '@/constants/index';
-import { optimizeSvg, svgByteLength } from '@/lib/optimizer/svg-optimizer';
-import { Logger } from './logger';
+import { optimizeSvg } from '@/lib/optimizer/svg-optimizer';
+import { classifySvg } from '@/lib/optimizer/svg-classifier';
 import { ensureResvg } from './optimizer-wasm';
 import { classifyContent } from './classify';
 import {
@@ -98,23 +97,25 @@ export async function processSvg(
   const totalStart = nowMs();
   const text = await file.text();
 
+  const svgClass = classifySvg(text);
+  const isHybrid = svgClass.type === 'HYBRID';
+
+  if (!isHybrid) {
+    const { data: optimizedSvg } = await optimizeSvg(text);
+    return {
+      blob: new Blob([optimizedSvg], { type: 'image/svg+xml' }),
+      label: 'svg (optimized)',
+    };
+  }
+
   const svgoStart = nowMs();
-  const { data: optimizedSvg, engine } = await optimizeSvg(text);
-  const optimizedSvgSize = svgByteLength(optimizedSvg);
   const svgoMs = nowMs() - svgoStart;
 
-  Logger.debug('SVG optimization complete', {
-    engine,
-    originalSize: text.length,
-    optimizedSize: optimizedSvgSize,
-    timeMs: Math.round(svgoMs),
-  });
-
   const naturalSizeStart = nowMs();
-  const { width, height } = await readSvgNaturalSize(optimizedSvg);
+  const { width, height } = await readSvgNaturalSize(text);
   const naturalSizeMs = nowMs() - naturalSizeStart;
 
-  const raster = await buildSvgRaster(optimizedSvg, width, height, options);
+  const raster = await buildSvgRaster(text, width, height, options);
   assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
 
   const classifyStart = nowMs();
@@ -130,8 +131,8 @@ export async function processSvg(
   const internalBytes =
     svgExportDensity === 'display'
       ? await encodeRasterVectorSafeWithSizeSafeguard(raster.imageData, encodeFormat, {
-          displayQuality: true,
-        })
+        displayQuality: true,
+      })
       : await encodeRaster(raster.imageData, encodeFormat, preset);
   const encodeMs = nowMs() - encodeStart;
   await assertEncodedDimensions(internalBytes, mimeType, raster.bitmapWidth, raster.bitmapHeight);
@@ -140,10 +141,7 @@ export async function processSvg(
   const svgWrapper = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="${SVG_NS}">
   <image href="data:${mimeType};base64,${internalBase64}" width="${width}" height="${height}" />
 </svg>`;
-  const wrapperSize = new TextEncoder().encode(svgWrapper).length;
 
-  const pathSuffix =
-    options.svgExportDensity === 'display' ? `, ${raster.rasterizerPath}` : '';
   const timing: SvgStageTiming = {
     svgoMs: Math.round(svgoMs),
     naturalSizeMs: Math.round(naturalSizeMs),
@@ -156,16 +154,9 @@ export async function processSvg(
     ...(raster.effectiveDpr != null ? { svgEffectiveDpr: raster.effectiveDpr } : {}),
   };
 
-  if (wrapperSize < optimizedSvgSize * WRAPPER_SIZE_THRESHOLD) {
-    return {
-      blob: new Blob([svgWrapper], { type: 'image/svg+xml' }),
-      label: `svg (${internalFormat}-wrapped${pathSuffix})`,
-      timing,
-    };
-  }
   return {
-    blob: new Blob([optimizedSvg], { type: 'image/svg+xml' }),
-    label: 'svg (optimized)',
+    blob: new Blob([svgWrapper], { type: 'image/svg+xml' }),
+    label: `svg (${internalFormat}-wrapped)`,
     timing,
   };
 }
@@ -192,8 +183,8 @@ export async function rasterizeSvgToFormat(
   const bytes =
     options.svgExportDensity === 'display'
       ? await encodeRasterVectorSafeWithSizeSafeguard(raster.imageData, format, {
-          displayQuality: true,
-        })
+        displayQuality: true,
+      })
       : await encodeRasterVectorSafeWithSizeSafeguard(raster.imageData, format);
   const encodeMs = nowMs() - encodeStart;
   const mimeType = format === 'jpeg' ? 'image/jpeg' : `image/${format}`;
@@ -370,10 +361,10 @@ async function downscaleImageData(
   const targetCanvas = new OffscreenCanvas(targetWidth, targetHeight);
   const targetCtx = targetCanvas.getContext('2d', { willReadFrequently: true });
   if (!targetCtx) throw new Error('Could not get target 2d context');
-  
+
   targetCtx.drawImage(bitmap, 0, 0);
   bitmap.close();
-  
+
   return targetCtx.getImageData(0, 0, targetWidth, targetHeight);
 }
 
