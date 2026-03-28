@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Download, Trash2, CheckCircle2, Clock, CheckCircle } from 'lucide-react';
+import { Download, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -10,8 +10,8 @@ export interface ResultsTableProps {
   itemIds: string[];
   savingsPercent: string;
   hasFinishedItems: boolean;
-  processingCount: number;
   doneCount: number;
+  totalCount: number;
   onClearFinished: () => void;
   onDownloadAll: () => void;
   onClear: () => void;
@@ -25,8 +25,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
   itemIds,
   savingsPercent,
   hasFinishedItems,
-  processingCount,
   doneCount,
+  totalCount,
   onClearFinished,
   onDownloadAll,
   onClear,
@@ -48,20 +48,12 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
           <p className="text-sm text-muted-foreground">Wait for completion to batch download.</p>
         </div>
         <div className="flex items-center gap-2 md:gap-4 text-sm w-full sm:w-auto justify-center sm:justify-end">
-          <div className="flex items-center gap-3 mr-4">
-            {processingCount > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-                <Clock size={14} className="text-amber-500 animate-spin" />
-                <span className="text-xs font-bold text-amber-500">{processingCount} processing</span>
-              </div>
-            )}
-            {doneCount > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-success/10 border border-success/20">
-                <CheckCircle size={14} className="text-success" />
-                <span className="text-xs font-bold text-success">{doneCount} done</span>
-              </div>
-            )}
-          </div>
+          {doneCount > 0 && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md bg-muted/30 border border-border/50">
+              <CheckCircle2 size={14} className="text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">{doneCount}/{totalCount} optimized</span>
+            </div>
+          )}
           <div className="text-center sm:text-right hidden sm:block mr-4">
             <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">Total Savings</p>
             <p className={cn(
