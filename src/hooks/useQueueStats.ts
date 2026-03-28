@@ -2,8 +2,8 @@
  * Derive queue stats from items: savings percent, all-done, has-finished, successful count.
  */
 
-import type { ImageItem } from '../lib/queue/types';
-import { STATUS_SUCCESS, STATUS_ERROR } from '../constants/index';
+import type { ImageItem } from '@/lib/queue/types';
+import { STATUS_SUCCESS, STATUS_ERROR } from '@/constants/index';
 
 export interface QueueStats {
   savingsPercent: string;

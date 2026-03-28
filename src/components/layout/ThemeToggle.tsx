@@ -4,8 +4,8 @@
 
 import React from 'react';
 import { Moon, Sun } from 'lucide-react';
-import { useTheme } from '../../hooks/useTheme';
-import { Button } from '../ui/button';
+import { useTheme } from '@/hooks/useTheme';
+import { Button } from '@/components/ui/button';
 
 export const ThemeToggle: React.FC = () => {
   const { resolved, toggleTheme, isPending } = useTheme();

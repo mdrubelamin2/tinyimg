@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { collectItemsFromFiles } from '../lib/queue/queue-intake';
-import type { ImageItem } from '../lib/queue-types';
+import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
+import type { ImageItem } from '@/lib/queue-types';
 
 function createItem(file: File): ImageItem {
   return {

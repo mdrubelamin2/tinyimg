@@ -7,7 +7,7 @@ import type {
   ItemStatus,
   SvgInternalFormat,
   GlobalOptions,
-} from '../../constants/index.ts';
+} from '@/constants/index.ts';
 
 export type { GlobalOptions };
 

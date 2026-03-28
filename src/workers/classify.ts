@@ -13,7 +13,7 @@ import {
   LUMINANCE_G,
   LUMINANCE_B,
   SMALL_TRANSPARENT_PX,
-} from '../constants';
+} from '@/constants';
 
 export type ContentPreset = 'photo' | 'graphic';
 

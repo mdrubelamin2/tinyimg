@@ -4,8 +4,8 @@
  */
 
 import { create } from 'zustand';
-import type { ImageItem, ImageResult, WorkerResponse, Task } from '../lib/queue/types';
-import type { GlobalOptions } from '../constants';
+import type { ImageItem, ImageResult, WorkerResponse, Task } from '@/lib/queue/types';
+import type { GlobalOptions } from '@/constants';
 import {
   STATUS_PENDING,
   STATUS_PROCESSING,
@@ -15,15 +15,15 @@ import {
   OUTPUT_QUALITY_MAX,
   OUTPUT_QUALITY_MIN,
   UPDATE_OPTIONS_DEBOUNCE_MS,
-} from '../constants/index';
-import { WorkerPool, computeConcurrency } from '../workers/worker-pool-v2';
-import { collectItemsFromFiles } from '../lib/queue/queue-intake';
+} from '@/constants/index';
+import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
+import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
 import {
   createQueueItem,
   getFormatsToProcess,
   resetItemResultsForOptions,
-} from '../lib/queue/queue-item';
-import { revokeResultUrls, buildAndDownloadZip } from '../lib/download';
+} from '@/lib/queue/queue-item';
+import { revokeResultUrls, buildAndDownloadZip } from '@/lib/download';
 import { useSettingsStore } from './settings-store';
 
 /**

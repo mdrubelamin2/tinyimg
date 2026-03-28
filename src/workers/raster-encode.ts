@@ -8,7 +8,7 @@ import * as avif from '@jsquash/avif';
 import * as jpeg from '@jsquash/jpeg';
 import * as png from '@jsquash/oxipng';
 import { ImageQuantizer, encode_palette_to_png } from 'libimagequant-wasm/wasm/libimagequant_wasm.js';
-import { MAX_PIXELS, LOSSLESS_SIZE_GUARD_RATIO } from '../constants/index';
+import { MAX_PIXELS, LOSSLESS_SIZE_GUARD_RATIO } from '@/constants/index';
 import { ensureQuant } from './optimizer-wasm';
 import type { ContentPreset } from './classify';
 import { isSmallAndTransparent } from './classify';

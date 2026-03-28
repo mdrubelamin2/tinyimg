@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { STATUS_PENDING } from '../constants';
-import type { ImageItem, WorkerResponse } from '../lib/queue-types';
-import { applyWorkerResponse, applyWorkerTaskError } from '../lib/queue/queue-results';
+import { STATUS_PENDING } from '@/constants';
+import type { ImageItem, WorkerResponse } from '@/lib/queue-types';
+import { applyWorkerResponse, applyWorkerTaskError } from '@/lib/queue/queue-results';
 
 function createBaseItem(): ImageItem {
   return {

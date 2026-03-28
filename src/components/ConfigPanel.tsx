@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Settings, RefreshCcw, CheckCircle, FileType } from 'lucide-react';
-import { useSettingsStore } from '../store/settings-store';
-import type { GlobalOptions } from '../constants';
-import { SVG_INTERNAL_FORMATS } from '../constants';
-import { cn } from '../lib/utils';
+import { useSettingsStore } from '@/store/settings-store';
+import type { GlobalOptions } from '@/constants';
+import { SVG_INTERNAL_FORMATS } from '@/constants';
+import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import {

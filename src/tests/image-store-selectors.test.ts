@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { STATUS_PENDING } from '../constants';
-import type { ImageItem } from '../lib/queue/types';
-import { selectOrderedItems } from '../store/image-store';
+import { STATUS_PENDING } from '@/constants';
+import type { ImageItem } from '@/lib/queue/types';
+import { selectOrderedItems } from '@/store/image-store';
 
 function createItem(id: string, name: string): ImageItem {
   return {

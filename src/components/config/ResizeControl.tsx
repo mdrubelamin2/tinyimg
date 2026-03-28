@@ -4,7 +4,7 @@
  */
 
 import { Maximize2 } from 'lucide-react';
-import { RESIZE_MAX_EDGE_MAX } from '../../constants/index';
+import { RESIZE_MAX_EDGE_MAX } from '@/constants/index';
 
 interface ResizeControlProps {
   value: number;

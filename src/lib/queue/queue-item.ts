@@ -2,9 +2,9 @@ import {
   ID_RANDOM_LENGTH,
   STATUS_PENDING,
   type GlobalOptions,
-} from '../../constants';
-import type { ImageItem, ImageResult } from '../queue-types';
-import { revokeResultUrls } from '../download';
+} from '@/constants';
+import type { ImageItem, ImageResult } from '@/lib/queue-types';
+import { revokeResultUrls } from '@/lib/download';
 
 function normalizeFormat(format: string): string {
   return format === 'jpg' ? 'jpeg' : format;

@@ -3,8 +3,8 @@
  * per-item abort, and memory-aware task assignment.
  */
 
-import type { Task, WorkerOutbound } from '../lib/queue/types.ts';
-import { CONCURRENCY_MIN, CONCURRENCY_MAX, CONCURRENCY_DEFAULT } from '../constants/index.ts';
+import type { Task, WorkerOutbound } from '@/lib/queue/types.ts';
+import { CONCURRENCY_MIN, CONCURRENCY_MAX, CONCURRENCY_DEFAULT } from '@/constants/index.ts';
 
 export interface WorkerPoolCallbacks {
   onMessage: (workerIndex: number, data: WorkerOutbound) => void;

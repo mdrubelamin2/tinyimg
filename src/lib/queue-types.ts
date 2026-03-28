@@ -7,7 +7,7 @@ import type {
   GlobalOptions,
   ItemStatus,
   SvgInternalFormat,
-} from '../constants';
+} from '@/constants';
 
 export type { GlobalOptions };
 

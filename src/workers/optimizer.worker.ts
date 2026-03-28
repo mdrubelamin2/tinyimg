@@ -6,8 +6,8 @@
 import {
   TASK_TIMEOUT_MS,
   ERR_TASK_TIMEOUT,
-} from '../constants';
-import type { SvgInternalFormat } from '../constants';
+} from '@/constants';
+import type { SvgInternalFormat } from '@/constants';
 import { classifyContent } from './classify';
 import {
   getImageData,

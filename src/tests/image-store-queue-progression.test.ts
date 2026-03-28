@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_GLOBAL_OPTIONS, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS } from '../constants';
-import type { ImageItem, WorkerResponse } from '../lib/queue/types';
-import { useImageStore } from '../store/image-store';
+import { DEFAULT_GLOBAL_OPTIONS, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants';
+import type { ImageItem, WorkerResponse } from '@/lib/queue/types';
+import { useImageStore } from '@/store/image-store';
 
 function createItem(id: string, name: string): ImageItem {
   return {

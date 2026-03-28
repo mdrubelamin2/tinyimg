@@ -7,8 +7,8 @@ import {
   MAX_PIXELS,
   SVG_INTERNAL_SSAA_SCALE,
   WRAPPER_SIZE_THRESHOLD,
-} from '../constants/index';
-import type { SvgInternalFormat } from '../constants/index';
+} from '@/constants/index';
+import type { SvgInternalFormat } from '@/constants/index';
 import { ensureResvg } from './optimizer-wasm';
 import { classifyContent } from './classify';
 import {

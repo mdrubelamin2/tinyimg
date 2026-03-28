@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyContent } from '../workers/classify';
+import { classifyContent } from '@/workers/classify';
 
 function makeImageData(width: number, height: number, fill: (i: number) => number): ImageData {
   const data = new Uint8ClampedArray(width * height * 4);

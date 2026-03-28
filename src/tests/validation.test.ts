@@ -3,8 +3,8 @@ import {
   checkMagicBytesFromBufferExport,
   validateZipSize,
   getMimeType,
-} from '../lib/validation';
-import { MAX_ZIP_FILE_SIZE_BYTES } from '../constants';
+} from '@/lib/validation';
+import { MAX_ZIP_FILE_SIZE_BYTES } from '@/constants';
 
 describe('validation', () => {
   describe('checkMagicBytesFromBufferExport', () => {

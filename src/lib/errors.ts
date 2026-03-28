@@ -8,7 +8,7 @@ import {
   ERR_INVALID_FILE,
   ERR_WORKER,
   ERR_TASK_TIMEOUT,
-} from '../constants';
+} from '@/constants';
 
 export type AppErrorCode =
   | 'VALIDATION_FILE_LIMIT'

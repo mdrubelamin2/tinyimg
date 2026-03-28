@@ -3,22 +3,22 @@ import {
   MAX_ZIP_FILE_SIZE_BYTES,
   MAX_ZIP_EXTRACTED_FILES,
   MAX_ZIP_EXTRACTED_TOTAL_BYTES,
-} from '../../constants/limits';
+} from '@/constants/limits';
 import {
   ERR_FILE_EXCEEDS_LIMIT,
   ERR_ZIP_EXCEEDS_LIMIT,
   ERR_INVALID_FILE,
   ERR_HEIC_BROWSER,
   isValidImageExtension,
-} from '../../constants';
+} from '@/constants';
 import {
   checkMagicBytes,
   checkMagicBytesFromBufferExport,
   getMimeType,
   DEFAULT_MIME,
   isHeicDecodeLikelySupported,
-} from '../validation';
-import type { ImageItem } from '../queue-types';
+} from '@/lib/validation';
+import type { ImageItem } from '@/lib/queue-types';
 
 const ZIP_PATH_IGNORE = '__MACOSX';
 

@@ -1,11 +1,11 @@
 import React from 'react';
 import { Download, Trash2, CheckCircle2 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Table, TableBody, TableHead, TableHeader, TableRow } from './ui/table';
 import { ResultRow } from './results/ResultRow';
-import type { ImageItem } from '../lib/queue/types';
+import type { ImageItem } from '@/lib/queue/types';
 
 export interface ResultsTableProps {
   itemIds: string[];

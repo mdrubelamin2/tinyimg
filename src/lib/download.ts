@@ -7,7 +7,7 @@ import {
   MAX_DOWNLOAD_FILES,
   MAX_DOWNLOAD_BYTES,
   STATUS_SUCCESS,
-} from '../constants/index';
+} from '@/constants/index';
 import type { ImageItem, ImageResult } from './queue/types';
 
 /**

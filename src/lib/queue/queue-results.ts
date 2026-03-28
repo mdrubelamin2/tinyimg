@@ -4,14 +4,14 @@ import {
   STATUS_SUCCESS,
   STATUS_ERROR,
   ERR_WORKER,
-} from '../../constants';
+} from '@/constants';
 import type {
   ImageItem,
   Task,
   WorkerResponse,
   WorkerResponseError,
   WorkerResponseSuccess,
-} from '../queue-types';
+} from '@/lib/queue-types';
 
 function hasProcessingResults(item: ImageItem): boolean {
   return Object.values(item.results).some(

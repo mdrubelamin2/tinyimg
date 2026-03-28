@@ -4,7 +4,7 @@
  */
 
 import { Gauge } from 'lucide-react';
-import { OUTPUT_QUALITY_MIN, OUTPUT_QUALITY_MAX } from '../../constants/index';
+import { OUTPUT_QUALITY_MIN, OUTPUT_QUALITY_MAX } from '@/constants/index';
 
 interface QualitySliderProps {
   value: number;

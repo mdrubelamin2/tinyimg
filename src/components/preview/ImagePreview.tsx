@@ -5,7 +5,7 @@
 
 import { useRef, useState, useEffect } from 'react';
 import { X, ZoomIn } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 
 interface ImagePreviewProps {
   originalUrl: string;

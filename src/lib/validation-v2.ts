@@ -11,7 +11,7 @@ import {
   isValidImageExtension,
   ERR_FILE_EXCEEDS_LIMIT,
   ERR_INVALID_FILE,
-} from '../constants/index.ts';
+} from '@/constants/index.ts';
 
 const FILE_HEADER_READ_LENGTH = 16;
 

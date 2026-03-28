@@ -1,12 +1,12 @@
 import { useStore } from 'zustand';
 import { Sparkles, Download, Trash2 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { Button } from '../ui/button';
-import { TableCell, TableRow } from '../ui/table';
-import { Badge } from '../ui/badge';
-import { useImageStore } from '../../store/image-store';
-import { BYTES_PER_KB, STATUS_SUCCESS, STATUS_ERROR } from '../../constants/index';
-import type { ImageItem } from '../../lib/queue/types';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { TableCell, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { useImageStore } from '@/store/image-store';
+import { BYTES_PER_KB, STATUS_SUCCESS, STATUS_ERROR } from '@/constants/index';
+import type { ImageItem } from '@/lib/queue/types';
 
 const DOWNLOAD_EXT_JPEG = 'jpg';
 

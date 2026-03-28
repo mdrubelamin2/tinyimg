@@ -2,7 +2,7 @@
  * Barrel export: single import point for all constants.
  *
  * Usage:
- *   import { MAX_FILE_SIZE_BYTES, STATUS_PENDING, PRESETS } from '../constants';
+ *   import { MAX_FILE_SIZE_BYTES, STATUS_PENDING, PRESETS } from '@/constants';
  */
 
 export * from './limits.ts';

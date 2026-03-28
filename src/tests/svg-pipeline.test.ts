@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { MAX_PIXELS, SVG_INTERNAL_SSAA_SCALE } from '../constants';
-import { computeEffectiveDisplayDpr, computeInternalRenderSize } from '../workers/svg-pipeline';
+import { MAX_PIXELS, SVG_INTERNAL_SSAA_SCALE } from '@/constants';
+import { computeEffectiveDisplayDpr, computeInternalRenderSize } from '@/workers/svg-pipeline';
 
 const SVG_RASTERIZERS = ['auto', 'browser', 'resvg'] as const;
 

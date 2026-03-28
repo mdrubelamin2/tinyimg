@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getMimeType, DEFAULT_MIME } from '../constants';
+import { getMimeType, DEFAULT_MIME } from '@/constants';
 
 // Note: Testing workers in Bun/JSDOM can be tricky.
 // For now we test purely the utility functions if exported or the logic itself.

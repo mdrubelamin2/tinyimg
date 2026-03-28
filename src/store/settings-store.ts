@@ -5,8 +5,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GlobalOptions } from '../constants/index.ts';
-import { DEFAULT_GLOBAL_OPTIONS } from '../constants/index.ts';
+import type { GlobalOptions } from '@/constants/index.ts';
+import { DEFAULT_GLOBAL_OPTIONS } from '@/constants/index.ts';
 
 const STORAGE_KEY = 'tinyimg_config';
 
