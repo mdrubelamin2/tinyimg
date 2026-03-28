@@ -15,6 +15,7 @@ import {
   OUTPUT_QUALITY_MAX,
   OUTPUT_QUALITY_MIN,
   UPDATE_OPTIONS_DEBOUNCE_MS,
+  BYTES_PER_KB,
 } from '@/constants/index';
 import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
 import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
@@ -128,7 +129,11 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
   addFiles: async (files, options) => {
     const newItems = await collectItemsFromFiles(files, {
-      createItem: (file: File) => createQueueItem(file, options),
+      createItem: (file: File) => {
+        const item = createQueueItem(file, options);
+        item.formattedOriginalSize = (item.originalSize / BYTES_PER_KB).toFixed(1);
+        return item;
+      },
     });
 
     set((state) => {
@@ -379,12 +384,18 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
         if (response.status === STATUS_SUCCESS) {
           if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
           const downloadUrl = URL.createObjectURL(response.blob);
+          const savingsPercent = Math.abs(
+            ((item.originalSize - response.size) / item.originalSize) * 100
+          );
+
           nextItem.results = {
             ...item.results,
             [format]: {
               ...result,
               status: STATUS_SUCCESS,
               size: response.size,
+              formattedSize: (response.size / BYTES_PER_KB).toFixed(1),
+              savingsPercent: Math.round(savingsPercent),
               blob: response.blob,
               label: response.label,
               downloadUrl,

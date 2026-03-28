@@ -1,0 +1,32 @@
+<<<<
+  _applyWorkerResult: (response) => {
+    let shouldProcessNext = false;
+
+    set((state) => {
+====
+  _applyWorkerResult: (response) => {
+    console.time('_applyWorkerResult');
+    let shouldProcessNext = false;
+
+    set((state) => {
+      const start = performance.now();
+>>>>
+<<<<
+      nextItems.set(response.id, nextItem);
+      return { items: nextItems };
+    });
+
+    if (shouldProcessNext) {
+====
+      nextItems.set(response.id, nextItem);
+      const end = performance.now();
+      if (end - start > 5) {
+        console.warn(\`Slow state update: \${(end - start).toFixed(2)}ms for \${response.id}\`);
+      }
+      return { items: nextItems };
+    });
+
+    console.timeEnd('_applyWorkerResult');
+
+    if (shouldProcessNext) {
+>>>>

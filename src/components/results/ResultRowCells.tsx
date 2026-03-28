@@ -46,7 +46,7 @@ export const ResultRowCells = memo(({ id, onRemove, onPreview }: ResultRowCellsP
         </div>
       </div>
       <div className="px-6 py-5 text-xs font-medium text-muted-foreground min-w-0 flex items-center" role="cell">
-        {(item.originalSize / BYTES_PER_KB).toFixed(1)} KB
+        {item.formattedOriginalSize ?? (item.originalSize / BYTES_PER_KB).toFixed(1)} KB
       </div>
       <div className="px-6 py-5 min-w-0 overflow-hidden" role="cell">
         <div className="flex flex-wrap gap-2 max-w-full">
@@ -79,18 +79,12 @@ export const ResultRowCells = memo(({ id, onRemove, onPreview }: ResultRowCellsP
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-foreground">
-                      {res.size != null
-                        ? (res.size / BYTES_PER_KB).toFixed(1)
-                        : '—'}{' '}
+                      {res.formattedSize ?? (res.size != null ? (res.size / BYTES_PER_KB).toFixed(1) : '—')}{' '}
                       KB
                     </span>
-                    {res.size != null && (
+                    {res.savingsPercent != null && (
                       <span className="text-[9px] font-black text-success bg-success/15 px-1.5 py-0.5 rounded-full">
-                        -
-                        {Math.abs(
-                          ((item.originalSize - res.size) / item.originalSize) * 100
-                        ).toFixed(0)}
-                        %
+                        -{res.savingsPercent}%
                       </span>
                     )}
                   </div>

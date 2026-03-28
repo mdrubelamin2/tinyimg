@@ -47,6 +47,8 @@ export interface ImageResult {
   label?: string | undefined;
   blob?: Blob | undefined;
   size?: number | undefined;
+  formattedSize?: string | undefined;
+  savingsPercent?: number | undefined;
   downloadUrl?: string | undefined;
   status: ItemStatus;
   error?: string | undefined;
@@ -63,6 +65,7 @@ export interface ImageItem {
   status: ItemStatus;
   progress: number;
   originalSize: number;
+  formattedOriginalSize?: string | undefined;
   originalFormat: string;
   results: Record<string, ImageResult>;
   error?: string | undefined;
