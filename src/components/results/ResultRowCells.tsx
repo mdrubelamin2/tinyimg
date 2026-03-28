@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { Sparkles, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useImageStore } from '@/store/image-store';
 import { BYTES_PER_KB, STATUS_SUCCESS, STATUS_ERROR } from '@/constants/index';
@@ -24,33 +23,31 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
 
   return (
     <>
-      <TableCell className="px-8 py-5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm">
-            {item.previewUrl ? (
-              <img
-                src={item.previewUrl}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <Sparkles size={18} />
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate max-w-[150px] md:max-w-[250px]">
-              {item.file.name}
-            </p>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-tighter uppercase">
-              {item.originalFormat}
-            </p>
-          </div>
+      <div className="px-8 py-5 flex items-center gap-3 min-w-[300px] flex-1">
+        <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm">
+          {item.previewUrl ? (
+            <img
+              src={item.previewUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <Sparkles size={18} />
+          )}
         </div>
-      </TableCell>
-      <TableCell className="px-6 py-5 text-xs font-medium text-muted-foreground">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground truncate max-w-[150px] md:max-w-[250px]">
+            {item.file.name}
+          </p>
+          <p className="text-[10px] text-muted-foreground font-mono tracking-tighter uppercase">
+            {item.originalFormat}
+          </p>
+        </div>
+      </div>
+      <div className="px-6 py-5 text-xs font-medium text-muted-foreground w-[100px] shrink-0">
         {(item.originalSize / BYTES_PER_KB).toFixed(1)} KB
-      </TableCell>
-      <TableCell className="px-6 py-5">
+      </div>
+      <div className="px-6 py-5 flex-1 min-w-[200px]">
         <div className="flex flex-wrap gap-2">
           {Object.values(item.results).map(res => {
             const chipClassName = cn(
@@ -122,21 +119,19 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
             );
           })}
         </div>
-      </TableCell>
-      <TableCell className="px-8 py-5 text-right pr-12 align-middle">
-        <div className="flex items-center justify-end">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onRemove(item.id)}
-            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200"
-            title="Remove item"
-            aria-label={`Remove ${item.file.name}`}
-          >
-            <Trash2 size={18} />
-          </Button>
-        </div>
-      </TableCell>
+      </div>
+      <div className="px-8 py-5 text-right w-[60px] shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onRemove(item.id)}
+          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200"
+          title="Remove item"
+          aria-label={`Remove ${item.file.name}`}
+        >
+          <Trash2 size={18} />
+        </Button>
+      </div>
     </>
   );
 };

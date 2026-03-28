@@ -7,6 +7,7 @@ export interface VirtualizedTableBodyProps {
   onRemove: (id: string) => void;
   onPreview?: ((item: ImageItem, format: string) => void) | undefined;
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  tableRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const VirtualizedTableBody = ({ 
@@ -14,6 +15,7 @@ export const VirtualizedTableBody = ({
   onRemove, 
   onPreview,
   scrollRef,
+  tableRef,
 }: VirtualizedTableBodyProps) => {
   const virtualizer = useVirtualizer({
     count: itemIds.length,
@@ -23,26 +25,26 @@ export const VirtualizedTableBody = ({
   });
 
   const virtualRows = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
 
-  if (virtualRows.length === 0 && itemIds.length > 0) {
-    return (
-      <tbody>
-        <tr>
-          <td colSpan={4} style={{ padding: '20px', textAlign: 'center' }}>
-            Loading...
-          </td>
-        </tr>
-      </tbody>
-    );
+  if (itemIds.length === 0) {
+    return null;
   }
 
   return (
-    <tbody>
+    <div
+      ref={tableRef}
+      style={{ 
+        height: `${totalSize}px`, 
+        width: '100%',
+        position: 'relative',
+      }}
+    >
       {virtualRows.map(virtualRow => {
         const id = itemIds[virtualRow.index];
         if (!id) return null;
         return (
-          <tr
+          <div
             key={id}
             data-index={virtualRow.index}
             ref={(node) => virtualizer.measureElement(node)}
@@ -51,13 +53,16 @@ export const VirtualizedTableBody = ({
               top: 0,
               left: 0,
               right: 0,
+              height: '80px',
               transform: `translateY(${virtualRow.start}px)`,
             }}
           >
-            <ResultRowCells id={id} onRemove={onRemove} onPreview={onPreview} />
-          </tr>
+            <div className="flex w-full border-b border-border/50 bg-surface/20 group hover:bg-muted/30 transition-colors duration-200">
+              <ResultRowCells id={id} onRemove={onRemove} onPreview={onPreview} />
+            </div>
+          </div>
         );
       })}
-    </tbody>
+    </div>
   );
 };
