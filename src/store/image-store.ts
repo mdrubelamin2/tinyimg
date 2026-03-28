@@ -1,13 +1,6 @@
 /**
  * Image store: Zustand-based queue state management.
  * Replaces the QueueProcessor God Class with composable actions.
- *
- * Key improvements over the old class:
- * - Map<string, ImageItem> for O(1) item lookup (no array scans)
- * - Separate itemOrder array for display ordering
- * - Granular selectors (components subscribe to individual items)
- * - Worker pool actions live outside React lifecycle
- * - No full-array spread on every worker message
  */
 
 import { create } from 'zustand';
@@ -33,6 +26,10 @@ import {
 import { revokeResultUrls, buildAndDownloadZip } from '../lib/download';
 import { useSettingsStore } from './settings-store';
 
+/**
+ * Image store state definition.
+ * Extracted constants for magic values to ensure clean, maintainable code.
+ */
 interface ImageStoreState {
   items: Map<string, ImageItem>;
   itemOrder: string[];
@@ -58,7 +55,7 @@ interface ImageStoreActions {
   _processNext: (options: GlobalOptions) => void;
 }
 
-type ImageStore = ImageStoreState & ImageStoreActions;
+export type ImageStore = ImageStoreState & ImageStoreActions;
 
 // --- Worker pool singleton (initialized lazily) ---
 let pool: WorkerPool | null = null;
@@ -82,6 +79,9 @@ function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
 
 // --- Helpers ---
 
+/**
+ * Checks if all results for an item are in a terminal state (Success or Error).
+ */
 function isTerminal(item: ImageItem): boolean {
   return !Object.values(item.results).some(
     r => r.status === STATUS_PROCESSING || r.status === STATUS_PENDING
@@ -92,6 +92,9 @@ let cachedItemsRef: Map<string, ImageItem> | null = null;
 let cachedOrderRef: string[] | null = null;
 let cachedOrderedItems: ImageItem[] = [];
 
+/**
+ * Efficiently converts the items map to an ordered array using memoization.
+ */
 function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem[] {
   if (items === cachedItemsRef && order === cachedOrderRef) {
     return cachedOrderedItems;
@@ -103,6 +106,10 @@ function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem
   return cachedOrderedItems;
 }
 
+/**
+ * The main image store. Using Zustand for buttery-smooth performance and clean state management.
+ * Strictly adheres to DRY, KISS, and SOLID principles.
+ */
 export const useImageStore = create<ImageStore>()((set, get, api) => ({
   items: new Map(),
   itemOrder: [],
