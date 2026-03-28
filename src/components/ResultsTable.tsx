@@ -28,7 +28,6 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
   onPreview,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const tableRef = useRef<HTMLDivElement>(null);
   
   if (itemIds.length === 0) return null;
 
@@ -86,14 +85,14 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
 
       <CardContent className="p-0">
         <div ref={scrollRef} className="max-h-[600px] overflow-auto">
-          <div ref={tableRef} className="w-full">
+          <div className="w-full">
             {/* Header */}
             <div className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-b border-border backdrop-blur-sm sticky top-0 z-10">
-              <div className="flex w-full">
-                <div className="px-8 py-4 w-[40%]">File Name</div>
-                <div className="px-6 py-4 w-[100px] shrink-0">Original</div>
-                <div className="px-6 py-4 flex-1">Status & Formats</div>
-                <div className="px-8 py-4 text-right w-[60px] shrink-0">Remove</div>
+              <div className="grid w-full" style={{ gridTemplateColumns: 'minmax(0, 2fr) 100px minmax(0, 3fr) 60px' }}>
+                <div className="px-8 py-4 text-left">File Name</div>
+                <div className="px-6 py-4 text-left">Original</div>
+                <div className="px-6 py-4 text-left">Status & Formats</div>
+                <div className="px-8 py-4 text-right">Remove</div>
               </div>
             </div>
             {/* Virtualized Body */}
@@ -102,7 +101,6 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
               onRemove={onRemoveItem} 
               onPreview={onPreview}
               scrollRef={scrollRef}
-              tableRef={tableRef}
             />
           </div>
         </div>

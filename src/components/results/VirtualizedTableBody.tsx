@@ -7,7 +7,6 @@ export interface VirtualizedTableBodyProps {
   onRemove: (id: string) => void;
   onPreview?: ((item: ImageItem, format: string) => void) | undefined;
   scrollRef: React.RefObject<HTMLDivElement | null>;
-  tableRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const VirtualizedTableBody = ({ 
@@ -15,7 +14,6 @@ export const VirtualizedTableBody = ({
   onRemove, 
   onPreview,
   scrollRef,
-  tableRef,
 }: VirtualizedTableBodyProps) => {
   const virtualizer = useVirtualizer({
     count: itemIds.length,
@@ -32,14 +30,7 @@ export const VirtualizedTableBody = ({
   }
 
   return (
-    <div
-      ref={tableRef}
-      style={{ 
-        height: `${totalSize}px`, 
-        width: '100%',
-        position: 'relative',
-      }}
-    >
+    <div style={{ height: `${totalSize}px`, position: 'relative' }}>
       {virtualRows.map(virtualRow => {
         const id = itemIds[virtualRow.index];
         if (!id) return null;
@@ -52,12 +43,13 @@ export const VirtualizedTableBody = ({
               position: 'absolute',
               top: 0,
               left: 0,
-              right: 0,
+              width: '100%',
               height: '80px',
               transform: `translateY(${virtualRow.start}px)`,
             }}
+            className="border-b border-border/50 bg-surface/20 group hover:bg-muted/30 transition-colors duration-200"
           >
-            <div className="flex w-full border-b border-border/50 bg-surface/20 group hover:bg-muted/30 transition-colors duration-200">
+            <div className="grid w-full h-full" style={{ gridTemplateColumns: 'minmax(0, 2fr) 100px minmax(0, 3fr) 60px' }}>
               <ResultRowCells id={id} onRemove={onRemove} onPreview={onPreview} />
             </div>
           </div>

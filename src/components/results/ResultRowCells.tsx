@@ -23,7 +23,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
 
   return (
     <>
-      <div className="px-8 py-5 flex items-center gap-3 w-[40%]">
+      <div className="px-8 py-5 flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm">
           {item.previewUrl ? (
             <img
@@ -44,14 +44,14 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
           </p>
         </div>
       </div>
-      <div className="px-6 py-5 text-xs font-medium text-muted-foreground w-[100px] shrink-0">
+      <div className="px-6 py-5 text-xs font-medium text-muted-foreground">
         {(item.originalSize / BYTES_PER_KB).toFixed(1)} KB
       </div>
-      <div className="px-6 py-5 flex-1">
-        <div className="flex flex-wrap gap-2">
+      <div className="px-6 py-5 min-w-0 overflow-hidden">
+        <div className="flex flex-wrap gap-2 max-w-full">
           {Object.values(item.results).map(res => {
             const chipClassName = cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200',
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200 min-w-0',
               res.status === STATUS_SUCCESS
                 ? 'bg-surface border-border shadow-sm hover:border-primary/50 hover:bg-primary/5 hover:shadow-md cursor-pointer'
                 : 'bg-muted/50 border-border opacity-60 cursor-default'
@@ -120,7 +120,7 @@ export const ResultRowCells = ({ id, onRemove, onPreview }: ResultRowCellsProps)
           })}
         </div>
       </div>
-      <div className="px-8 py-5 text-right w-[60px] shrink-0">
+      <div className="px-8 py-5 text-right flex items-center justify-end">
         <Button
           variant="ghost"
           size="icon"
