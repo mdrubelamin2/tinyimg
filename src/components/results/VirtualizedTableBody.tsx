@@ -26,16 +26,18 @@ export const VirtualizedTableBody = ({
 
   if (virtualRows.length === 0 && itemIds.length > 0) {
     return (
-      <tr>
-        <td colSpan={4} style={{ padding: '20px', textAlign: 'center' }}>
-          Loading...
-        </td>
-      </tr>
+      <tbody>
+        <tr>
+          <td colSpan={4} style={{ padding: '20px', textAlign: 'center' }}>
+            Loading...
+          </td>
+        </tr>
+      </tbody>
     );
   }
 
   return (
-    <>
+    <tbody>
       {virtualRows.map(virtualRow => {
         const id = itemIds[virtualRow.index];
         if (!id) return null;
@@ -56,6 +58,6 @@ export const VirtualizedTableBody = ({
           </tr>
         );
       })}
-    </>
+    </tbody>
   );
 };
