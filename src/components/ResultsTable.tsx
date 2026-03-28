@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Download, Trash2, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -28,6 +28,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
   onRemoveItem,
   onPreview,
 }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
   if (itemIds.length === 0) return null;
 
   return (
@@ -83,8 +85,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
       </div>
 
       <CardContent className="p-0">
-        <div className="max-h-[600px] overflow-auto">
-          <Table className="text-left min-w-[700px] block" aria-label="Processing queue with file names, sizes, and download links">
+        <div ref={scrollRef} className="max-h-[600px] overflow-auto">
+          <Table className="w-full text-left min-w-[700px]" aria-label="Processing queue with file names, sizes, and download links">
             <TableHeader className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest sticky top-0 z-10 border-b border-border backdrop-blur-sm">
               <TableRow>
                 <TableHead className="px-8 py-4">File Name</TableHead>
@@ -96,7 +98,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
             <VirtualizedTableBody 
               itemIds={itemIds} 
               onRemove={onRemoveItem} 
-              onPreview={onPreview} 
+              onPreview={onPreview}
+              scrollRef={scrollRef}
             />
           </Table>
         </div>

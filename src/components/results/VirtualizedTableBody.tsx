@@ -7,53 +7,57 @@ export interface VirtualizedTableBodyProps {
   itemIds: string[];
   onRemove: (id: string) => void;
   onPreview?: ((item: ImageItem, format: string) => void) | undefined;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const VirtualizedTableBody = ({ 
   itemIds, 
   onRemove, 
-  onPreview 
+  onPreview,
+  scrollRef,
 }: VirtualizedTableBodyProps) => {
-  const parentRef = useRef<HTMLTableSectionElement>(null);
+  const tableRef = useRef<HTMLTableSectionElement>(null);
   
   const virtualizer = useVirtualizer({
     count: itemIds.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => scrollRef.current,
     estimateSize: () => 80,
     overscan: 5,
+    scrollMargin: 0,
   });
 
   const virtualRows = virtualizer.getVirtualItems();
 
   return (
-    <tbody 
-      ref={parentRef} 
-      style={{ 
-        display: 'block', 
-        height: `${virtualizer.getTotalSize()}px`,
-        overflow: 'auto',
-        contain: 'strict',
-      }}
-    >
-      {virtualRows.map(virtualRow => {
-        const id = itemIds[virtualRow.index];
-        if (!id) return null;
-        return (
-          <tr
-            key={id}
-            data-index={virtualRow.index}
-            ref={(node) => virtualizer.measureElement(node)}
-            style={{
-              display: 'flex',
-              position: 'absolute',
-              transform: `translateY(${virtualRow.start}px)`,
-              width: '100%',
-            }}
-          >
-            <ResultRow id={id} onRemove={onRemove} onPreview={onPreview} />
-          </tr>
-        );
-      })}
+    <tbody ref={tableRef}>
+      {virtualRows.length > 0 && (
+        <tr style={{ height: `${virtualizer.getTotalSize()}px` }}>
+          <td style={{ padding: 0, margin: 0 }}>
+            <div style={{ position: 'relative', width: '100%' }}>
+              {virtualRows.map(virtualRow => {
+                const id = itemIds[virtualRow.index];
+                if (!id) return null;
+                return (
+                  <div
+                    key={id}
+                    data-index={virtualRow.index}
+                    ref={(node) => virtualizer.measureElement(node)}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <ResultRow id={id} onRemove={onRemove} onPreview={onPreview} />
+                  </div>
+                );
+              })}
+            </div>
+          </td>
+        </tr>
+      )}
     </tbody>
   );
 };
