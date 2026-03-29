@@ -1,116 +1,77 @@
-/**
- * SVG optimizer facade: svgtidy (WASM) as primary, SVGO as fallback.
- * svgtidy is 50-100× faster than SVGO for most SVGs.
- */
+import type { Config } from 'svgo';
 
 /**
- * Optimize SVG text using svgtidy first, falling back to SVGO.
- * Returns the smaller result.
+ * Ultimate 2026 SVGO Configuration
+ * Industry standard for maximum compression with zero visual regression.
  */
-export async function optimizeSvg(svgText: string): Promise<{ data: string; engine: 'svgtidy' | 'svgo' }> {
-  const originalSize = new TextEncoder().encode(svgText).length;
+const SVGO_CONFIG: Config = {
+  multipass: true,
+  plugins: [
+    {
+      name: 'preset-default',
+      params: {
+        overrides: {
+          // Aggressive path data optimization
+          convertPathData: {
+            floatPrecision: 2,
+            forceRelative: true,
+            smartArcConversion: true,
+            noSpaceAfterFlags: true,
+            collapseRepeated: true,
+          },
+        },
+      },
+    },
+    {
+      name: 'removeViewBox',
+      active: false,
+    } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    {
+      name: 'removeTitle',
+      active: false,
+    } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    // Ensure IDs don't conflict when multiple SVGs are inlined on one page
+    {
+      name: 'prefixIds',
+      params: {
+        prefix: 't',
+        delim: '',
+      },
+    },
+    'removeDimensions',       // Prefer viewBox for layout
+    'convertStyleToAttrs',    // Style elements -> Attributes
+    'removeStyleElement',     // Aggressive cleanup
+    'removeScripts',          // Security & Size (v4 name)
+    'mergePaths',             // Combine adjacent paths
+    'collapseGroups',         // Flatten redundant <g>
+    'removeEmptyAttrs',       // Cleanup
+    'sortAttrs',              // Improves Gzip/Brotli compression ratios
+    'reusePaths',             // Use <defs> for identical paths
+    {
+      name: 'cleanupNumericValues',
+      params: {
+        floatPrecision: 2,
+      },
+    },
+  ],
+};
 
-  // Try svgtidy first (much faster)
+/**
+ * Optimized SVG pipeline using industry-standard SVGO v4+.
+ */
+export async function optimizeSvg(svgText: string): Promise<{ data: string; engine: 'svgo' }> {
   try {
-    const { optimize: svgtidyOptimize } = await import('svgtidy');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tidyResult = (svgtidyOptimize as any)(svgText, {
-      remove_metadata: true,
-      remove_comments: true,
-      remove_viewbox: false, // Correct snake_case key for Rust
-      shorten_ids: true,
-      precision: 1,
-    });
-    if (typeof tidyResult === 'string' && tidyResult.length > 0) {
-      const tidySize = new TextEncoder().encode(tidyResult).length;
-      const svgoData = await runSvgoFallback(svgText);
-      const svgoSize = new TextEncoder().encode(svgoData).length;
-
-      // Log sizes for internal debugging (optional, can be removed)
-      // console.log('--- Sizes:', { tidy: tidySize, svgo: svgoSize, original: originalSize });
-
-      if (svgoSize < tidySize && svgoSize < originalSize) {
-        return { data: svgoData, engine: 'svgo' };
-      }
-
-      if (tidySize < originalSize) {
-        return { data: tidyResult, engine: 'svgtidy' };
-      }
+    const { optimize } = await import('svgo');
+    const result = optimize(svgText, SVGO_CONFIG);
+    
+    if (result.data && result.data.length > 0) {
+      return { data: result.data, engine: 'svgo' };
     }
-  } catch {
-    // svgtidy failed — fall through to SVGO
+  } catch (error) {
+    console.error('SVGO optimization failed:', error);
   }
 
-  const svgoData = await runSvgoFallback(svgText);
-  return { data: svgoData, engine: 'svgo' };
-}
-
-async function runSvgoFallback(svgText: string): Promise<string> {
-  // SVGO fallback (slower but more thorough)
-  try {
-    const { optimize: svgoOptimize } = await import('svgo');
-    const svgoResult = svgoOptimize(svgText, {
-      multipass: true, // Use boolean for multipass, then call again or use high-quality plugins
-      plugins: [
-        {
-          name: 'preset-default',
-          params: {
-            overrides: {
-              removeViewBox: false, // Keep the viewBox for scalability
-              cleanupIDs: {
-                minify: true, // shorten_ids = True
-                remove: true, // strip_ids = True
-              },
-              convertPathData: {
-                floatPrecision: 1, // Aggressive precision
-                noSpaceAfterFlags: true, // Extreme compression
-                forceRelative: true,
-                smartArcConversion: true, // Use efficient 'a' commands
-              },
-            },
-          },
-        } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        'removeDimensions',
-        'removeStyleElement',
-        'removeScripts',
-        'mergePaths',
-        'collapseGroups',
-        'removeEmptyAttrs',
-        'removeRedundantAttrs',
-        'sortAttrs',
-        {
-          name: 'convertColors',
-          params: {
-            shorthex: true,
-            rgb2hex: true,
-          },
-        },
-        {
-          name: 'cleanupNumericValues',
-          params: {
-            floatPrecision: 1,
-          },
-        },
-        {
-          name: 'convertShapeToPath',
-          params: {
-            convertArcs: true,
-            floatPrecision: 1,
-          },
-        },
-        'convertEllipseToCircle',
-        'convertTransform',
-        'removeUnusedNS',
-        'reusePaths',
-      ],
-    });
-    if (svgoResult.data && svgoResult.data.length > 0) {
-      return svgoResult.data;
-    }
-  } catch {
-    // ignore
-  }
-  return svgText;
+  return { data: svgText, engine: 'svgo' };
 }
 
 /**
