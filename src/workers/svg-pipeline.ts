@@ -9,16 +9,13 @@ import {
 } from '@/constants/index';
 import type { SvgInternalFormat } from '@/constants/index';
 import { optimizeSvg } from '@/lib/optimizer/svg-optimizer';
-import { classifySvg } from '@/lib/optimizer/svg-classifier';
 import { ensureResvg } from './optimizer-wasm';
-import { classifyContent } from './classify';
 import {
   checkPixelLimit,
   encodeRaster,
   encodeRasterVectorSafeWithSizeSafeguard,
   toBase64,
 } from './raster-encode';
-import type { ContentPreset } from './classify';
 import { BrowserSvgRasterError, rasterizeSvgWithBrowser } from './svg-browser-raster';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -97,30 +94,22 @@ export async function processSvg(
   const totalStart = nowMs();
   const text = await file.text();
 
-  const svgClass = classifySvg(text);
-  const isHybrid = svgClass.type === 'HYBRID';
+  const { data: optimizedSvg, metadata } = await optimizeSvg(text);
+  const isHybrid = metadata.type === 'HYBRID' || metadata.type === 'COMPLEX';
 
   if (!isHybrid) {
-    const { data: optimizedSvg } = await optimizeSvg(text);
     return {
       blob: new Blob([optimizedSvg], { type: 'image/svg+xml' }),
       label: 'svg (optimized)',
     };
   }
 
-  const svgoStart = nowMs();
-  const svgoMs = nowMs() - svgoStart;
-
   const naturalSizeStart = nowMs();
-  const { width, height } = await readSvgNaturalSize(text);
+  const { width, height } = await readSvgNaturalSize(optimizedSvg);
   const naturalSizeMs = nowMs() - naturalSizeStart;
 
-  const raster = await buildSvgRaster(text, width, height, options);
+  const raster = await buildSvgRaster(optimizedSvg, width, height, options);
   assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
-
-  const classifyStart = nowMs();
-  const preset: ContentPreset = classifyContent(raster.imageData);
-  const classifyMs = nowMs() - classifyStart;
 
   const { svgInternalFormat, svgExportDensity } = options;
   const internalFormat = svgInternalFormat ?? 'webp';
@@ -133,7 +122,7 @@ export async function processSvg(
       ? await encodeRasterVectorSafeWithSizeSafeguard(raster.imageData, encodeFormat, {
         displayQuality: true,
       })
-      : await encodeRaster(raster.imageData, encodeFormat, preset);
+      : await encodeRaster(raster.imageData, encodeFormat, 'photo'); // Default to photo for hybrid
   const encodeMs = nowMs() - encodeStart;
   await assertEncodedDimensions(internalBytes, mimeType, raster.bitmapWidth, raster.bitmapHeight);
 
@@ -143,11 +132,11 @@ export async function processSvg(
 </svg>`;
 
   const timing: SvgStageTiming = {
-    svgoMs: Math.round(svgoMs),
+    svgoMs: 0, // Metadata and optimization are now unified
     naturalSizeMs: Math.round(naturalSizeMs),
     renderMs: raster.timing.renderMs,
     downscaleMs: raster.timing.downscaleMs,
-    classifyMs: Math.round(classifyMs),
+    classifyMs: 0,
     encodeMs: Math.round(encodeMs),
     totalMs: Math.round(nowMs() - totalStart),
     svgRasterizerPath: raster.rasterizerPath,

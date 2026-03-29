@@ -80,10 +80,24 @@ if (typeof global.TextEncoder === 'undefined') {
   (global as any).TextEncoder = util.TextEncoder;
 }
 vi.mock('@/lib/optimizer/svg-optimizer', () => ({
-  optimizeSvg: vi.fn(async (text: string) => ({
-    data: text, // No-op optimization for tests
-    engine: 'svgo',
-  })),
+  optimizeSvg: vi.fn(async (text: string) => {
+    let type: 'SIMPLE' | 'COMPLEX' | 'HYBRID' = 'SIMPLE';
+    if (text.includes('<image')) {
+      type = 'HYBRID';
+    } else if (text.split('<').length > 1500) {
+      type = 'COMPLEX';
+    }
+    return {
+      data: text,
+      metadata: {
+        nodeCount: 0,
+        segmentCount: 0,
+        rasterBytes: 0,
+        hasFilters: false,
+        type,
+      },
+    };
+  }),
   svgByteLength: (text: string) => text.length,
 }));
 
@@ -154,34 +168,34 @@ describe('SVG Adaptive Output Pipeline', () => {
     expect(text).not.toContain('<image');
   });
 
-  it('classifies COMPLEX SVG and returns raster-wrapped AVIF', async () => {
+  it('classifies COMPLEX SVG and returns raster-wrapped webp', async () => {
     // 1501 nodes triggers COMPLEX
     const complexSvg = '<svg>' + '<rect />'.repeat(1501) + '</svg>';
     const file = new File([complexSvg], 'complex.svg', { type: 'image/svg+xml' });
     
     const result = await processSvg(file, defaultOptions);
     
-    // Label should indicate raster-wrapped
-    expect(result.label).toContain('svg (raster-wrapped');
+    // Label should indicate wrapped
+    expect(result.label).toContain('svg (webp-wrapped)');
     
     const text = await result.blob.text();
     // Should be wrapped in an SVG with an image tag
     expect(text).toContain('<image');
-    // Should have used AVIF for internal encoding
-    expect(text).toContain('data:image/avif;base64,mock-base64');
+    // Should have used webp for internal encoding
+    expect(text).toContain('data:image/webp;base64,mock-base64');
   });
 
-  it('classifies HYBRID SVG and returns raster-wrapped AVIF', async () => {
+  it('classifies HYBRID SVG and returns raster-wrapped webp', async () => {
     // <image> triggers HYBRID
     const hybridSvg = '<svg><image href="foo.png" /></svg>';
     const file = new File([hybridSvg], 'hybrid.svg', { type: 'image/svg+xml' });
     
     const result = await processSvg(file, defaultOptions);
     
-    expect(result.label).toContain('svg (raster-wrapped');
+    expect(result.label).toContain('svg (webp-wrapped)');
     
     const text = await result.blob.text();
     expect(text).toContain('<image');
-    expect(text).toContain('data:image/avif;base64,mock-base64');
+    expect(text).toContain('data:image/webp;base64,mock-base64');
   });
 });
