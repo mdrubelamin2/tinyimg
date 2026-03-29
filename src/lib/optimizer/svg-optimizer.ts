@@ -16,11 +16,10 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; engi
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tidyResult = (svgtidyOptimize as any)(svgText, {
       remove_metadata: true,
-      strip_comments: true,
-      enable_viewboxing: true, // true here means keep/normalize the viewBox
+      remove_comments: true,
+      remove_viewbox: false, // Correct snake_case key for Rust
       shorten_ids: true,
-      strip_ids: true,
-      precision: 1, // Aggressive precision
+      precision: 1,
     });
     if (typeof tidyResult === 'string' && tidyResult.length > 0) {
       const tidySize = new TextEncoder().encode(tidyResult).length;
@@ -51,7 +50,7 @@ async function runSvgoFallback(svgText: string): Promise<string> {
   try {
     const { optimize: svgoOptimize } = await import('svgo');
     const svgoResult = svgoOptimize(svgText, {
-      multipass: true,
+      multipass: true, // Use boolean for multipass, then call again or use high-quality plugins
       plugins: [
         {
           name: 'preset-default',
