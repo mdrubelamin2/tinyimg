@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
   resolve: {
@@ -12,6 +13,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    nodePolyfills(),
     wasm(),
     topLevelAwait(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +27,7 @@ export default defineConfig({
   worker: {
     format: 'es',
     plugins: () => [
+      nodePolyfills(),
       wasm(),
       topLevelAwait()
     ]
