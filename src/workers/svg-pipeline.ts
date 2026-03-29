@@ -111,6 +111,8 @@ export function computeEffectiveDisplayDpr(
  *   specialized image decoders (WebP/AVIF).
  * - **50% (Density)**: If embedded rasters exceed 50% of the total file size and are
  *   over 4KB, the file is treated as a hybrid and wrapped.
+ * - **Rule 4: The Complexity Anchor (256 Nodes)**: If the SVG contains any raster data
+ *   and has more than 256 nodes, it is wrapped to ensure smooth mobile performance.
  */
 export async function processSvg(
   file: File,
@@ -126,8 +128,10 @@ export async function processSvg(
   const isHybridRaster =
     metadata.rasterBytes > 32768 ||
     (metadata.rasterBytes > 4096 && metadata.rasterBytes / Math.max(1, totalSizeBytes) > 0.5);
+  const isComplexityAnchor = metadata.rasterBytes > 0 && metadata.nodeCount > 256;
 
-  const shouldWrap = totalSizeBytes >= 4096 && (isVectorComplex || isHybridRaster);
+  const shouldWrap =
+    totalSizeBytes >= 4096 && (isVectorComplex || isHybridRaster || isComplexityAnchor);
 
   if (!shouldWrap) {
     return {
