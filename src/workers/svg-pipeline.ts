@@ -88,31 +88,24 @@ export function computeEffectiveDisplayDpr(
 }
 
 /**
- * ### Adaptive Output Strategy
+ * ### Hierarchical Expert Pipeline
  *
- * To ensure optimal performance and visual fidelity, this pipeline employs an adaptive strategy
+ * To ensure optimal performance and visual fidelity, this pipeline employs a hierarchical strategy
  * that chooses between raw vector output and raster-wrapped SVG based on content complexity.
  *
- * #### 1. Simple Vectors (Raw SVG)
- * - **Strategy**: Return the optimized SVG string directly.
- * - **Benefits**: Zero latency in the rendering pipeline and perfect sharpness at any scale.
- * - **Thresholds**: Files under 4KB or those with low geometric complexity.
+ * #### 1. The Circuit Breaker (isTiny)
+ * - Files under 4KB are never wrapped. The overhead of rasterization and Base64 encoding
+ *   outweighs any potential rendering benefits at this scale.
  *
- * #### 2. Complex Vectors & Hybrids (Raster-Wrapped SVG)
- * - **Strategy**: Rasterize the SVG at the target display density and wrap it in an `<image>` tag.
- * - **Why**: Extremely complex vectors (thousands of nodes/segments) or large embedded rasters
- *   can cause significant "browser jank" (UI freezing) during layout and paint. Wrapping in
- *   a pre-rasterized format ensures 60fps scrolling and consistent memory usage.
- *
- * #### 3. Expert-Approved Thresholds
- * - **4KB**: Minimum size for wrapping. Below this, the overhead of rasterization and
- *   Base64 encoding usually outweighs the benefits.
- * - **32KB (Raster)**: Large embedded rasters are automatically wrapped to leverage
+ * #### 2. Expert Complexity Heuristics
+ * - **Vector Complexity**: Extremely complex vectors (>1500 nodes or >5000 segments)
+ *   cause significant "browser jank" during layout and paint.
+ * - **Heavy Hybrid**: Large embedded rasters (>32KB) are wrapped to leverage
  *   specialized image decoders (WebP/AVIF).
- * - **50% (Density)**: If embedded rasters exceed 50% of the total file size and are
- *   over 4KB, the file is treated as a hybrid and wrapped.
- * - **Rule 4: The Complexity Anchor (256 Nodes)**: If the SVG contains any raster data
- *   and has more than 256 nodes, it is wrapped to ensure smooth mobile performance.
+ * - **Hybrid Dominant**: If embedded rasters exceed 50% of total size and are >4KB,
+ *   the file is treated as a hybrid and wrapped.
+ * - **Complexity Anchor**: If the SVG contains any raster data and has >256 nodes,
+ *   it is wrapped to ensure smooth mobile performance.
  */
 export async function processSvg(
   file: File,
@@ -124,14 +117,15 @@ export async function processSvg(
   const { data: optimizedSvg, metadata } = await optimizeSvg(text);
   const totalSizeBytes = new TextEncoder().encode(optimizedSvg).length;
 
+  const isTiny = totalSizeBytes < 4096;
   const isVectorComplex = metadata.nodeCount > 1500 || metadata.segmentCount > 5000;
-  const isHybridRaster =
-    metadata.rasterBytes > 32768 ||
-    (metadata.rasterBytes > 4096 && metadata.rasterBytes / Math.max(1, totalSizeBytes) > 0.5);
+  const isHeavyHybrid = metadata.rasterBytes > 32768;
+  const isHybridDominant =
+    metadata.rasterBytes > 4096 && metadata.rasterBytes / Math.max(1, totalSizeBytes) > 0.5;
   const isComplexityAnchor = metadata.rasterBytes > 0 && metadata.nodeCount > 256;
 
   const shouldWrap =
-    totalSizeBytes >= 4096 && (isVectorComplex || isHybridRaster || isComplexityAnchor);
+    !isTiny && (isVectorComplex || isHeavyHybrid || isHybridDominant || isComplexityAnchor);
 
   if (!shouldWrap) {
     return {
