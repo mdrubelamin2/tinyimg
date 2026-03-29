@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "svgo": "svgo/dist/svgo.browser.js",
     },
   },
   plugins: [
