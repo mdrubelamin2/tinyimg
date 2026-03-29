@@ -41,51 +41,94 @@ const createMetadataPlugin = (metadata: SvgMetadata): CustomPlugin => ({
 
 /**
  * Ultimate 2026 SVGO Configuration
- * Industry standard for maximum compression with zero visual regression.
+ * Replicates the full SVGOMG suite with industry-standard precision.
  */
 const getSvgoConfig = (metadata: SvgMetadata): Config => ({
   multipass: true,
+  floatPrecision: 3, // Global fallback
   plugins: [
+    // 1. Standard Cleanups
+    'removeDoctype',
+    'removeXMLProcInst',
+    'removeComments',
+    'removeMetadata',
+    'removeEditorsNSData',
+    'removeUnusedNS',
+    'cleanupAttrs',
+    'cleanupIds',
+    'removeUselessDefs',
+    'removeUnknownsAndDefaults',
+    'removeNonInheritableGroupAttrs',
+    'removeUselessStrokeAndFill',
+    'cleanupEnableBackground',
+
+    // 2. Geometry Rewrites
+    'convertShapeToPath',
+    'convertEllipseToCircle',
     {
-      name: 'preset-default',
+      name: 'convertPathData',
       params: {
-        overrides: {
-          // 2026 Industry Standard: Keep viewBox for perfect scaling
-          removeViewBox: false,
-          removeTitle: false,
-          // Aggressive but VISUAL-SAFE path optimization
-          convertPathData: {
-            floatPrecision: 3, // Increased for 100% accuracy
-            forceRelative: true,
-            smartArcConversion: false, // DISABLED: Causes layout breakage in complex paths
-            noSpaceAfterFlags: true,
-            collapseRepeated: true,
-          },
+        floatPrecision: 3,
+        applyTransforms: true,
+        makeArcs: {
+          threshold: 2.5,
+          tolerance: 0.5,
         },
       },
     },
-    // Ensure IDs don't conflict (Mandatory for production)
     {
-      name: 'prefixIds',
+      name: 'convertTransform',
       params: {
-        prefix: `t${Math.random().toString(36).slice(2, 5)}`,
-        delim: '',
+        floatPrecision: 5,
       },
     },
-    'removeDimensions',       // Prefer viewBox
-    'convertStyleToAttrs',    // Safe & Effective
-    'removeStyleElement',     
-    'removeScripts',          
-    'mergePaths',             // Safe for most vectors
-    'collapseGroups',         // Safe for most vectors
+    'mergePaths',
+    'collapseGroups',
+    'moveElemsAttrsToGroup',
+    'moveGroupAttrsToElems',
+
+    // 3. Style Optimizations
+    'convertStyleToAttrs',
+    'inlineStyles',
+    'minifyStyles',
+    'mergeStyles',
+    'removeStyleElement',
+    'removeScripts',
+
+    // 4. Advanced & Structural
+    'reusePaths',
+    'sortAttrs',
+    'sortDefsChildren',
     'removeEmptyAttrs',
-    'sortAttrs',              // Crucial for Gzip/Brotli
+    'removeEmptyContainers',
+    'removeHiddenElems',
+    'removeEmptyText',
+
+    // 5. SVG 2.0 & Color
+    'removeDeprecatedAttrs',
+    'convertColors',
+
+    // 6. Top-Level Overrides (SVGOMG Defaults)
+    {
+      name: 'removeViewBox',
+    },
+    {
+      name: 'removeTitle',
+    },
+    {
+      name: 'removeDesc',
+    },
+    {
+      name: 'removeDimensions',
+    },
     {
       name: 'cleanupNumericValues',
       params: {
         floatPrecision: 3,
       },
     },
+
+    // 7. Custom Integrations
     createMetadataPlugin(metadata),
   ],
 });
@@ -105,7 +148,7 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; meta
   try {
     const { optimize } = await import('svgo');
     const result = optimize(svgText, getSvgoConfig(metadata));
-    
+
     if (result.data && result.data.length > 0) {
       // Classification logic based on gathered metadata
       if (metadata.rasterBytes > 0) {
