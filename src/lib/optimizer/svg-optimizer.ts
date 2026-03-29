@@ -136,6 +136,29 @@ const getSvgoConfig = (metadata: SvgMetadata): Config => ({
 /**
  * Optimized SVG pipeline using industry-standard SVGO v4+.
  */
+/**
+ * ### Unified AST Pipeline
+ *
+ * The optimizer uses a single-pass AST (Abstract Syntax Tree) visitor pattern to perform
+ * simultaneous optimization and content classification.
+ *
+ * #### Architecture: Zero-Overhead Classification
+ * - By integrating a custom SVGO plugin (`extract-metadata`), we traverse the SVG DOM
+ *   exactly once.
+ * - During this single walk, we calculate node counts, path segment counts, and
+ *   embedded raster sizes.
+ * - This "zero-overhead" approach avoids the need for a secondary parsing step or
+ *   expensive regex-based analysis, allowing for real-time decision making in the
+ *   SVG pipeline.
+ *
+ * #### Precision Settings
+ * - **Path Data (3)**: A precision of 3 decimal places for path coordinates (`d` attribute)
+ *   provides sub-pixel accuracy that is visually indistinguishable from higher precisions
+ *   on high-DPI screens while significantly reducing file size.
+ * - **Transforms (5)**: Transform matrices require higher precision (5 decimal places)
+ *   to prevent cumulative rounding errors during nested scale/rotate operations,
+ *   which could otherwise lead to "visual drift" or misalignment.
+ */
 export async function optimizeSvg(svgText: string): Promise<{ data: string; metadata: SvgMetadata }> {
   const metadata: SvgMetadata = {
     nodeCount: 0,

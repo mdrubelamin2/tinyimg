@@ -87,6 +87,31 @@ export function computeEffectiveDisplayDpr(
   return dpr;
 }
 
+/**
+ * ### Adaptive Output Strategy
+ *
+ * To ensure optimal performance and visual fidelity, this pipeline employs an adaptive strategy
+ * that chooses between raw vector output and raster-wrapped SVG based on content complexity.
+ *
+ * #### 1. Simple Vectors (Raw SVG)
+ * - **Strategy**: Return the optimized SVG string directly.
+ * - **Benefits**: Zero latency in the rendering pipeline and perfect sharpness at any scale.
+ * - **Thresholds**: Files under 4KB or those with low geometric complexity.
+ *
+ * #### 2. Complex Vectors & Hybrids (Raster-Wrapped SVG)
+ * - **Strategy**: Rasterize the SVG at the target display density and wrap it in an `<image>` tag.
+ * - **Why**: Extremely complex vectors (thousands of nodes/segments) or large embedded rasters
+ *   can cause significant "browser jank" (UI freezing) during layout and paint. Wrapping in
+ *   a pre-rasterized format ensures 60fps scrolling and consistent memory usage.
+ *
+ * #### 3. Expert-Approved Thresholds
+ * - **4KB**: Minimum size for wrapping. Below this, the overhead of rasterization and
+ *   Base64 encoding usually outweighs the benefits.
+ * - **32KB (Raster)**: Large embedded rasters are automatically wrapped to leverage
+ *   specialized image decoders (WebP/AVIF).
+ * - **50% (Density)**: If embedded rasters exceed 50% of the total file size and are
+ *   over 4KB, the file is treated as a hybrid and wrapped.
+ */
 export async function processSvg(
   file: File,
   options: SvgPipelineOptions
