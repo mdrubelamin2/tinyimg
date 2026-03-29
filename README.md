@@ -8,8 +8,36 @@ All optimization runs on-device.
 - React 19 + TypeScript
 - Vite 8
 - Tailwind CSS 4
-- WASM/image pipeline: `@jsquash/*` (incl. JPEG XL encode), `libimagequant-wasm`, `@resvg/resvg-wasm`, `svgo`, `svgtidy`
+- WASM/image pipeline: `@jsquash/*` (incl. JPEG XL encode), `libimagequant-wasm`, `@resvg/resvg-wasm`, `svgo`
 - UI primitives aligned to shadcn patterns (`src/components/ui/*`)
+
+## SVG Optimization Engine (2026 Standard)
+
+TinyIMG uses a high-IQ, single-pass pipeline for SVG optimization that balances file size, visual fidelity, and browser rendering performance.
+
+### 1. Adaptive Output Strategy
+The engine automatically classifies incoming SVGs into two output paths based on expert-approved 2026 thresholds:
+
+- **Path A: Optimized Vector (Standard)**
+  - Used for icons, logos, and simple illustrations.
+  - Keeps the file as a sharp, scalable XML vector.
+  - **Force-Vector Rule**: Files < 4KB always remain vectors to ensure zero-latency rendering.
+
+- **Path B: Rasterized SVG Wrapper (Performance-First)**
+  - Used for extremely complex vectors (e.g., architectural maps, traced photos) that would cause browser "jank" (GPU/CPU lag).
+  - Rasterizes the SVG into a high-fidelity **AVIF/WebP** bitmap and wraps it in a responsive SVG container.
+  - **Complexity Threshold**: Triggered if nodes > 1,500 OR path segments > 5,000.
+  - **Hybrid Threshold**: Triggered if embedded raster data > 32KB, or > 4KB while accounting for > 50% of the total file size.
+
+### 2. Unified AST Pipeline
+Unlike standard tools that run multiple passes, TinyIMG uses a **Unified AST Visitor**. During the SVGO optimization pass, a custom plugin walks the Abstract Syntax Tree once to extract perfect metadata (node counts, raster bytes, filter depth) with zero additional CPU overhead.
+
+### 3. Professional Suite (SVGOMG-Grade)
+The engine implements 40+ professional-grade optimization flags, including:
+- **Smart Geometry**: Path merging, group collapsing, and redundant attribute stripping.
+- **Precision Decision**: Precision 3 for paths (high fidelity) and Precision 5 for transforms (layout stability).
+- **Collision Protection**: Automatic ID prefixing to prevent broken masks when multiple SVGs are inlined on a page.
+- **Accessibility**: Explicitly preserves `viewBox` and `title` tags for perfect responsiveness and screen-reader support.
 
 ## Supported formats
 
@@ -42,7 +70,7 @@ If `W×H×DPR²` would exceed the **256 MP** pixel guard, DPR is **reduced autom
 ## Encoder notes
 
 - **JPEG:** MozJPEG via `@jsquash/jpeg` (Jpegli deferred — see [docs/JPEGLI.md](docs/JPEGLI.md)).
-- **SVG:** svgtidy + SVGO fallback — see [docs/SVG-BENCHMARK.md](docs/SVG-BENCHMARK.md).
+- **SVG:** Unified SVGO v4+ AST Pipeline (SVGOMG-grade) — see [docs/SVG-BENCHMARK.md](docs/SVG-BENCHMARK.md).
 
 ## Limits
 
