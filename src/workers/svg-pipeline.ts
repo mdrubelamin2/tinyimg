@@ -95,9 +95,9 @@ export async function processSvg(
   const text = await file.text();
 
   const { data: optimizedSvg, metadata } = await optimizeSvg(text);
-  const isHybrid = metadata.type === 'HYBRID' || metadata.type === 'COMPLEX';
+  const shouldWrap = metadata.nodeCount > 1500 || metadata.segmentCount > 5000;
 
-  if (!isHybrid) {
+  if (!shouldWrap) {
     return {
       blob: new Blob([optimizedSvg], { type: 'image/svg+xml' }),
       label: 'svg (optimized)',
@@ -105,10 +105,10 @@ export async function processSvg(
   }
 
   const naturalSizeStart = nowMs();
-  const { width, height } = await readSvgNaturalSize(optimizedSvg);
+  const { width, height } = await readSvgNaturalSize(text);
   const naturalSizeMs = nowMs() - naturalSizeStart;
 
-  const raster = await buildSvgRaster(optimizedSvg, width, height, options);
+  const raster = await buildSvgRaster(text, width, height, options);
   assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
 
   const { svgInternalFormat, svgExportDensity } = options;
