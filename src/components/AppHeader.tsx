@@ -6,7 +6,7 @@ import React from 'react';
 import { Sparkles, Github } from 'lucide-react';
 import { ThemeToggle } from './layout/ThemeToggle';
 
-const GITHUB_URL = 'https://github.com/rubel-amin/tinyimg';
+const GITHUB_URL = 'https://github.com/mdrubelamin2/tinyimg.git';
 
 export const AppHeader: React.FC = () => (
   <nav className="fixed top-4 left-4 right-4 z-50 glass rounded-2xl px-4 md:px-6 py-3 flex justify-between items-center shadow-2xl shadow-primary/10">
