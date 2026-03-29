@@ -11,7 +11,9 @@ import type {
   WorkerResponse,
   WorkerResponseError,
   WorkerResponseSuccess,
-} from '@/lib/queue-types';
+  WorkerOutboundResult,
+  WorkerOutboundError,
+} from '@/lib/queue/types';
 
 function hasProcessingResults(item: ImageItem): boolean {
   return Object.values(item.results).some(
@@ -48,9 +50,10 @@ export function applyWorkerTaskError(
 
 export function applyWorkerResponse(
   queue: ImageItem[],
-  response: WorkerResponse
+  response: WorkerResponse | WorkerOutboundResult | WorkerOutboundError
 ): ImageItem[] {
-  const index = queue.findIndex((item) => item.id === response.id);
+  const responseId = 'id' in response ? response.id : '';
+  const index = queue.findIndex((item) => item.id === responseId);
   if (index === -1) return queue;
 
   const nextQueue = [...queue];
@@ -60,7 +63,7 @@ export function applyWorkerResponse(
   const result = item.results[format];
   if (!result) return queue;
 
-  if (response.status === STATUS_SUCCESS) {
+  if ('status' in response && response.status === STATUS_SUCCESS) {
     const success = response as WorkerResponseSuccess;
     if (result.downloadUrl) {
       URL.revokeObjectURL(result.downloadUrl);
@@ -74,8 +77,22 @@ export function applyWorkerResponse(
       label: success.label,
       downloadUrl,
     };
+  } else if ('type' in response && response.type === 'RESULT') {
+    const outbound = response as WorkerOutboundResult;
+    if (result.downloadUrl) {
+      URL.revokeObjectURL(result.downloadUrl);
+    }
+    const downloadUrl = URL.createObjectURL(outbound.blob);
+    item.results[format] = {
+      ...result,
+      status: STATUS_SUCCESS,
+      size: outbound.size,
+      blob: outbound.blob,
+      label: outbound.label,
+      downloadUrl,
+    };
   } else {
-    const error = response as WorkerResponseError;
+    const error = response as WorkerResponseError | WorkerOutboundError;
     item.results[format] = { ...result, status: STATUS_ERROR, error: error.error };
   }
 

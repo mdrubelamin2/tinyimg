@@ -5,7 +5,7 @@
 
 import { create } from 'zustand';
 import { startTransition } from 'react';
-import type { ImageItem, ImageResult, WorkerResponse, Task } from '@/lib/queue/types';
+import type { ImageItem, ImageResult, Task, WorkerOutbound } from '@/lib/queue/types';
 import type { GlobalOptions } from '@/constants';
 import {
   STATUS_PENDING,
@@ -55,8 +55,8 @@ interface ImageStoreActions {
    */
   applyGlobalOptions: (options: GlobalOptions, forceAll?: boolean) => void;
 
-  /** Internal: called by worker pool bridge */
-  _applyWorkerResult: (response: WorkerResponse) => void;
+  /** Internal: called by worker pool */
+  _applyWorkerResult: (response: WorkerOutbound) => void;
   _applyWorkerError: (task: Task | null) => void;
   _batchApplyResults: () => void;
   _getPool: () => WorkerPool;
@@ -71,7 +71,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingForceAll = false;
 
 // Update batching buffers
-let responseBuffer: WorkerResponse[] = [];
+let responseBuffer: WorkerOutbound[] = [];
 let errorBuffer: (Task | null)[] = [];
 let flushScheduled = false;
 
@@ -80,9 +80,8 @@ function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   const workerUrl = new URL(OptimizerWorkerUrl, import.meta.url);
   pool = new WorkerPool(workerUrl, computeConcurrency(), {
     onMessage: (_workerIndex, data) => {
-      // Bridge: convert WorkerOutbound to legacy WorkerResponse
-      const legacy = data as unknown as WorkerResponse;
-      storeApi.getState()._applyWorkerResult(legacy);
+      // Use WorkerOutbound directly - no legacy bridge needed
+      storeApi.getState()._applyWorkerResult(data as WorkerOutbound);
     },
     onError: (_workerIndex, task) => {
       storeApi.getState()._applyWorkerError(task);
@@ -343,7 +342,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     }, UPDATE_OPTIONS_DEBOUNCE_MS);
   },
 
-  _applyWorkerResult: (response) => {
+  _applyWorkerResult: (response: WorkerOutbound) => {
     responseBuffer.push(response);
     if (!flushScheduled) {
       flushScheduled = true;
@@ -353,7 +352,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     }
   },
 
-  _applyWorkerError: (task) => {
+  _applyWorkerError: (task: Task | null) => {
     errorBuffer.push(task);
     if (!flushScheduled) {
       flushScheduled = true;
@@ -364,7 +363,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
   },
 
   _batchApplyResults: () => {
-    const responses = [...responseBuffer];
+    const responses = [...responseBuffer] as WorkerOutbound[];
     const errors = [...errorBuffer];
     responseBuffer = [];
     errorBuffer = [];
@@ -381,15 +380,15 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
         // Process successful results
         for (const response of responses) {
-          const item = nextItems.get(response.id);
-          if (!item) continue;
+          if (response.type === 'RESULT') {
+            const item = nextItems.get(response.id);
+            if (!item) continue;
 
-          const format = response.format;
-          const result = item.results[format];
-          if (!result) continue;
+            const format = response.format;
+            const result = item.results[format];
+            if (!result) continue;
 
-          const nextItem = { ...item };
-          if (response.status === STATUS_SUCCESS) {
+            const nextItem = { ...item };
             if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
             const downloadUrl = URL.createObjectURL(response.blob);
 
@@ -407,22 +406,17 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
                 timing: response.timing,
               },
             };
-          } else {
-            nextItem.results = {
-              ...item.results,
-              [format]: { ...result, status: STATUS_ERROR, error: response.error },
-            };
-          }
 
-          if (isTerminal(nextItem)) {
-            const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
-            nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
-            nextItem.progress = 100;
-            nextPending.delete(response.id);
-            shouldProcessNext = true;
-          }
+            if (isTerminal(nextItem)) {
+              const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
+              nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
+              nextItem.progress = 100;
+              nextPending.delete(response.id);
+              shouldProcessNext = true;
+            }
 
-          nextItems.set(response.id, nextItem);
+            nextItems.set(response.id, nextItem);
+          }
         }
 
         // Process errors
@@ -524,8 +518,10 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
     set((state) => {
       const nextItems = new Map(state.items);
+      const nextPending = new Set(state.pendingIds);
       nextItems.set(nextId, processingItem);
-      return { items: nextItems };
+      nextPending.delete(nextId);
+      return { items: nextItems, pendingIds: nextPending };
     });
   },
 }));

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_GLOBAL_OPTIONS, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants';
-import type { ImageItem, WorkerResponse } from '@/lib/queue/types';
+import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
 import { useImageStore } from '@/store/image-store';
 
 function createItem(id: string, name: string): ImageItem {
@@ -21,6 +21,10 @@ describe('image-store queue progression', () => {
   beforeEach(() => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
     vi.stubGlobal(
       'Worker',
       vi.fn(() => ({
@@ -49,6 +53,7 @@ describe('image-store queue progression', () => {
         [second.id, second],
       ]),
       itemOrder: [first.id, second.id],
+      pendingIds: new Set([first.id, second.id]),
     });
 
     const pool = useImageStore.getState()._getPool();
@@ -67,13 +72,15 @@ describe('image-store queue progression', () => {
   it('starts the next pending item after the current item succeeds', () => {
     const { addTask, first, second } = seedTwoPendingItems();
 
-    const response: WorkerResponse = {
+    const response: WorkerOutboundResult = {
+      type: 'RESULT',
       id: first.id,
       format: 'png',
       blob: new Blob(['done']),
       size: 4,
       label: 'png',
-      status: STATUS_SUCCESS,
+      formattedSize: '4.0',
+      savingsPercent: 0,
     };
 
     useImageStore.getState()._applyWorkerResult(response);

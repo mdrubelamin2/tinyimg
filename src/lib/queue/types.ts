@@ -105,8 +105,8 @@ export interface Task {
 
 /** Main thread → Worker messages */
 export type WorkerInbound =
-  | { type: 'OPTIMIZE'; taskId: string; file: File; options: TaskOptions }
-  | { type: 'CANCEL'; taskId: string }
+  | { type: 'OPTIMIZE'; id: string; file: File; options: TaskOptions }
+  | { type: 'CANCEL'; id: string }
   | { type: 'PRELOAD_CODEC'; format: string };
 
 /** Worker → Main thread messages */
@@ -118,14 +118,14 @@ export type WorkerOutbound =
 
 export interface WorkerOutboundProgress {
   type: 'PROGRESS';
-  taskId: string;
+  id: string;
   stage: PipelineStage;
   percent: number;
 }
 
 export interface WorkerOutboundResult {
   type: 'RESULT';
-  taskId: string;
+  id: string;
   format: string;
   blob: Blob;
   size: number;
@@ -137,14 +137,14 @@ export interface WorkerOutboundResult {
 
 export interface WorkerOutboundError {
   type: 'ERROR';
-  taskId: string;
+  id: string;
   format: string;
   error: string;
 }
 
 export interface WorkerOutboundCancelled {
   type: 'CANCELLED';
-  taskId: string;
+  id: string;
 }
 
 // ---------------------------------------------------------------------------

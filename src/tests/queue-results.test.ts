@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STATUS_PENDING } from '@/constants';
-import type { ImageItem, WorkerResponse } from '@/lib/queue-types';
+import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
 import { applyWorkerResponse, applyWorkerTaskError } from '@/lib/queue/queue-results';
 
 function createBaseItem(): ImageItem {
@@ -25,13 +25,15 @@ describe('queue-results', () => {
 
   it('applies worker success and marks item as success', () => {
     const queue = [createBaseItem()];
-    const response: WorkerResponse = {
+    const response: WorkerOutboundResult = {
+      type: 'RESULT',
       id: 'item-1',
       format: 'webp',
       blob: new Blob(['abc']),
       size: 3,
       label: 'WEBP',
-      status: 'success',
+      formattedSize: '3.0',
+      savingsPercent: 0,
     };
 
     const next = applyWorkerResponse(queue, response);

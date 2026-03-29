@@ -43,6 +43,12 @@ self.onmessage = async (e: MessageEvent) => {
   const requestedFormat = options.format;
   const finalFormat = normalizeOutputFormat(options.format, extension);
 
+  // Handle cancellation message
+  if (e.data.type === 'CANCEL') {
+    self.postMessage({ type: 'CANCELLED', id });
+    return;
+  }
+
   const perf =
     typeof performance !== 'undefined' && typeof performance.mark === 'function'
       ? performance
@@ -140,6 +146,7 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     finish({
+      type: 'RESULT',
       id,
       blob: resultBlob,
       size: resultBlob.size,
@@ -147,7 +154,6 @@ self.onmessage = async (e: MessageEvent) => {
       label,
       formattedSize: (resultBlob.size / 1024).toFixed(1),
       savingsPercent: Math.round(Math.abs(((file.size - resultBlob.size) / file.size) * 100)),
-      status: 'success',
       timing,
     });
     } catch (error) {
@@ -163,9 +169,9 @@ self.onmessage = async (e: MessageEvent) => {
         } : error
       });
       finish({
+        type: 'ERROR',
         id,
         format: requestedFormat,
-        status: 'error',
         error: toErrorMessage(error, 'Optimization failed'),
       });
     }

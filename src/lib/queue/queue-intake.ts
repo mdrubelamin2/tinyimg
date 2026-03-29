@@ -18,7 +18,7 @@ import {
   DEFAULT_MIME,
   isHeicDecodeLikelySupported,
 } from '@/lib/validation';
-import type { ImageItem } from '@/lib/queue-types';
+import type { ImageItem } from '@/lib/queue/types';
 
 const ZIP_PATH_IGNORE = '__MACOSX';
 
