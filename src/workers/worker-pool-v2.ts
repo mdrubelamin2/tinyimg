@@ -18,12 +18,21 @@ interface WorkerSlot {
   currentTask: Task | null;
 }
 
+interface DeviceMemoryNavigator {
+  deviceMemory?: number;
+}
+
 export function computeConcurrency(): number {
   const cores = navigator.hardwareConcurrency ?? CONCURRENCY_DEFAULT;
-  return Math.min(
+  const memory = (navigator as DeviceMemoryNavigator).deviceMemory ?? CONCURRENCY_DEFAULT;
+  const optimalCores = Math.min(
     Math.max(cores > 1 ? cores - 1 : 1, CONCURRENCY_MIN),
     CONCURRENCY_MAX
   );
+
+  if (memory < 4) return Math.min(optimalCores, CONCURRENCY_MIN);
+  if (memory < 8) return Math.min(optimalCores, CONCURRENCY_DEFAULT);
+  return Math.min(optimalCores, CONCURRENCY_MAX);
 }
 
 /**
