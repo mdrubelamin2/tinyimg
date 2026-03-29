@@ -23,6 +23,7 @@ export const VirtualizedTableBody = ({
   gridClass,
 }: VirtualizedTableBodyProps) => {
   const setVisibleItems = useImageStore(state => state.setVisibleItems);
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: itemIds.length,
     getScrollElement: () => scrollRef.current,
