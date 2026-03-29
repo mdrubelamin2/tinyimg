@@ -95,7 +95,8 @@ export async function processSvg(
   const text = await file.text();
 
   const { data: optimizedSvg, metadata } = await optimizeSvg(text);
-  const shouldWrap = metadata.nodeCount > 1500 || metadata.segmentCount > 5000 || metadata.rasterBytes > 0;
+  const shouldWrap =
+    metadata.nodeCount > 1500 || metadata.segmentCount > 5000 || metadata.rasterBytes > 10240;
 
   if (!shouldWrap) {
     return {
