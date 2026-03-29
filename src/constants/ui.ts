@@ -2,8 +2,6 @@
  * UI display constants: confetti, formatting, display units.
  */
 
-export const BYTES_PER_KB = 1024;
-
 // --- Confetti celebration on batch complete ---
 export const CONFETTI_PARTICLE_COUNT = 150;
 export const CONFETTI_SPREAD = 100;

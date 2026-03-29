@@ -6,6 +6,13 @@ import { Resvg } from '@resvg/resvg-wasm';
 import {
   MAX_PIXELS,
   SVG_INTERNAL_SSAA_SCALE,
+  SVG_NODES_MAX,
+  SVG_SEGMENTS_MAX,
+  SVG_RASTER_BYTES_MAX,
+  SVG_TINY_FILE_BYTES_MAX,
+  SVG_NODES_ANCHOR_MAX,
+  SVG_RASTER_BYTES_MIN_FOR_HYBRID,
+  SVG_RASTER_DOMINANCE_RATIO,
 } from '@/constants/index';
 import type { SvgInternalFormat } from '@/constants/index';
 import { optimizeSvg } from '@/lib/optimizer/svg-optimizer';
@@ -117,12 +124,12 @@ export async function processSvg(
   const { data: optimizedSvg, metadata } = await optimizeSvg(text);
   const totalSizeBytes = new TextEncoder().encode(optimizedSvg).length;
 
-  const isTiny = totalSizeBytes < 4096;
-  const isVectorComplex = metadata.nodeCount > 1500 || metadata.segmentCount > 5000;
-  const isHeavyHybrid = metadata.rasterBytes > 32768;
+  const isTiny = totalSizeBytes < SVG_TINY_FILE_BYTES_MAX;
+  const isVectorComplex = metadata.nodeCount > SVG_NODES_MAX || metadata.segmentCount > SVG_SEGMENTS_MAX;
+  const isHeavyHybrid = metadata.rasterBytes > SVG_RASTER_BYTES_MAX;
   const isHybridDominant =
-    metadata.rasterBytes > 4096 && metadata.rasterBytes / Math.max(1, totalSizeBytes) > 0.5;
-  const isComplexityAnchor = metadata.rasterBytes > 0 && metadata.nodeCount > 256;
+    metadata.rasterBytes > SVG_RASTER_BYTES_MIN_FOR_HYBRID && metadata.rasterBytes / Math.max(1, totalSizeBytes) > SVG_RASTER_DOMINANCE_RATIO;
+  const isComplexityAnchor = metadata.rasterBytes > 0 && metadata.nodeCount > SVG_NODES_ANCHOR_MAX;
 
   const shouldWrap =
     !isTiny && (isVectorComplex || isHeavyHybrid || isHybridDominant || isComplexityAnchor);

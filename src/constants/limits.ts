@@ -41,9 +41,25 @@ export const SVG_DOWNSCALE_UNSHARP_AMOUNT = 160;
 export const SVG_DOWNSCALE_UNSHARP_RADIUS = 0.6;
 export const SVG_DOWNSCALE_UNSHARP_THRESHOLD = 1;
 
+// --- SVG complexity / raster thresholds (extracted from SVG pipeline) ---
+// Node/segment limits to decide between vector vs wrapped/rasterized paths
+export const SVG_NODES_MAX = 1500;
+export const SVG_SEGMENTS_MAX = 5000;
+// Embedded raster size threshold used for hybrid wrapping decisions
+export const SVG_RASTER_BYTES_MAX = 32768; // 32 KB
+// 4KB tiny-file threshold used to skip wrapping for very small SVGs
+export const SVG_TINY_FILE_BYTES_MAX = 4096;
+// Node count threshold to trigger complexity-anchor wrapping when raster data exists
+export const SVG_NODES_ANCHOR_MAX = 256;
+// Minimum embedded raster bytes to consider hybrid wrapping as dominant
+export const SVG_RASTER_BYTES_MIN_FOR_HYBRID = 4096;
+// Dominance ratio threshold for hybrid determination
+export const SVG_RASTER_DOMINANCE_RATIO = 0.5;
+
 // --- Timing ---
 export const UPDATE_OPTIONS_DEBOUNCE_MS = 300;
 export const DOWNLOAD_URL_REVOKE_DELAY_MS = 10_000;
 
 // --- ID generation ---
 export const ID_RANDOM_LENGTH = 9;
+export const BYTES_PER_KB = 1024;
