@@ -16,7 +16,7 @@ export const Logger = {
   },
   debug(message: string, meta?: Record<string, unknown>) {
     if (import.meta.env.DEV) {
-      console.debug(`[Worker DEBUG] ${message}`, meta);
+      console.info(`[Worker DEBUG] ${message}`, meta);
     }
   }
 };
