@@ -1,4 +1,5 @@
 import type { Config } from 'svgo';
+import { Logger } from '@/workers/logger';
 
 /**
  * Ultimate 2026 SVGO Configuration
@@ -65,10 +66,20 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; engi
     const result = optimize(svgText, SVGO_CONFIG);
     
     if (result.data && result.data.length > 0) {
+      Logger.debug('SVGO optimization successful', {
+        inputSize: svgText.length,
+        outputSize: result.data.length,
+      });
       return { data: result.data, engine: 'svgo' };
     }
   } catch (error) {
-    console.error('SVGO optimization failed:', error);
+    Logger.error('SVGO optimization failed', {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      } : error
+    });
   }
 
   return { data: svgText, engine: 'svgo' };
