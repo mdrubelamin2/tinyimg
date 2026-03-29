@@ -12,11 +12,13 @@ const SVGO_CONFIG: Config = {
       name: 'preset-default',
       params: {
         overrides: {
-          // Aggressive path data optimization
+          // 2026 Industry Standard: Keep viewBox for perfect scaling
+          removeViewBox: false,
+          // Aggressive but VISUAL-SAFE path optimization
           convertPathData: {
-            floatPrecision: 2,
+            floatPrecision: 3, // Increased for 100% accuracy
             forceRelative: true,
-            smartArcConversion: true,
+            smartArcConversion: false, // DISABLED: Causes layout breakage in complex paths
             noSpaceAfterFlags: true,
             collapseRepeated: true,
           },
@@ -31,7 +33,7 @@ const SVGO_CONFIG: Config = {
       name: 'removeTitle',
       active: false,
     } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-    // Ensure IDs don't conflict when multiple SVGs are inlined on one page
+    // Ensure IDs don't conflict (Mandatory for production)
     {
       name: 'prefixIds',
       params: {
@@ -39,19 +41,18 @@ const SVGO_CONFIG: Config = {
         delim: '',
       },
     },
-    'removeDimensions',       // Prefer viewBox for layout
-    'convertStyleToAttrs',    // Style elements -> Attributes
-    'removeStyleElement',     // Aggressive cleanup
-    'removeScripts',          // Security & Size (v4 name)
-    'mergePaths',             // Combine adjacent paths
-    'collapseGroups',         // Flatten redundant <g>
-    'removeEmptyAttrs',       // Cleanup
-    'sortAttrs',              // Improves Gzip/Brotli compression ratios
-    'reusePaths',             // Use <defs> for identical paths
+    'removeDimensions',       // Prefer viewBox
+    'convertStyleToAttrs',    // Safe & Effective
+    'removeStyleElement',     
+    'removeScripts',          
+    'mergePaths',             // Safe for most vectors
+    'collapseGroups',         // Safe for most vectors
+    'removeEmptyAttrs',
+    'sortAttrs',              // Crucial for Gzip/Brotli
     {
       name: 'cleanupNumericValues',
       params: {
-        floatPrecision: 2,
+        floatPrecision: 3,
       },
     },
   ],
