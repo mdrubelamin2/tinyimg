@@ -67,7 +67,7 @@ if (typeof (global as any).OffscreenCanvas === 'undefined') {
     getContext() {
       return {
         drawImage: () => {},
-        getImageData: (x: number, y: number, w: number, h: number) => {
+        getImageData: (_x: number, _y: number, w: number, h: number) => {
           return new (global as any).ImageData(new Uint8ClampedArray(w * h * 4), w, h);
         },
       };
@@ -87,14 +87,16 @@ vi.mock('@/lib/optimizer/svg-optimizer', () => ({
     
     if (text.includes('<image')) {
       type = 'HYBRID';
-      rasterBytes = 1000; // Trigger shouldWrap
+      rasterBytes = 32769; // Trigger shouldWrap with 32KB+ rule
     } else if (text.split('<').length > 1500) {
       type = 'COMPLEX';
-      nodeCount = 1501; // Trigger shouldWrap
+      nodeCount = 1501; // Trigger shouldWrap with vector complexity rule
     }
     
+    const data = text.length < 4096 ? text.padEnd(4096, ' ') : text;
+
     return {
-      data: text,
+      data,
       metadata: {
         nodeCount,
         segmentCount: 0,

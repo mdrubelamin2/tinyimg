@@ -95,8 +95,14 @@ export async function processSvg(
   const text = await file.text();
 
   const { data: optimizedSvg, metadata } = await optimizeSvg(text);
-  const shouldWrap =
-    metadata.nodeCount > 1500 || metadata.segmentCount > 5000 || metadata.rasterBytes > 10240;
+  const totalSizeBytes = new TextEncoder().encode(optimizedSvg).length;
+
+  const isVectorComplex = metadata.nodeCount > 1500 || metadata.segmentCount > 5000;
+  const isHybridRaster =
+    metadata.rasterBytes > 32768 ||
+    (metadata.rasterBytes > 4096 && metadata.rasterBytes / Math.max(1, totalSizeBytes) > 0.5);
+
+  const shouldWrap = totalSizeBytes >= 4096 && (isVectorComplex || isHybridRaster);
 
   if (!shouldWrap) {
     return {
