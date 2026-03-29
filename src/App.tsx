@@ -1,4 +1,5 @@
 import { useEffect, useState, useDeferredValue, useCallback } from 'react';
+import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { preload, prefetchDNS } from 'react-dom';
 import { useImageStore, selectItemCount, selectOrderedItems } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -123,12 +124,15 @@ const App: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <title>TinyIMG - {itemCount > 0 ? `${itemCount} Images Processing` : 'Industrial Image Optimization'}</title>
-      <meta name="description" content={itemCount > 0 ? `Processing ${itemCount} images with WASM optimization` : 'Professional-grade image optimization in your browser'} />
-      <meta name="robots" content="noindex, nofollow" />
-      
-      <ErrorBoundary>
+    <HelmetProvider>
+      <div className="min-h-screen bg-background text-foreground">
+        <Helmet>
+          <title>TinyIMG - {itemCount > 0 ? `${itemCount} Images Processing` : 'Industrial Image Optimization'}</title>
+          <meta name="description" content={itemCount > 0 ? `Processing ${itemCount} images with WASM optimization` : 'Professional-grade image optimization in your browser'} />
+          <meta name="robots" content="noindex, nofollow" />
+        </Helmet>
+        
+        <ErrorBoundary>
         <AppHeader />
 
         <main className="pt-28 md:pt-36 pb-12 px-4 md:px-8 max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-8 md:gap-10">
@@ -198,7 +202,8 @@ const App: React.FC = () => {
           />
         ) : null}
       </ErrorBoundary>
-    </div>
+      </div>
+    </HelmetProvider>
   );
 };
 
