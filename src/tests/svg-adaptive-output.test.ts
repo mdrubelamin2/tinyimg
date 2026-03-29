@@ -82,17 +82,23 @@ if (typeof global.TextEncoder === 'undefined') {
 vi.mock('@/lib/optimizer/svg-optimizer', () => ({
   optimizeSvg: vi.fn(async (text: string) => {
     let type: 'SIMPLE' | 'COMPLEX' | 'HYBRID' = 'SIMPLE';
+    let nodeCount = 0;
+    let rasterBytes = 0;
+    
     if (text.includes('<image')) {
       type = 'HYBRID';
+      rasterBytes = 1000; // Trigger shouldWrap
     } else if (text.split('<').length > 1500) {
       type = 'COMPLEX';
+      nodeCount = 1501; // Trigger shouldWrap
     }
+    
     return {
       data: text,
       metadata: {
-        nodeCount: 0,
+        nodeCount,
         segmentCount: 0,
-        rasterBytes: 0,
+        rasterBytes,
         hasFilters: false,
         type,
       },
