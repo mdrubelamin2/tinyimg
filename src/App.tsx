@@ -119,7 +119,12 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    opfsManager.initialize().catch(error => {
+    const initOPFS = async () => {
+      await opfsManager.cleanup();
+      await opfsManager.initialize();
+    };
+    
+    initOPFS().catch(error => {
       console.error('Failed to initialize OPFS:', error);
     });
   }, []);
