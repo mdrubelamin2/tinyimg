@@ -60,8 +60,10 @@ export interface ImageResult {
 // ---------------------------------------------------------------------------
 export interface ImageItem {
   id: string;
-  file: File;
-  previewUrl?: string | undefined;
+  fileHandle: FileSystemFileHandle;
+  fileName: string;
+  fileSize: number;
+  thumbnailDataUrl?: string | undefined;
   status: ItemStatus;
   progress: number;
   originalSize: number;
@@ -69,10 +71,29 @@ export interface ImageItem {
   originalFormat: string;
   results: Record<string, ImageResult>;
   error?: string | undefined;
-  /** Per-item format override (null = follow global config) */
   outputFormatsOverride?: string[] | null | undefined;
-  /** Per-item quality override (null = follow global config) */
   qualityPercentOverride?: number | null | undefined;
+}
+
+export interface OPFSFileMetadata {
+  id: string;
+  handle: FileSystemFileHandle;
+  name: string;
+  size: number;
+  type: string;
+}
+
+export interface ThumbnailRequest {
+  type: 'GENERATE';
+  id: string;
+  file: File;
+}
+
+export interface ThumbnailResponse {
+  type: 'THUMBNAIL' | 'ERROR';
+  id: string;
+  dataUrl?: string;
+  error?: string;
 }
 
 // ---------------------------------------------------------------------------
