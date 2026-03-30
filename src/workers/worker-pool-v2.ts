@@ -4,7 +4,7 @@
  */
 
 import type { Task, WorkerOutbound } from '@/lib/queue/types.ts';
-import { CONCURRENCY_MIN, CONCURRENCY_MAX, CONCURRENCY_DEFAULT } from '@/constants/index.ts';
+import { CONCURRENCY_MAX } from '@/constants/index.ts';
 
 export interface WorkerPoolCallbacks {
   onMessage: (workerIndex: number, data: WorkerOutbound) => void;
@@ -18,21 +18,12 @@ interface WorkerSlot {
   currentTask: Task | null;
 }
 
-interface DeviceMemoryNavigator {
-  deviceMemory?: number;
-}
-
 export function computeConcurrency(): number {
-  const cores = navigator.hardwareConcurrency ?? CONCURRENCY_DEFAULT;
-  const memory = (navigator as DeviceMemoryNavigator).deviceMemory ?? CONCURRENCY_DEFAULT;
-  const optimalCores = Math.min(
-    Math.max(cores > 1 ? cores - 1 : 1, CONCURRENCY_MIN),
-    CONCURRENCY_MAX
-  );
+  const cores = navigator.hardwareConcurrency;
+  if (!cores || cores <= 2) return 1;
 
-  if (memory < 4) return Math.min(optimalCores, CONCURRENCY_MIN);
-  if (memory < 8) return Math.min(optimalCores, CONCURRENCY_DEFAULT);
-  return Math.min(optimalCores, CONCURRENCY_MAX);
+  const reserved = cores > 6 ? 2 : 1;
+  return Math.min(cores - reserved, CONCURRENCY_MAX);
 }
 
 /**
