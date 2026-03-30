@@ -1,19 +1,18 @@
 /**
- * ImagePreview: before/after split-view comparison.
+ * ImagePreview: before/after split-view comparison with tabs for multiple formats.
  * Canvas-based with draggable divider for comparing original vs optimized.
  */
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { X, ZoomIn } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { ImageItem } from '@/lib/queue/types';
+import { STATUS_SUCCESS } from '@/constants/index';
 
 interface ImagePreviewProps {
-  originalUrl: string;
-  optimizedUrl: string;
-  originalSize: number;
-  optimizedSize: number;
-  format: string;
-  fileName: string;
+  item: ImageItem;
+  selectedFormat: string;
+  onFormatChange: (format: string) => void;
   onClose: () => void;
 }
 
@@ -22,19 +21,26 @@ const MAX_SPLIT = 0.9;
 const DEFAULT_SPLIT = 0.5;
 
 export const ImagePreview: React.FC<ImagePreviewProps> = ({
-  originalUrl,
-  optimizedUrl,
-  originalSize,
-  optimizedSize,
-  format,
-  fileName,
+  item,
+  selectedFormat,
+  onFormatChange,
   onClose,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [split, setSplit] = useState(DEFAULT_SPLIT);
   const [isDragging, setIsDragging] = useState(false);
 
-  const savings = originalSize > 0
+  const successResults = useMemo(() => {
+    return Object.values(item.results).filter(r => r.status === STATUS_SUCCESS);
+  }, [item.results]);
+
+  const currentResult = item.results[selectedFormat];
+  const originalUrl = item.previewUrl;
+  const optimizedUrl = currentResult?.downloadUrl;
+  const originalSize = item.originalSize;
+  const optimizedSize = currentResult?.size ?? 0;
+
+  const savings = originalSize > 0 && optimizedSize > 0
     ? ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
     : '0';
 
@@ -60,7 +66,6 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     setIsDragging(false);
   };
 
-  // ESC to close
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -74,13 +79,15 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     return `${(bytes / 1024).toFixed(1)} KB`;
   };
 
+  if (!originalUrl || !optimizedUrl) return null;
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview comparison for ${fileName}`}
+      aria-label={`Preview comparison for ${item.file.name}`}
     >
       <div
         className="relative bg-surface text-surface-foreground rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden border border-border"
@@ -92,10 +99,10 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             <ZoomIn size={18} className="text-primary" />
             <div>
               <h3 className="font-bold text-foreground text-sm truncate max-w-[300px]">
-                {fileName}
+                {item.file.name}
               </h3>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
-                {format} · Saved {savings}%
+                {currentResult?.label ?? selectedFormat} · Saved {savings}%
               </p>
             </div>
           </div>
@@ -107,6 +114,47 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             <X size={20} className="text-muted-foreground" />
           </button>
         </div>
+
+        {/* Format Tabs */}
+        {successResults.length > 1 && (
+          <div className="flex items-center gap-1 px-4 py-3 border-b border-border bg-muted/30 backdrop-blur-sm">
+            {successResults.map((result) => {
+              const isActive = result.format === selectedFormat;
+              const formatSavings = originalSize > 0 && result.size
+                ? ((originalSize - result.size) / originalSize * 100).toFixed(0)
+                : null;
+              
+              return (
+                <button
+                  key={result.format}
+                  onClick={() => onFormatChange(result.format)}
+                  className={cn(
+                    'relative px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 scale-105'
+                      : 'text-muted-foreground hover:text-foreground hover:scale-[1.02] hover:bg-muted/50'
+                  )}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>{result.label ?? result.format}</span>
+                    <span className="text-[10px] opacity-50">·</span>
+                    <span className="text-[10px] opacity-80">
+                      {result.size != null ? formatBytes(result.size) : '—'}
+                    </span>
+                    {formatSavings && (
+                      <span className={cn(
+                        'ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold',
+                        isActive ? 'bg-white/20 text-white' : 'bg-success/15 text-success'
+                      )}>
+                        -{formatSavings}%
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Split view */}
         <div
