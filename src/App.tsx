@@ -27,6 +27,8 @@ import {
   STATUS_ERROR,
 } from '@/constants/index';
 import type { ImageItem } from '@/lib/queue/types';
+import { opfsManager } from '@/lib/opfs/opfs-manager';
+import { thumbnailCache } from '@/lib/opfs/thumbnail-cache';
 
 preload('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap', {
   as: 'style',
@@ -115,6 +117,22 @@ const App: React.FC = () => {
     onDownload: hasFinishedItems ? handleDownloadAll : undefined,
     onEscape: preview ? () => setPreview(null) : undefined,
   });
+
+  useEffect(() => {
+    opfsManager.initialize().catch(error => {
+      console.error('Failed to initialize OPFS:', error);
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleUnload = () => {
+      thumbnailCache.destroy();
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, []);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
