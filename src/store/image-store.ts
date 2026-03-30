@@ -17,26 +17,23 @@ import {
   OUTPUT_QUALITY_MIN,
   UPDATE_OPTIONS_DEBOUNCE_MS,
 } from '@/constants/index';
-import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
-import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
+import { PriorityWorkerPool } from '@/lib/worker-pool-priority';
+import { collectItemsFromFilesStreaming } from '@/lib/queue/queue-intake-streaming';
 import {
-  createQueueItem,
   getFormatsToProcess,
   resetItemResultsForOptions,
 } from '@/lib/queue/queue-item';
 import { revokeResultUrls, buildAndDownloadZip } from '@/lib/download';
 import OptimizerWorkerUrl from '@/workers/optimizer.worker.ts?worker&url';
 import { useSettingsStore } from './settings-store';
+import { opfsManager } from '@/lib/opfs/opfs-manager';
+import { thumbnailCache } from '@/lib/opfs/thumbnail-cache';
+import { useVisibilityStore } from './visibility-store';
 
-/**
- * Image store state definition.
- * Extracted constants for magic values to ensure clean, maintainable code.
- */
 interface ImageStoreState {
   items: Map<string, ImageItem>;
   itemOrder: string[];
   pendingIds: Set<string>;
-  visibleItemIds: Set<string>;
 }
 
 interface ImageStoreActions {
@@ -47,40 +44,30 @@ interface ImageStoreActions {
   reorderItems: (fromIndex: number, toIndex: number) => void;
   setItemOutputFormats: (id: string, formats: string[] | null, options: GlobalOptions) => void;
   setItemQualityPercent: (id: string, percent: number | null, options: GlobalOptions) => void;
-  setVisibleItems: (ids: string[]) => void;
   downloadAll: () => Promise<void>;
-
-  /** Called when global options change (debounced). Re-enqueues items. 
-   * @param forceAll - If true, resets ALL items. If false, only resets pending/processing items.
-   */
   applyGlobalOptions: (options: GlobalOptions, forceAll?: boolean) => void;
-
-  /** Internal: called by worker pool */
   _applyWorkerResult: (response: WorkerOutbound) => void;
   _applyWorkerError: (task: Task | null) => void;
   _batchApplyResults: () => void;
-  _getPool: () => WorkerPool;
+  _getPool: () => PriorityWorkerPool;
   _processNext: (options: GlobalOptions) => void;
 }
 
 export type ImageStore = ImageStoreState & ImageStoreActions;
 
-// --- Worker pool singleton (initialized lazily) ---
-let pool: WorkerPool | null = null;
+let pool: PriorityWorkerPool | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingForceAll = false;
 
-// Update batching buffers
 let responseBuffer: WorkerOutbound[] = [];
 let errorBuffer: (Task | null)[] = [];
 let flushScheduled = false;
 
-function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
+function getPool(storeApi: { getState: () => ImageStore }): PriorityWorkerPool {
   if (pool) return pool;
   const workerUrl = new URL(OptimizerWorkerUrl, import.meta.url);
-  pool = new WorkerPool(workerUrl, computeConcurrency(), {
+  pool = new PriorityWorkerPool(workerUrl, {
     onMessage: (_workerIndex, data) => {
-      // Use WorkerOutbound directly - no legacy bridge needed
       storeApi.getState()._applyWorkerResult(data as WorkerOutbound);
     },
     onError: (_workerIndex, task) => {
@@ -90,11 +77,6 @@ function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   return pool;
 }
 
-// --- Helpers ---
-
-/**
- * Checks if all results for an item are in a terminal state (Success or Error).
- */
 function isTerminal(item: ImageItem): boolean {
   return !Object.values(item.results).some(
     r => r.status === STATUS_PROCESSING || r.status === STATUS_PENDING
@@ -105,35 +87,41 @@ let cachedItemsRef: Map<string, ImageItem> | null = null;
 let cachedOrderRef: string[] | null = null;
 let cachedOrderedItems: ImageItem[] = [];
 
-/**
- * Efficiently converts the items map to an ordered array using memoization.
- */
 function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem[] {
   if (items === cachedItemsRef && order === cachedOrderRef) {
     return cachedOrderedItems;
   }
-
   cachedItemsRef = items;
   cachedOrderRef = order;
   cachedOrderedItems = order.map(id => items.get(id)).filter((i): i is ImageItem => i != null);
   return cachedOrderedItems;
 }
 
-/**
- * The main image store. Using Zustand for buttery-smooth performance and clean state management.
- * Strictly adheres to DRY, KISS, and SOLID principles.
- */
 export const useImageStore = create<ImageStore>()((set, get, api) => ({
   items: new Map(),
   itemOrder: [],
   pendingIds: new Set(),
-  visibleItemIds: new Set(),
 
   addFiles: async (files, options) => {
-    const newItems = await collectItemsFromFiles(files, {
-      createItem: (file: File) => {
-        const item = createQueueItem(file, options);
-        // item.formattedOriginalSize = (item.originalSize / BYTES_PER_KB).toFixed(1);
+    await opfsManager.initialize();
+    
+    const newItems = await collectItemsFromFilesStreaming(files, {
+      createItem: (metadata) => {
+        const item: ImageItem = {
+          id: metadata.id,
+          fileHandle: metadata.handle,
+          fileName: metadata.name,
+          fileSize: metadata.size,
+          status: STATUS_PENDING,
+          progress: 0,
+          originalSize: metadata.size,
+          originalFormat: metadata.name.split('.').pop()?.toLowerCase() ?? 'unknown',
+          results: {},
+        };
+        const formats = getFormatsToProcess(item, options);
+        for (const format of formats) {
+          item.results[format] = { format, status: STATUS_PENDING };
+        }
         return item;
       },
     });
@@ -158,7 +146,11 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     if (!item) return;
 
     getPool(api).abortInFlightForItem(id);
-    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    
+    if (item.fileHandle) {
+      opfsManager.deleteFile(item.fileHandle).catch(console.error);
+    }
+    thumbnailCache.delete(id);
     revokeResultUrls(item);
 
     set((state) => {
@@ -190,7 +182,11 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
           }
           continue;
         }
-        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        
+        if (item.fileHandle) {
+          opfsManager.deleteFile(item.fileHandle).catch(console.error);
+        }
+        thumbnailCache.delete(id);
         revokeResultUrls(item);
       }
       return { items: nextItems, itemOrder: nextOrder, pendingIds: nextPending };
@@ -200,11 +196,15 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
   clearAll: () => {
     const { items } = get();
     for (const item of items.values()) {
-      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      if (item.fileHandle) {
+        opfsManager.deleteFile(item.fileHandle).catch(console.error);
+      }
+      thumbnailCache.delete(item.id);
       revokeResultUrls(item);
     }
     if (pool) pool.destroy();
     pool = null;
+    thumbnailCache.clear();
     set({ items: new Map(), itemOrder: [], pendingIds: new Set() });
   },
 
@@ -304,10 +304,6 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     get()._processNext(options);
   },
 
-  setVisibleItems: (ids) => {
-    set({ visibleItemIds: new Set(ids) });
-  },
-
   downloadAll: async () => {
     const { items, itemOrder } = get();
     const arr = itemsToArray(items, itemOrder);
@@ -378,7 +374,6 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
         const nextItems = new Map(state.items);
         const nextPending = new Set(state.pendingIds);
 
-        // Process successful results
         for (const response of responses) {
           if (response.type === 'RESULT') {
             const item = nextItems.get(response.id);
@@ -419,7 +414,6 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
           }
         }
 
-        // Process errors
         for (const task of errors) {
           if (!task) continue;
           const item = nextItems.get(task.id);
@@ -455,17 +449,15 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
 
   _getPool: () => getPool(api),
 
-  _processNext: (options) => {
-    const { items, itemOrder, pendingIds, visibleItemIds } = get();
+  _processNext: async (options) => {
+    const { items, itemOrder, pendingIds } = get();
+    const visibleItemIds = useVisibilityStore.getState().visibleItemIds;
 
     if (pendingIds.size === 0) return;
 
-    // Use pendingIds to avoid O(N) filtering of itemOrder
     const currentPendingArray = itemOrder.filter(id => pendingIds.has(id));
-
     if (currentPendingArray.length === 0) return;
 
-    // Sort by priority: Visible items first, then small files if enabled
     const sortedIds = [...currentPendingArray].sort((a, b) => {
       const aVisible = visibleItemIds.has(a);
       const bVisible = visibleItemIds.has(b);
@@ -477,7 +469,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
         const itemA = items.get(a);
         const itemB = items.get(b);
         if (!itemA || !itemB) return 0;
-        return itemA.originalSize - itemB.originalSize;
+        return itemA.fileSize - itemB.fileSize;
       }
 
       return 0;
@@ -488,10 +480,11 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     const nextItem = items.get(nextId);
     if (!nextItem || nextItem.status !== STATUS_PENDING) return;
 
-    // Mark as processing
     const processingItem: ImageItem = { ...nextItem, status: STATUS_PROCESSING };
     const fmts = getFormatsToProcess(processingItem, options);
     const currentPool = getPool(api);
+
+    const file = await opfsManager.readFile(nextItem.fileHandle);
 
     for (const format of fmts) {
       if (!processingItem.results[format]) continue;
@@ -502,7 +495,7 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
       currentPool.addTask({
         id: processingItem.id,
         format,
-        file: processingItem.file,
+        file,
         options: {
           format,
           svgInternalFormat: options.svgInternalFormat,
@@ -525,8 +518,6 @@ export const useImageStore = create<ImageStore>()((set, get, api) => ({
     });
   },
 }));
-
-// --- Selector helpers for components ---
 
 export function selectItemById(id: string) {
   return (state: ImageStore) => state.items.get(id);

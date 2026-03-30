@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useImageStore } from '@/store/image-store';
+import { useVisibilityStore } from '@/store/visibility-store';
+import { useThumbnail } from '@/hooks/useThumbnail';
 import { BYTES_PER_KB, STATUS_SUCCESS, STATUS_ERROR } from '@/constants/index';
 import type { ImageItem } from '@/lib/queue/types';
 
@@ -18,8 +20,9 @@ export interface ResultRowProps {
 }
 
 export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
-  // Use highly specific selector to only re-render when THIS item changes
   const item = useStore(useImageStore, useShallow((state) => state.items.get(id)));
+  const isVisible = useVisibilityStore((state) => state.isVisible(id));
+  const thumbnailUrl = useThumbnail(id, item?.fileHandle ?? null, isVisible);
 
   if (!item) return null;
 
@@ -28,9 +31,9 @@ export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
       <TableCell className="px-8 py-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm">
-            {item.previewUrl ? (
+            {thumbnailUrl ? (
               <img
-                src={item.previewUrl}
+                src={thumbnailUrl}
                 alt=""
                 className="w-full h-full object-cover"
               />
@@ -40,7 +43,7 @@ export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground truncate max-w-[150px] md:max-w-[250px]">
-              {item.file.name}
+              {item.fileName}
             </p>
             <p className="text-[10px] text-muted-foreground font-mono tracking-tighter uppercase">
               {item.originalFormat}
@@ -60,7 +63,7 @@ export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
                 ? 'bg-surface border-border shadow-sm hover:border-primary/50 hover:bg-primary/5 hover:shadow-md cursor-pointer'
                 : 'bg-muted/50 border-border opacity-60 cursor-default'
             );
-            const downloadFilename = `tinyimg-${item.file.name.substring(0, item.file.name.lastIndexOf('.'))}.${res.format === 'jpeg' ? DOWNLOAD_EXT_JPEG : res.format}`;
+            const downloadFilename = `tinyimg-${item.fileName.substring(0, item.fileName.lastIndexOf('.'))}.${res.format === 'jpeg' ? DOWNLOAD_EXT_JPEG : res.format}`;
             
             return res.status === STATUS_SUCCESS ? (
               <a
@@ -132,7 +135,7 @@ export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
             onClick={() => onRemove(item.id)}
             className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200"
             title="Remove item"
-            aria-label={`Remove ${item.file.name}`}
+            aria-label={`Remove ${item.fileName}`}
           >
             <Trash2 size={18} />
           </Button>
@@ -141,4 +144,3 @@ export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
     </TableRow>
   );
 };
-

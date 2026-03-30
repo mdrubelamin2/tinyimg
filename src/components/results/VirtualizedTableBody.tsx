@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ResultRowCells } from './ResultRowCells';
-import { useImageStore } from '@/store/image-store';
+import { useVisibilityStore } from '@/store/visibility-store';
 import type { ImageItem } from '@/lib/queue/types';
 
 const ROW_HEIGHT = 88;
@@ -22,8 +22,8 @@ export const VirtualizedTableBody = ({
   scrollRef,
   gridClass,
 }: VirtualizedTableBodyProps) => {
-  const setVisibleItems = useImageStore(state => state.setVisibleItems);
-  // eslint-disable-next-line react-hooks/incompatible-library
+  const setVisibleItems = useVisibilityStore(state => state.setVisibleItems);
+  
   const virtualizer = useVirtualizer({
     count: itemIds.length,
     getScrollElement: () => scrollRef.current,

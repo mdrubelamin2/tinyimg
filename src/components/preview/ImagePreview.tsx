@@ -8,6 +8,7 @@ import { X, ZoomIn, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ImageItem } from '@/lib/queue/types';
 import { STATUS_SUCCESS } from '@/constants/index';
+import { opfsManager } from '@/lib/opfs/opfs-manager';
 
 interface ImagePreviewProps {
   item: ImageItem;
@@ -29,13 +30,42 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [split, setSplit] = useState(DEFAULT_SPLIT);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    
+    const loadPreview = async () => {
+      if (!item.fileHandle) return;
+      
+      try {
+        const file = await opfsManager.readFile(item.fileHandle);
+        const url = URL.createObjectURL(file);
+        
+        if (!cancelled) {
+          setPreviewUrl(url);
+        }
+      } catch (error) {
+        console.error('Failed to load preview:', error);
+      }
+    };
+    
+    loadPreview();
+    
+    return () => {
+      cancelled = true;
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [item.fileHandle]);
 
   const successResults = useMemo(() => {
     return Object.values(item.results).filter(r => r.status === STATUS_SUCCESS);
   }, [item.results]);
 
   const currentResult = item.results[selectedFormat];
-  const originalUrl = item.previewUrl;
+  const originalUrl = previewUrl;
   const optimizedUrl = currentResult?.downloadUrl;
   const originalSize = item.originalSize;
   const optimizedSize = currentResult?.size ?? 0;
@@ -87,7 +117,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview comparison for ${item.file.name}`}
+      aria-label={`Preview comparison for ${item.fileName}`}
     >
       <div
         className="relative bg-surface text-surface-foreground rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden border border-border"
@@ -99,7 +129,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             <ZoomIn size={18} className="text-primary" />
             <div>
               <h3 className="font-bold text-foreground text-sm truncate max-w-[300px]">
-                {item.file.name}
+                {item.fileName}
               </h3>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
                 {currentResult?.label ?? selectedFormat} · Saved {savings}%
@@ -191,7 +221,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           {/* Divider line */}
           <div
             className={cn(
-              "absolute top-0 bottom-0 w-1 bg-gradient-to-b from-primary to-cta shadow-lg shadow-primary/30 transition-opacity",
+              "absolute top-0 bottom-0 w-1 bg-white shadow-lg shadow-primary/30 transition-opacity",
               isDragging ? "opacity-100" : "opacity-90"
             )}
             style={{ left: `${split * 100}%` }}
@@ -227,7 +257,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           {currentResult?.downloadUrl && (
             <a
               href={currentResult.downloadUrl}
-              download={`tinyimg-${item.file.name.substring(0, item.file.name.lastIndexOf('.'))}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
+              download={`tinyimg-${item.fileName.substring(0, item.fileName.lastIndexOf('.'))}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-primary to-primary/80 text-primary-foreground text-[10px] font-bold shadow-md shadow-primary/25 hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
               aria-label={`Download ${currentResult.label ?? selectedFormat}`}
             >

@@ -96,7 +96,7 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
         const size = result.blob.size;
         if (totalBytes + size > MAX_DOWNLOAD_BYTES) continue;
         
-        const baseName = item.file.name.substring(0, item.file.name.lastIndexOf('.'));
+        const baseName = item.fileName.substring(0, item.fileName.lastIndexOf('.'));
         const ext = result.format === 'jpeg' ? 'jpg' : result.format;
         const path = uniqueZipPath(baseName, ext);
         
