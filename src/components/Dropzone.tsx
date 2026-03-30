@@ -74,7 +74,7 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
           </div>
           <div className="px-4 space-y-2">
             <h3 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
-              {isPending ? 'Reading files...' : 'Drop your assets here'}
+              {isPending ? 'Reading files...' : 'Drop your assets here or paste (Ctrl+V)'}
             </h3>
             <p className="text-sm text-muted-foreground max-w-md font-medium leading-relaxed">
               SVG, PNG, JPG, WebP, AVIF, GIF, BMP, TIFF, HEIC (Safari), folders & ZIPs.
