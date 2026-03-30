@@ -10,7 +10,7 @@ const OVERSCAN = 5;
 export interface VirtualizedTableBodyProps {
   itemIds: string[];
   onRemove: (id: string) => void;
-  onPreview?: ((item: ImageItem, format: string) => void) | undefined;
+  onPreview?: ((item: ImageItem) => void) | undefined;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   gridClass?: string;
 }

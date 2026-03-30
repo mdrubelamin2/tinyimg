@@ -36,12 +36,8 @@ prefetchDNS('https://fonts.googleapis.com');
 prefetchDNS('https://fonts.gstatic.com');
 
 interface PreviewState {
-  originalUrl: string;
-  optimizedUrl: string;
-  originalSize: number;
-  optimizedSize: number;
-  format: string;
-  fileName: string;
+  item: ImageItem;
+  selectedFormat: string;
 }
 
 const FAQ_DATA = [
@@ -101,16 +97,13 @@ const App: React.FC = () => {
     }
   }, [options, itemCount, applyGlobalOptions]);
 
-  const handlePreview = useCallback((item: ImageItem, format: string) => {
-    const result = item.results[format];
-    if (!result?.downloadUrl || !item.previewUrl) return;
+  const handlePreview = useCallback((item: ImageItem) => {
+    const formats = Object.keys(item.results);
+    const firstFormat = formats[0];
+    if (!firstFormat) return;
     setPreview({
-      originalUrl: item.previewUrl,
-      optimizedUrl: result.downloadUrl,
-      originalSize: item.originalSize,
-      optimizedSize: result.size ?? 0,
-      format: result.label ?? format,
-      fileName: item.file.name,
+      item,
+      selectedFormat: firstFormat,
     });
   }, []);
 
@@ -211,12 +204,9 @@ const App: React.FC = () => {
 
           {preview ? (
             <ImagePreview
-              originalUrl={preview.originalUrl}
-              optimizedUrl={preview.optimizedUrl}
-              originalSize={preview.originalSize}
-              optimizedSize={preview.optimizedSize}
-              format={preview.format}
-              fileName={preview.fileName}
+              item={preview.item}
+              selectedFormat={preview.selectedFormat}
+              onFormatChange={(format) => setPreview({ ...preview, selectedFormat: format })}
               onClose={() => setPreview(null)}
             />
           ) : null}
