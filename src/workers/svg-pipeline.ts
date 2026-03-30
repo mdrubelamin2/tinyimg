@@ -17,6 +17,7 @@ import {
 import type { SvgInternalFormat } from '@/constants/index';
 import { optimizeSvg } from '@/lib/optimizer/svg-optimizer';
 import { ensureResvg } from './optimizer-wasm';
+import { bitmapLifecycle } from '../lib/memory/bitmap-lifecycle';
 import {
   checkPixelLimit,
   encodeRaster,
@@ -383,13 +384,18 @@ async function downscaleImageData(
     resizeHeight: targetHeight,
     resizeQuality: 'high'
   });
+  const bitmapId = `svg-resize-${Date.now()}`;
+  bitmapLifecycle.track(bitmapId, bitmap);
 
   const targetCanvas = new OffscreenCanvas(targetWidth, targetHeight);
   const targetCtx = targetCanvas.getContext('2d', { willReadFrequently: true });
-  if (!targetCtx) throw new Error('Could not get target 2d context');
+  if (!targetCtx) {
+    bitmapLifecycle.close(bitmapId);
+    throw new Error('Could not get target 2d context');
+  }
 
   targetCtx.drawImage(bitmap, 0, 0);
-  bitmap.close();
+  bitmapLifecycle.close(bitmapId);
 
   return targetCtx.getImageData(0, 0, targetWidth, targetHeight);
 }
@@ -415,10 +421,12 @@ async function assertEncodedDimensions(
   expectedHeight: number
 ): Promise<void> {
   const bitmap = await createImageBitmap(new Blob([bytes], { type: mimeType }));
+  const bitmapId = `svg-decode-${Date.now()}`;
+  bitmapLifecycle.track(bitmapId, bitmap);
   try {
     assertDimensions(bitmap.width, bitmap.height, expectedWidth, expectedHeight, 'post-encode');
   } finally {
-    bitmap.close();
+    bitmapLifecycle.close(bitmapId);
   }
 }
 
