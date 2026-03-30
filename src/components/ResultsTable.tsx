@@ -16,7 +16,7 @@ export interface ResultsTableProps {
   onDownloadAll: () => void;
   onClear: () => void;
   onRemoveItem: (id: string) => void;
-  onPreview?: ((item: ImageItem, format: string) => void) | undefined;
+  onPreview?: ((item: ImageItem) => void) | undefined;
 }
 
 const TABLE_GRID_COLUMNS = 'grid-cols-[minmax(0,2fr)_150px_minmax(0,3fr)_100px]';
