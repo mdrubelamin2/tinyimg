@@ -129,9 +129,19 @@ export class PriorityWorkerPool {
   private handleMessage(_workerIndex: number, e: MessageEvent): void {
     const slot = this.findSlotByWorkerIndex();
     if (!slot) return;
+    
+    const data = e.data as WorkerOutbound;
+    const task = slot.currentTask;
+    
     slot.currentTask = null;
     slot.idle = true;
-    this.callbacks.onMessage(_workerIndex, e.data as WorkerOutbound);
+    
+    if (data.type === 'ERROR' && task) {
+      this.callbacks.onError(_workerIndex, task);
+    } else {
+      this.callbacks.onMessage(_workerIndex, data);
+    }
+    
     this.drainAllLanes();
   }
 

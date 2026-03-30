@@ -1,4 +1,5 @@
 import { opfsManager } from './opfs-manager';
+import ThumbnailWorkerUrl from '@/workers/thumbnail.worker.ts?worker&url';
 
 interface ThumbnailResponse {
   type: 'THUMBNAIL' | 'ERROR';
@@ -14,7 +15,7 @@ export class ThumbnailCache {
 
   private getWorker(): Worker {
     if (!this.worker) {
-      const workerUrl = new URL('/src/workers/thumbnail.worker.ts', window.location.origin);
+      const workerUrl = new URL(ThumbnailWorkerUrl, import.meta.url);
       this.worker = new Worker(workerUrl, { type: 'module' });
     }
     return this.worker;

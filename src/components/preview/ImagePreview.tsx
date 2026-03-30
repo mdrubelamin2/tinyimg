@@ -19,7 +19,7 @@ interface ImagePreviewProps {
 
 const MIN_SPLIT = 0.1;
 const MAX_SPLIT = 0.9;
-const DEFAULT_SPLIT = MAX_SPLIT;
+const DEFAULT_SPLIT = 0.5;
 
 export const ImagePreview: React.FC<ImagePreviewProps> = ({
   item,
@@ -34,14 +34,14 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    
+
     const loadPreview = async () => {
       if (!item.fileHandle) return;
-      
+
       try {
         const file = await opfsManager.readFile(item.fileHandle);
         const url = URL.createObjectURL(file);
-        
+
         if (!cancelled) {
           setPreviewUrl(url);
         }
@@ -49,9 +49,9 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         console.error('Failed to load preview:', error);
       }
     };
-    
+
     loadPreview();
-    
+
     return () => {
       cancelled = true;
       if (previewUrl) {
