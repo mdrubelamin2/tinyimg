@@ -10,6 +10,7 @@ import {
 import type { SvgInternalFormat } from '@/constants';
 import { Logger } from './logger';
 import { classifyContent } from './classify';
+import { bitmapLifecycle } from '../lib/memory/bitmap-lifecycle';
 import {
   getImageData,
   checkPixelLimit,
@@ -103,11 +104,16 @@ self.onmessage = async (e: MessageEvent) => {
       let imageBitmap: ImageBitmap;
       try {
         imageBitmap = await createImageBitmap(file);
+        bitmapLifecycle.track(`${id}-decode`, imageBitmap);
       } catch {
         throw new Error('Unsupported or corrupt image');
       }
+      
       const imageData = await getImageData(imageBitmap);
       perf?.mark('opt-decode-end');
+      
+      bitmapLifecycle.close(`${id}-decode`);
+      
       checkPixelLimit(imageData.width, imageData.height);
       const preset = classifyContent(imageData);
       perf?.mark('opt-classify-end');
