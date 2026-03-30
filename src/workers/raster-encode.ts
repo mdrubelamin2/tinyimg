@@ -14,6 +14,7 @@ import type { ContentPreset } from './classify';
 import { isSmallAndTransparent } from './classify';
 import { GpuResizeClient } from '@/lib/gpu/gpu-worker-client';
 import { probeHardwareSupport, type HardwareCapabilities } from '@/lib/hardware';
+import { bitmapLifecycle } from '../lib/memory/bitmap-lifecycle';
 
 let gpuClient: GpuResizeClient | null = null;
 let hardwareCaps: HardwareCapabilities | null = null;
@@ -227,15 +228,17 @@ export async function compositeImageDataOnWhite(imageData: ImageData): Promise<I
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Could not get 2d context for composite');
   
-  // Fill background with white
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, imageData.width, imageData.height);
   
-  // Draw the image data on top with source-over
   const bitmap = await createImageBitmap(imageData);
+  const bitmapId = `composite-${Date.now()}-${Math.random()}`;
+  bitmapLifecycle.track(bitmapId, bitmap);
+  
   ctx.globalCompositeOperation = 'source-over';
   ctx.drawImage(bitmap, 0, 0);
-  bitmap.close();
+  
+  bitmapLifecycle.close(bitmapId);
   
   return ctx.getImageData(0, 0, imageData.width, imageData.height);
 }
