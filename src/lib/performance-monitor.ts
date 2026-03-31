@@ -89,7 +89,7 @@ class PerformanceMonitor {
         });
 
         this.longTaskObserver.observe({ entryTypes: ['longtask'] });
-      } catch (e) {
+      } catch {
         console.warn('[Performance] Long task monitoring not supported');
       }
     }
@@ -101,7 +101,7 @@ class PerformanceMonitor {
   private startMemoryMonitoring() {
     if ('memory' in performance) {
       this.memoryInterval = window.setInterval(() => {
-        const memory = (performance as any).memory;
+        const memory = (performance as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
         if (memory) {
           this.metrics.memoryUsage = memory.usedJSHeapSize;
 
@@ -212,7 +212,7 @@ class PerformanceMonitor {
   private logMetric(name: string, value: number) {
     const rating = this.getRating(name, value);
     const color = rating === 'good' ? '✅' : rating === 'needs improvement' ? '⚠️' : '❌';
-    console.log(`[Performance] ${color} ${name}: ${value.toFixed(2)}ms (${rating})`);
+    console.info(`[Performance] ${color} ${name}: ${value.toFixed(2)}ms (${rating})`);
   }
 
   private getRating(name: string, value: number): string {

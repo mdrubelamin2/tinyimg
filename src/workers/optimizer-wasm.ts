@@ -29,7 +29,7 @@ export async function ensureResvg(): Promise<void> {
       await initWasm(wasmBuffer);
     }
     resvgInitialized = true;
-  } catch (error) {
+  } catch {
     // Fallback to original implementation
     const wasmRes = await fetch(resvgWasm);
     const wasmBuffer = await wasmRes.arrayBuffer();
@@ -54,7 +54,7 @@ export async function ensureQuant(): Promise<void> {
       await initQuant({ wasmBinary: wasmBuffer });
     }
     quantInitialized = true;
-  } catch (error) {
+  } catch {
     // Fallback to original implementation
     const wasmRes = await fetch(quantWasm);
     const wasmBuffer = await wasmRes.arrayBuffer();

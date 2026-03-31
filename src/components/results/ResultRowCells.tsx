@@ -3,7 +3,7 @@ import { useAtomValue } from 'jotai';
 import { Sparkles, Trash2, Eye, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { useImmediateBlobUrl } from '@/hooks/useLazyBlobUrl';
+import { useLazyBlobUrl } from '@/hooks/useLazyBlobUrl';
 import { imageItemAtomFamily } from '@/store/atoms/image-atoms';
 import { ResultCell } from './ResultCell';
 import { BYTES_PER_KB, STATUS_CHECKING } from '@/constants/index';
@@ -17,8 +17,8 @@ export interface ResultRowCellsProps {
 
 export const ResultRowCells = memo(({ id, onRemove, onPreview }: ResultRowCellsProps) => {
   const item = useAtomValue(imageItemAtomFamily(id));
-  // Use immediate blob URL since these are already virtualized
-  const previewUrl = useImmediateBlobUrl(item?.file);
+  // Use lazy blob URL (now using useMemo, no performance issue)
+  const previewUrl = useLazyBlobUrl(item?.file);
 
   if (!item) return null;
 

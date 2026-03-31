@@ -31,7 +31,7 @@ function getSystemMetrics(): SystemMetrics {
   
   // Check memory (Chrome/Edge only)
   if ('memory' in performance) {
-    const memory = (performance as any).memory;
+    const memory = (performance as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
     if (memory) {
       memoryPressure = memory.usedJSHeapSize / memory.jsHeapSizeLimit;
       isLowEnd = memory.jsHeapSizeLimit < 1024 * 1024 * 1024; // < 1GB
@@ -40,7 +40,7 @@ function getSystemMetrics(): SystemMetrics {
   
   // Check device memory (if available)
   if ('deviceMemory' in navigator) {
-    const deviceMemory = (navigator as any).deviceMemory;
+    const deviceMemory = (navigator as { deviceMemory?: number }).deviceMemory;
     if (deviceMemory && deviceMemory < 4) {
       isLowEnd = true;
     }
@@ -137,7 +137,7 @@ export class WorkerPool {
       for (let i = currentConcurrency; i < newConcurrency; i++) {
         this.slots.push(this.createSlot(i));
       }
-      console.log(`[WorkerPool] Increased concurrency: ${currentConcurrency} → ${newConcurrency}`);
+      console.info(`[WorkerPool] Increased concurrency: ${currentConcurrency} → ${newConcurrency}`);
     } else if (newConcurrency < currentConcurrency) {
       // Remove idle workers
       const toRemove = currentConcurrency - newConcurrency;
@@ -151,9 +151,9 @@ export class WorkerPool {
           removed++;
         }
       }
-      
+
       if (removed > 0) {
-        console.log(`[WorkerPool] Reduced concurrency: ${currentConcurrency} → ${this.slots.length}`);
+        console.info(`[WorkerPool] Reduced concurrency: ${currentConcurrency} → ${this.slots.length}`);
       }
     }
   }

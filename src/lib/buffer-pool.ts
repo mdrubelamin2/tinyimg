@@ -5,7 +5,7 @@
  */
 
 // Only import performance monitor in main thread (not in workers)
-let performanceMonitor: any = null;
+let performanceMonitor: { onMemoryPressure: (callback: (pressure: number) => void) => void } | null = null;
 if (typeof document !== 'undefined') {
   performanceMonitor = await import('./performance-monitor').then(m => m.performanceMonitor);
 }

@@ -73,7 +73,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [onClose]);
 
   const formatBytes = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;

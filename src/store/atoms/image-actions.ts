@@ -43,8 +43,8 @@ async function flushCompletionBuffer() {
   startTransition(async () => {
     for (const response of batch) {
       // Yield to browser between updates to maintain 60fps
-      if ('scheduler' in window && typeof (window.scheduler as any).yield === 'function') {
-        await (window.scheduler as any).yield();
+      if ('scheduler' in window && typeof (window.scheduler as { yield?: () => Promise<void> }).yield === 'function') {
+        await (window.scheduler as { yield: () => Promise<void> }).yield();
       }
 
       processWorkerResponse(response);
