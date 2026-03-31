@@ -7,23 +7,21 @@ import {
 import {
   ERR_FILE_EXCEEDS_LIMIT,
   ERR_ZIP_EXCEEDS_LIMIT,
-  ERR_INVALID_FILE,
   ERR_HEIC_BROWSER,
   isValidImageExtension,
+  STATUS_CHECKING,
 } from '@/constants';
 import {
-  checkMagicBytes,
-  checkMagicBytesFromBufferExport,
   getMimeType,
-  DEFAULT_MIME,
   isHeicDecodeLikelySupported,
 } from '@/lib/validation';
 import type { ImageItem } from '@/lib/queue/types';
-
-const ZIP_PATH_IGNORE = '__MACOSX';
+import toast from 'react-hot-toast';
+import { yieldToMain } from '@/lib/scheduler-polyfill';
 
 interface IntakeContext {
   createItem: (file: File) => ImageItem;
+  onDimensionCheckComplete?: (item: ImageItem, error: string | null) => void;
 }
 
 function isDataTransferItemArray(files: File[] | DataTransferItem[]): files is DataTransferItem[] {
@@ -41,25 +39,76 @@ function createErrorItem(
   return item;
 }
 
-async function createValidatedItem(
+/**
+ * Check image dimensions in a worker to avoid blocking main thread.
+ * Calls callback when complete.
+ */
+function checkImageDimensionsAsync(
   file: File,
-  createItem: IntakeContext['createItem']
-): Promise<ImageItem | null> {
+  item: ImageItem,
+  callback: (item: ImageItem, error: string | null) => void
+): void {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'svg') {
+    callback(item, null);
+    return;
+  }
+
+  const worker = new Worker(
+    new URL('@/workers/dimension-checker.worker.ts', import.meta.url),
+    { type: 'module' }
+  );
+
+  const timeoutId = setTimeout(() => {
+    worker.terminate();
+    callback(item, null); // Timeout - let optimizer worker handle it
+  }, 3000);
+
+  worker.onmessage = (e: MessageEvent) => {
+    clearTimeout(timeoutId);
+    worker.terminate();
+
+    if (e.data.valid) {
+      callback(item, null);
+    } else {
+      callback(item, e.data.error);
+    }
+  };
+
+  worker.onerror = () => {
+    clearTimeout(timeoutId);
+    worker.terminate();
+    callback(item, null); // Error - let optimizer worker handle it
+  };
+
+  worker.postMessage({ file, id: file.name });
+}
+
+function createValidatedItem(
+  file: File,
+  createItem: IntakeContext['createItem'],
+  onDimensionCheckComplete?: (item: ImageItem, error: string | null) => void
+): ImageItem | null {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (!isValidImageExtension(ext)) return null;
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return createErrorItem(file, ERR_FILE_EXCEEDS_LIMIT, createItem);
   }
 
-  const magicOk = await checkMagicBytes(file, ext);
-  if (!magicOk) {
-    return createErrorItem(file, ERR_INVALID_FILE, createItem);
-  }
   if ((ext === 'heic' || ext === 'heif') && !isHeicDecodeLikelySupported()) {
     return createErrorItem(file, ERR_HEIC_BROWSER, createItem);
   }
 
-  return createItem(file);
+  // Create item immediately with "checking" status
+  const item = createItem(file);
+  item.status = STATUS_CHECKING;
+
+  // Start dimension check in background (non-blocking)
+  if (onDimensionCheckComplete) {
+    checkImageDimensionsAsync(file, item, onDimensionCheckComplete);
+  }
+
+  return item;
 }
 
 async function traverseEntry(
@@ -71,7 +120,7 @@ async function traverseEntry(
     const file = await new Promise<File>((resolve) =>
       (entry as FileSystemFileEntry).file(resolve)
     );
-    
+
     // Handle ZIP files dropped via FileSystemEntry
     if (file.name.endsWith('.zip')) {
       if (file.size > MAX_ZIP_FILE_SIZE_BYTES) {
@@ -79,21 +128,26 @@ async function traverseEntry(
         return;
       }
       try {
+        const toastId = toast.loading(`Extracting ${file.name}...`);
         const zipItems = await collectItemsFromZip(file, ctx);
         items.push(...zipItems);
+        toast.success(`Extracted ${zipItems.length} files from ${file.name}`, { id: toastId });
       } catch (err) {
         items.push(createErrorItem(file, 'ZIP extraction failed: ' + String(err), ctx.createItem));
+        toast.error(`Failed to extract ${file.name}`);
       }
       return;
     }
-    
-    const validated = await createValidatedItem(file, ctx.createItem);
+
+    const validated = createValidatedItem(file, ctx.createItem, ctx.onDimensionCheckComplete);
     if (validated) items.push(validated);
     return;
   }
 
   if (entry.isDirectory) {
+    const toastId = toast.loading(`Reading folder: ${entry.name}...`);
     const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+    let fileCount = 0;
     while (true) {
       const batch = await new Promise<FileSystemEntry[]>((resolve) =>
         dirReader.readEntries(resolve)
@@ -101,8 +155,15 @@ async function traverseEntry(
       if (batch.length === 0) break;
       for (const childEntry of batch) {
         await traverseEntry(childEntry, items, ctx);
+        fileCount++;
+
+        // Yield to main thread every 10 files to prevent blocking
+        if (fileCount % 10 === 0) {
+          await yieldToMain();
+        }
       }
     }
+    toast.success(`Loaded ${fileCount} items from ${entry.name}`, { id: toastId });
   }
 }
 
@@ -159,10 +220,13 @@ export async function collectItemsFromFiles(
       }
 
       try {
+        const toastId = toast.loading(`Extracting ${file.name}...`);
         const zipItems = await collectItemsFromZip(file, ctx);
         items.push(...zipItems);
+        toast.success(`Extracted ${zipItems.length} files from ${file.name}`, { id: toastId });
       } catch (err) {
         items.push(createErrorItem(file, 'ZIP extraction failed: ' + String(err), ctx.createItem));
+        toast.error(`Failed to extract ${file.name}`);
       }
       continue;
     }
@@ -178,72 +242,77 @@ export async function collectItemsFromZip(
   file: File,
   ctx: IntakeContext
 ): Promise<ImageItem[]> {
-  const { unzip } = await import('fflate');
+  // Offload ZIP extraction to worker thread to prevent main thread blocking
   return new Promise((resolve, reject) => {
-    const items: ImageItem[] = [];
-    const reader = new FileReader();
+    const worker = new Worker(
+      new URL('@/workers/zip-extractor.worker.ts', import.meta.url),
+      { type: 'module' }
+    );
 
-    reader.onload = (event) => {
-      const data = new Uint8Array(event.target?.result as ArrayBuffer);
-      unzip(data, (err, unzipped) => {
-        if (err) {
-          reject(err);
+    const items: ImageItem[] = [];
+    let extractedCount = 0;
+    let extractedBytes = 0;
+
+    worker.onmessage = (e: MessageEvent) => {
+      const { files, error } = e.data;
+      worker.terminate();
+
+      if (error) {
+        reject(new Error(error));
+        return;
+      }
+
+      if (!files || files.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      // Process extracted files on main thread (fast - just File object creation)
+      for (const { name: fileName, data: bytes } of files) {
+        extractedCount += 1;
+        extractedBytes += bytes.length;
+
+        if (extractedCount > MAX_ZIP_EXTRACTED_FILES) {
+          reject(new Error('ZIP contains too many files'));
+          return;
+        }
+        if (extractedBytes > MAX_ZIP_EXTRACTED_TOTAL_BYTES) {
+          reject(new Error('ZIP uncompressed data too large'));
           return;
         }
 
-        let extractedCount = 0;
-        let extractedBytes = 0;
-
-        for (const [path, bytes] of Object.entries(unzipped)) {
-          extractedCount += 1;
-          extractedBytes += bytes.length;
-
-          if (extractedCount > MAX_ZIP_EXTRACTED_FILES) {
-            reject(new Error('ZIP contains too many files'));
-            return;
-          }
-          if (extractedBytes > MAX_ZIP_EXTRACTED_TOTAL_BYTES) {
-            reject(new Error('ZIP uncompressed data too large'));
-            return;
-          }
-
-          if (bytes.length === 0 || path.includes(ZIP_PATH_IGNORE)) continue;
-
-          const fileName = path.split('/').pop() ?? 'unnamed';
-          if (bytes.length > MAX_FILE_SIZE_BYTES) {
-            const oversized = new File([new Uint8Array(0)], fileName, {
-              type: getMimeType(fileName),
-            });
-            items.push(createErrorItem(oversized, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem));
-            continue;
-          }
-
-          const ext = (fileName.split('.').pop() ?? '').toLowerCase();
-          if (getMimeType(fileName) === DEFAULT_MIME) continue;
-
-          const bytesArr =
-            bytes instanceof Uint8Array
-              ? bytes
-              : new Uint8Array(bytes as ArrayBuffer);
-
-          if (!checkMagicBytesFromBufferExport(bytesArr, ext)) {
-            const invalid = new File([new Uint8Array(0)], fileName, {
-              type: getMimeType(fileName),
-            });
-            items.push(createErrorItem(invalid, ERR_INVALID_FILE, ctx.createItem));
-            continue;
-          }
-
-          const validFile = new File([bytes as unknown as BlobPart], fileName, {
+        if (bytes.length > MAX_FILE_SIZE_BYTES) {
+          const oversized = new File([new Uint8Array(0)], fileName, {
             type: getMimeType(fileName),
           });
-          items.push(ctx.createItem(validFile));
+          items.push(createErrorItem(oversized, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem));
+          continue;
         }
 
-        resolve(items);
-      });
+        const validFile = new File([bytes as unknown as BlobPart], fileName, {
+          type: getMimeType(fileName),
+        });
+        items.push(ctx.createItem(validFile));
+      }
+
+      resolve(items);
     };
 
+    worker.onerror = (err) => {
+      worker.terminate();
+      reject(new Error('ZIP extraction worker failed: ' + err.message));
+    };
+
+    // Read file and send to worker
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const data = new Uint8Array(event.target?.result as ArrayBuffer);
+      worker.postMessage({ data });
+    };
+    reader.onerror = () => {
+      worker.terminate();
+      reject(new Error('Failed to read ZIP file'));
+    };
     reader.readAsArrayBuffer(file);
   });
 }

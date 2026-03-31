@@ -27,7 +27,7 @@ export function createQueueItem(file: File, options: GlobalOptions): ImageItem {
   const item: ImageItem = {
     id: Math.random().toString(36).substring(2, 2 + ID_RANDOM_LENGTH),
     file,
-    previewUrl: URL.createObjectURL(file),
+    previewUrl: undefined, // Lazy creation to avoid decoding large images on main thread
     status: STATUS_PENDING,
     progress: 0,
     originalSize: file.size,

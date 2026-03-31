@@ -16,7 +16,7 @@ export interface ImageResult {
   label?: string | undefined;
   blob?: Blob | undefined;
   size?: number | undefined;
-  downloadUrl?: string | undefined;
+  downloadUrl?: string | null | undefined;
   status: ItemStatus;
   error?: string | undefined;
 }

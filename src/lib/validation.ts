@@ -12,38 +12,51 @@ import {
   ERR_FILE_EXCEEDS_LIMIT,
   ERR_INVALID_FILE,
 } from '@/constants';
+import { fileTypeFromBuffer } from 'file-type';
 
-const FILE_HEADER_READ_LENGTH = 16;
+const FILE_HEADER_READ_LENGTH = 4100; // file-type recommends 4100 bytes for accurate detection
 
-/** Magic-byte signatures for image formats (for buffer validation). */
-function checkMagicBytesFromBuffer(b: Uint8Array, ext: string): boolean {
-  const eq = (offset: number, arr: number[]) => arr.every((v, i) => b[offset + i] === v);
-  switch (ext) {
-    case 'png':
-      return b.length >= 8 && eq(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    case 'jpg':
-    case 'jpeg':
-      return b.length >= 3 && eq(0, [0xff, 0xd8, 0xff]);
-    case 'webp':
-      return b.length >= 12 && eq(0, [0x52, 0x49, 0x46, 0x46]) && eq(8, [0x57, 0x45, 0x42, 0x50]);
-    case 'avif':
-      return b.length >= 12 && eq(4, [0x66, 0x74, 0x79, 0x70]); // ftyp
-    case 'svg':
-      return b.length >= 2 && (b[0] === 0x3c || (b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf));
-    default:
-      return false;
+/**
+ * Detect file type from buffer using file-type library.
+ * Returns detected extension and mime type, or null if unknown.
+ */
+export async function detectFileTypeFromBuffer(buffer: Uint8Array): Promise<{ ext: string; mime: string } | null> {
+  const detected = await fileTypeFromBuffer(buffer);
+
+  if (!detected) {
+    return null;
   }
+
+  return {
+    ext: detected.ext,
+    mime: detected.mime,
+  };
+}
+
+/**
+ * Legacy function for backward compatibility with zip-extractor.worker.ts
+ * Checks if buffer matches expected extension using mime-bytes.
+ * @deprecated Use detectFileTypeFromBuffer instead
+ */
+export async function checkMagicBytesFromBuffer(buffer: Uint8Array, expectedExt: string): Promise<boolean> {
+  const detected = await detectFileTypeFromBuffer(buffer);
+  if (!detected) return false;
+
+  // Check if detected extension matches expected (normalize jpeg/jpg)
+  const normalizedExpected = expectedExt === 'jpeg' ? 'jpg' : expectedExt;
+  const normalizedDetected = detected.ext === 'jpeg' ? 'jpg' : detected.ext;
+
+  return normalizedDetected === normalizedExpected;
 }
 
 /**
  * Check magic bytes from a File (reads first bytes). Reduces wrong-extension risk.
  * @param file - File to check
- * @param ext - Expected extension (e.g. 'png', 'jpg')
- * @returns true if file header matches the format
+ * @returns detected file type or null if unknown
  */
-export async function checkMagicBytes(file: File, ext: string): Promise<boolean> {
+export async function checkMagicBytes(file: File): Promise<{ ext: string; mime: string } | null> {
   const buf = await file.slice(0, FILE_HEADER_READ_LENGTH).arrayBuffer();
-  return checkMagicBytesFromBuffer(new Uint8Array(buf), ext);
+  return detectFileTypeFromBuffer(new Uint8Array(buf));
 }
 
 /**
@@ -52,31 +65,22 @@ export async function checkMagicBytes(file: File, ext: string): Promise<boolean>
  * @returns { ok: true } or { ok: false, error: string } with user-facing message
  */
 export async function validateFile(file: File): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  if (!isValidImageExtension(ext)) {
-    return { ok: false, error: ERR_INVALID_FILE };
-  }
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return { ok: false, error: ERR_FILE_EXCEEDS_LIMIT };
   }
-  const magicOk = await checkMagicBytes(file, ext);
-  if (!magicOk) {
+
+  // Detect actual file type from magic bytes
+  const detected = await checkMagicBytes(file);
+  if (!detected || !isValidImageExtension(detected.ext)) {
     return { ok: false, error: ERR_INVALID_FILE };
   }
+
   return { ok: true };
 }
 
 /** Check if ZIP file size is within limit. */
 export function validateZipSize(bytes: number): boolean {
   return bytes <= MAX_ZIP_FILE_SIZE_BYTES;
-}
-
-/**
- * Check magic bytes from a buffer (e.g. unzipped file content).
- * Used when validating ZIP contents without a File object.
- */
-export function checkMagicBytesFromBufferExport(b: Uint8Array, ext: string): boolean {
-  return checkMagicBytesFromBuffer(b, ext);
 }
 
 /** Get MIME type for a filename; re-export for use in ZIP handling. */
