@@ -1,8 +1,8 @@
 /**
- * useKeyboardShortcuts: global keyboard shortcuts for power users.
+ * useKeyboardShortcuts: global keyboard shortcuts using react-hotkeys-hook.
  */
 
-import { useEffect } from 'react';
+import { useHotkeys } from 'react-hotkeys-hook';
 
 interface ShortcutHandlers {
   onDelete?: (() => void) | undefined;
@@ -11,30 +11,41 @@ interface ShortcutHandlers {
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't fire shortcuts when typing in inputs
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
+  // Delete/Backspace - delete selected items
+  useHotkeys(
+    'delete,backspace',
+    (e) => {
+      e.preventDefault();
+      handlers.onDelete?.();
+    },
+    {
+      enabled: !!handlers.onDelete,
+      enableOnFormTags: false, // Don't fire when typing in inputs
+    }
+  );
 
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        handlers.onDelete?.();
-      }
+  // Cmd+S / Ctrl+S - download all
+  useHotkeys(
+    'mod+s',
+    (e) => {
+      e.preventDefault();
+      handlers.onDownload?.();
+    },
+    {
+      enabled: !!handlers.onDownload,
+      enableOnFormTags: false,
+    }
+  );
 
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault();
-        handlers.onDownload?.();
-      }
-
-      if (e.key === 'Escape') {
-        handlers.onEscape?.();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlers]);
+  // Escape - close preview/modal
+  useHotkeys(
+    'escape',
+    () => {
+      handlers.onEscape?.();
+    },
+    {
+      enabled: !!handlers.onEscape,
+      enableOnFormTags: true, // Allow escape even in inputs
+    }
+  );
 }

@@ -1,34 +1,44 @@
 /**
- * Settings store: persisted global options via Zustand + localStorage.
- * Separated from image state to keep settings independent of queue lifecycle.
+ * Settings store: persisted global options using Jotai.
+ * Migrated from custom store to use Jotai's atomWithStorage for consistency.
  */
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { atomWithStorage } from 'jotai/utils';
 import type { GlobalOptions } from '@/constants/index.ts';
 import { DEFAULT_GLOBAL_OPTIONS } from '@/constants/index.ts';
 
 const STORAGE_KEY = 'tinyimg_config';
 
-interface SettingsState {
-  options: GlobalOptions;
-  setOptions: (options: GlobalOptions) => void;
-  updateOption: <K extends keyof GlobalOptions>(key: K, value: GlobalOptions[K]) => void;
-  resetToDefaults: () => void;
-}
-
-export const useSettingsStore = create<SettingsState>()(
-  persist(
-    (set) => ({
-      options: { ...DEFAULT_GLOBAL_OPTIONS },
-      setOptions: (options) => set({ options }),
-      updateOption: (key, value) =>
-        set((state) => ({ options: { ...state.options, [key]: value } })),
-      resetToDefaults: () => set({ options: { ...DEFAULT_GLOBAL_OPTIONS } }),
-    }),
-    {
-      name: STORAGE_KEY,
-      partialize: (state) => ({ options: state.options }),
-    }
-  )
+// Atom with localStorage persistence
+export const settingsAtom = atomWithStorage<GlobalOptions>(
+  STORAGE_KEY,
+  DEFAULT_GLOBAL_OPTIONS,
+  {
+    getItem: (key, initialValue) => {
+      try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          return { ...initialValue, ...parsed.options };
+        }
+      } catch (e) {
+        console.warn('Failed to load settings from localStorage', e);
+      }
+      return initialValue;
+    },
+    setItem: (key, value) => {
+      try {
+        localStorage.setItem(key, JSON.stringify({ options: value }));
+      } catch (e) {
+        console.warn('Failed to save settings to localStorage', e);
+      }
+    },
+    removeItem: (key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        console.warn('Failed to remove settings from localStorage', e);
+      }
+    },
+  }
 );

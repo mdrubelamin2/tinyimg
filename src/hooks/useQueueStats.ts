@@ -2,6 +2,7 @@
  * Derive queue stats from items: savings percent, all-done, has-finished, successful count.
  */
 
+import { useMemo } from 'react';
 import type { ImageItem } from '@/lib/queue/types';
 import { STATUS_SUCCESS, STATUS_ERROR, STATUS_PROCESSING } from '@/constants/index';
 
@@ -15,33 +16,55 @@ export interface QueueStats {
 }
 
 export function useQueueStats(items: ImageItem[]): QueueStats {
-  let totalOriginal = 0;
-  let totalOptimized = 0;
+  return useMemo(() => {
+    let totalOriginal = 0;
+    let totalOptimized = 0;
+    let successfulCount = 0;
+    let processingCount = 0;
+    let hasFinishedItems = false;
 
-  items.forEach(item => {
-    totalOriginal += item.originalSize;
-    Object.values(item.results).forEach(res => {
-      if (res.status === STATUS_SUCCESS && res.size) {
-        totalOptimized += res.size;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) continue;
+
+      totalOriginal += item.originalSize;
+
+      if (item.status === STATUS_SUCCESS) {
+        successfulCount++;
+        hasFinishedItems = true;
+      } else if (item.status === STATUS_ERROR) {
+        hasFinishedItems = true;
+      } else if (item.status === STATUS_PROCESSING) {
+        processingCount++;
       }
-    });
-  });
 
-  const savingsPercent =
-    totalOriginal > 0
-      ? totalOptimized === 0
-        ? '0'
-        : ((totalOriginal - totalOptimized) / totalOriginal * 100).toFixed(1)
-      : '0';
-  const allDone =
-    items.length > 0 &&
-    items.every(i => i.status === STATUS_SUCCESS || i.status === STATUS_ERROR);
-  const successfulCount = items.filter(i => i.status === STATUS_SUCCESS).length;
-  const hasFinishedItems = items.some(
-    i => i.status === STATUS_SUCCESS || i.status === STATUS_ERROR
-  );
-  const processingCount = items.filter(i => i.status === STATUS_PROCESSING).length;
-  const doneCount = successfulCount;
+      const results = item.results;
+      for (const format in results) {
+        const res = results[format];
+        if (res && res.status === STATUS_SUCCESS && res.size) {
+          totalOptimized += res.size;
+        }
+      }
+    }
 
-  return { savingsPercent, allDone, successfulCount, hasFinishedItems, processingCount, doneCount };
+    const savingsPercent =
+      totalOriginal > 0
+        ? totalOptimized === 0
+          ? '0'
+          : ((totalOriginal - totalOptimized) / totalOriginal * 100).toFixed(1)
+        : '0';
+
+    const allDone =
+      items.length > 0 &&
+      items.length === successfulCount + (items.length - successfulCount - processingCount);
+
+    return {
+      savingsPercent,
+      allDone,
+      successfulCount,
+      hasFinishedItems,
+      processingCount,
+      doneCount: successfulCount,
+    };
+  }, [items]);
 }
