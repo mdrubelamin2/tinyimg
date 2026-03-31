@@ -49,7 +49,7 @@ export interface ImageResult {
   size?: number | undefined;
   formattedSize?: string | undefined;
   savingsPercent?: number | undefined;
-  downloadUrl?: string | undefined;
+  downloadUrl?: string | null | undefined;
   status: ItemStatus;
   error?: string | undefined;
   timing?: StageTiming | undefined;
@@ -132,6 +132,7 @@ export interface WorkerOutboundResult {
   label: string;
   formattedSize: string;
   savingsPercent: number;
+  downloadUrl?: string; // Created in worker to avoid main thread blocking
   timing?: StageTiming | undefined;
 }
 
