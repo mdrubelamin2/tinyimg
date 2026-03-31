@@ -31,13 +31,14 @@ export const LUMINANCE_G = 0.587;
 export const LUMINANCE_B = 0.114;
 
 // --- Status strings (single source for types and UI) ---
+export const STATUS_CHECKING = 'checking' as const;
 export const STATUS_PENDING = 'pending' as const;
 export const STATUS_PROCESSING = 'processing' as const;
 export const STATUS_SUCCESS = 'success' as const;
 export const STATUS_ERROR = 'error' as const;
 
-export type ItemStatus = typeof STATUS_PENDING | typeof STATUS_PROCESSING | typeof STATUS_SUCCESS | typeof STATUS_ERROR;
-export const ITEM_STATUSES: readonly ItemStatus[] = [STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS, STATUS_ERROR];
+export type ItemStatus = typeof STATUS_CHECKING | typeof STATUS_PENDING | typeof STATUS_PROCESSING | typeof STATUS_SUCCESS | typeof STATUS_ERROR;
+export const ITEM_STATUSES: readonly ItemStatus[] = [STATUS_CHECKING, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS, STATUS_ERROR];
 
 // --- Output formats ---
 export type OutputFormat = 'original' | 'webp' | 'avif' | 'jpeg' | 'png' | 'svg' | 'jxl';

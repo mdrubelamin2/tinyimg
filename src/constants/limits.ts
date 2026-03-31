@@ -19,7 +19,9 @@ export const CONCURRENCY_MAX = 6;
 export const CONCURRENCY_DEFAULT = 4;
 
 // --- Worker / optimizer ---
-export const MAX_PIXELS = 256_000_000;
+// Reduced from 256MP to prevent browser slowdown with very large images
+// 50MP = ~7K×7K which is reasonable for web optimization
+export const MAX_PIXELS = 50_000_000; // Maximum pixels (50MP)
 export const TASK_TIMEOUT_MS = 120_000;
 
 // --- Quality slider range ---

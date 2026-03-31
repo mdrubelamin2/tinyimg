@@ -4,12 +4,14 @@
  */
 
 // --- Status strings (used as type discriminants and UI labels) ---
+export const STATUS_CHECKING = 'checking' as const;
 export const STATUS_PENDING = 'pending' as const;
 export const STATUS_PROCESSING = 'processing' as const;
 export const STATUS_SUCCESS = 'success' as const;
 export const STATUS_ERROR = 'error' as const;
 
 export type ItemStatus =
+  | typeof STATUS_CHECKING
   | typeof STATUS_PENDING
   | typeof STATUS_PROCESSING
   | typeof STATUS_SUCCESS
