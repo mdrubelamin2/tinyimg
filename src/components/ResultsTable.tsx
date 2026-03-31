@@ -103,7 +103,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({
       <CardContent className="p-0">
         <div ref={scrollRef} className="max-h-[600px] overflow-auto">
           <div className="w-full">
-            <div className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-b border-border backdrop-blur-sm sticky top-0 z-10">
+            <div className="bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest border-b border-border backdrop-blur-sm sticky top-0 z-[5]">
               <div className={`grid w-full ${TABLE_GRID_COLUMNS}`}>
                 <div className="px-8 py-4">File Name</div>
                 <div className="px-6 py-4 min-w-0">Original</div>

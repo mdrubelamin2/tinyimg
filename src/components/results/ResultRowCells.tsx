@@ -1,37 +1,37 @@
 import { memo } from 'react';
-import { useStore } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
-import { Sparkles, Download, Trash2, Eye } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useAtomValue } from 'jotai';
+import { Sparkles, Trash2, Eye, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useImageStore } from '@/store/image-store';
-import { BYTES_PER_KB, STATUS_SUCCESS, STATUS_ERROR } from '@/constants/index';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { useImmediateBlobUrl } from '@/hooks/useLazyBlobUrl';
+import { imageItemAtomFamily } from '@/store/atoms/image-atoms';
+import { ResultCell } from './ResultCell';
+import { BYTES_PER_KB, STATUS_CHECKING } from '@/constants/index';
 import type { ImageItem } from '@/lib/queue/types';
-
-const DOWNLOAD_EXT_JPEG = 'jpg';
 
 export interface ResultRowCellsProps {
   id: string;
   onRemove: (id: string) => void;
-  onPreview?: ((item: ImageItem) => void) | undefined;
+  onPreview: ((item: ImageItem) => void) | undefined;
 }
 
 export const ResultRowCells = memo(({ id, onRemove, onPreview }: ResultRowCellsProps) => {
-  const item = useStore(useImageStore, useShallow((state) => state.items.get(id)));
+  const item = useAtomValue(imageItemAtomFamily(id));
+  // Use immediate blob URL since these are already virtualized
+  const previewUrl = useImmediateBlobUrl(item?.file);
 
   if (!item) return null;
 
   return (
     <>
       <div className="px-8 py-5 flex items-center gap-3 min-w-0" role="cell" data-testid="filename-cell">
-        <div 
+        <div
           className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors duration-200 shadow-sm relative cursor-pointer"
           onClick={() => onPreview?.(item)}
         >
-          {item.previewUrl ? (
+          {previewUrl ? (
             <img
-              src={item.previewUrl}
+              src={previewUrl}
               alt=""
               className="w-full h-full object-cover"
             />
@@ -55,68 +55,20 @@ export const ResultRowCells = memo(({ id, onRemove, onPreview }: ResultRowCellsP
         {item.formattedOriginalSize ?? (item.originalSize / BYTES_PER_KB).toFixed(1)} KB
       </div>
       <div className="px-6 py-5 min-w-0 overflow-hidden" role="cell">
-        <div className="flex flex-wrap gap-2 max-w-full">
-          {Object.values(item.results).map(res => {
-            const chipClassName = cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200 min-w-0',
-              res.status === STATUS_SUCCESS
-                ? 'bg-surface border-border shadow-sm hover:border-primary/50 hover:bg-primary/5 hover:shadow-md cursor-pointer'
-                : 'bg-muted/50 border-border opacity-60 cursor-default'
-            );
-            const downloadFilename = `tinyimg-${item.file.name.substring(0, item.file.name.lastIndexOf('.'))}.${res.format === 'jpeg' ? DOWNLOAD_EXT_JPEG : res.format}`;
-
-            return res.status === STATUS_SUCCESS ? (
-              <a
-                key={res.format}
-                href={res.downloadUrl}
-                download={downloadFilename}
-                className={chipClassName}
-                aria-label={`Download ${res.label ?? res.format}`}
-                onContextMenu={(e) => {
-                  if (onPreview) {
-                    e.preventDefault();
-                    onPreview(item);
-                  }
-                }}
-              >
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
-                    {res.label ?? res.format}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-foreground">
-                      {res.formattedSize ?? (res.size != null ? (res.size / BYTES_PER_KB).toFixed(1) : '—')}{' '}
-                      KB
-                    </span>
-                    {res.savingsPercent != null && (
-                      <span className="text-[9px] font-black text-success bg-success/15 px-1.5 py-0.5 rounded-full">
-                        -{res.savingsPercent}%
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <Download size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
-              </a>
-            ) : (
-              <div key={res.format} className={chipClassName}>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
-                    {res.label ?? res.format}
-                  </span>
-                  {res.status === STATUS_ERROR ? (
-                    <Badge variant="error" className="text-[9px] px-2 py-1 rounded-full italic">
-                      Error
-                    </Badge>
-                  ) : (
-                    <div className="w-12 h-1 bg-muted rounded-full overflow-hidden mt-1">
-                      <div className="w-full h-full bg-gradient-to-r from-transparent via-primary/60 to-transparent animate-shimmer" />
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {item.status === STATUS_CHECKING ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-xs">Checking dimensions...</span>
+          </div>
+        ) : (
+          <TooltipProvider delayDuration={0}>
+            <div className="flex flex-wrap gap-2 max-w-full">
+              {Object.values(item.results).map(res => (
+                <ResultCell key={res.format} result={res} item={item} onPreview={onPreview ?? undefined} />
+              ))}
+            </div>
+          </TooltipProvider>
+        )}
       </div>
       <div className="px-6 py-5 flex items-center justify-end min-w-0 gap-1" role="cell">
         <Button

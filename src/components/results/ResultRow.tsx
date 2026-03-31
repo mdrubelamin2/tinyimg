@@ -1,11 +1,10 @@
-import { useStore } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
+import { useAtomValue } from 'jotai';
 import { Sparkles, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useImageStore } from '@/store/image-store';
+import { imageItemAtomFamily } from '@/store/atoms/image-atoms';
 import { BYTES_PER_KB, STATUS_SUCCESS, STATUS_ERROR } from '@/constants/index';
 import type { ImageItem } from '@/lib/queue/types';
 
@@ -18,8 +17,8 @@ export interface ResultRowProps {
 }
 
 export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
-  // Use highly specific selector to only re-render when THIS item changes
-  const item = useStore(useImageStore, useShallow((state) => state.items.get(id)));
+  // Use Jotai atom - only re-renders when THIS item changes
+  const item = useAtomValue(imageItemAtomFamily(id));
 
   if (!item) return null;
 
@@ -65,7 +64,7 @@ export const ResultRow = ({ id, onRemove, onPreview }: ResultRowProps) => {
             return res.status === STATUS_SUCCESS ? (
               <a
                 key={res.format}
-                href={res.downloadUrl}
+                href={res.downloadUrl ?? undefined}
                 download={downloadFilename}
                 className={chipClassName}
                 aria-label={`Download ${res.label ?? res.format}`}

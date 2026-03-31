@@ -1,9 +1,10 @@
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import { Settings, RefreshCcw, CheckCircle, FileType } from 'lucide-react';
-import { useImageStore } from '@/store/image-store';
-import { useSettingsStore } from '@/store/settings-store';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { settingsAtom } from '@/store/settings-store';
+import { useApplyGlobalOptions } from '@/store/atoms/image-actions';
 import type { GlobalOptions } from '@/constants';
-import { SVG_INTERNAL_FORMATS } from '@/constants';
+import { SVG_INTERNAL_FORMATS, DEFAULT_GLOBAL_OPTIONS } from '@/constants';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -16,11 +17,9 @@ import {
 } from './ui/select';
 
 export const ConfigPanel: React.FC = () => {
-  const options = useSettingsStore(state => state.options);
-  const setOptions = useSettingsStore(state => state.setOptions);
-  const applyGlobalOptions = useImageStore(state => state.applyGlobalOptions);
-
-  const [isPending, startTransition] = useTransition();
+  const options = useAtomValue(settingsAtom);
+  const setOptions = useSetAtom(settingsAtom);
+  const applyGlobalOptions = useApplyGlobalOptions();
 
   const [draft, setDraft] = useState<GlobalOptions>({ ...options });
 
@@ -59,9 +58,7 @@ export const ConfigPanel: React.FC = () => {
 
   const handleApplyToAll = () => {
     setOptions(draft);
-    startTransition(() => {
-      applyGlobalOptions(draft, true);
-    });
+    applyGlobalOptions(draft);
   };
 
   const handleResetToDefaults = () => {
@@ -207,15 +204,11 @@ export const ConfigPanel: React.FC = () => {
         <Button
           variant="default"
           onClick={handleApplyToAll}
-          disabled={!hasChanges || isPending}
+          disabled={!hasChanges}
           className="w-full text-[10px] uppercase tracking-widest cursor-pointer disabled:cursor-not-allowed transition-colors duration-200"
         >
-          {isPending ? (
-            <RefreshCcw size={14} className="mr-2 animate-spin" />
-          ) : (
-            <CheckCircle size={14} strokeWidth={3} className="mr-2" />
-          )}
-          {isPending ? 'Applying...' : 'Apply to All'}
+          <CheckCircle size={14} strokeWidth={3} className="mr-2" />
+          Apply to All
         </Button>
         <Button
           variant="secondary"
@@ -227,13 +220,4 @@ export const ConfigPanel: React.FC = () => {
       </div>
     </div>
   );
-};
-
-const DEFAULT_GLOBAL_OPTIONS: GlobalOptions = {
-  formats: [],
-  useOriginalFormats: true,
-  includeOriginalInCustom: false,
-  smallFilesFirst: true,
-  stripMetadata: true,
-  svgInternalFormat: 'webp',
 };
