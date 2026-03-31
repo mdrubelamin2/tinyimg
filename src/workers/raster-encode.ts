@@ -14,6 +14,7 @@ import type { ContentPreset } from './classify';
 import { isSmallAndTransparent } from './classify';
 import { GpuResizeClient } from '@/lib/gpu/gpu-worker-client';
 import { probeHardwareSupport, type HardwareCapabilities } from '@/lib/hardware';
+import { bufferPool } from '@/lib/buffer-pool';
 
 let gpuClient: GpuResizeClient | null = null;
 let hardwareCaps: HardwareCapabilities | null = null;
@@ -176,7 +177,14 @@ export async function resizeImage(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get 2d context for resize');
   ctx.drawImage(bitmap, 0, 0, width, height);
-  return ctx.getImageData(0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
+
+  // Use buffer pool for the underlying ArrayBuffer
+  const pooledBuffer = bufferPool.acquire(imageData.data.byteLength);
+  const pooledData = new Uint8ClampedArray(pooledBuffer, 0, imageData.data.length);
+  pooledData.set(imageData.data);
+
+  return new ImageData(pooledData, width, height);
 }
 
 export async function getImageData(bitmap: ImageBitmap): Promise<ImageData> {
@@ -184,13 +192,20 @@ export async function getImageData(bitmap: ImageBitmap): Promise<ImageData> {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Could not get 2d context');
   ctx.drawImage(bitmap, 0, 0);
-  return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+  const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+
+  // Use buffer pool for the underlying ArrayBuffer
+  const pooledBuffer = bufferPool.acquire(imageData.data.byteLength);
+  const pooledData = new Uint8ClampedArray(pooledBuffer, 0, imageData.data.length);
+  pooledData.set(imageData.data);
+
+  return new ImageData(pooledData, bitmap.width, bitmap.height);
 }
 
 export function checkPixelLimit(width: number, height: number): void {
   const total = width * height;
   if (total > MAX_PIXELS || !Number.isFinite(total)) {
-    throw new Error('Image dimensions too large (max 256 megapixels)');
+    throw new Error(`Image dimensions too large (${(total / 1_000_000).toFixed(1)}MP). Maximum supported: ${(MAX_PIXELS / 1_000_000).toFixed(0)}MP (~7K×7K)`);
   }
 }
 
@@ -226,18 +241,25 @@ export async function compositeImageDataOnWhite(imageData: ImageData): Promise<I
   const canvas = new OffscreenCanvas(imageData.width, imageData.height);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Could not get 2d context for composite');
-  
+
   // Fill background with white
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, imageData.width, imageData.height);
-  
+
   // Draw the image data on top with source-over
   const bitmap = await createImageBitmap(imageData);
   ctx.globalCompositeOperation = 'source-over';
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
-  
-  return ctx.getImageData(0, 0, imageData.width, imageData.height);
+
+  const composited = ctx.getImageData(0, 0, imageData.width, imageData.height);
+
+  // Use buffer pool for the underlying ArrayBuffer
+  const pooledBuffer = bufferPool.acquire(composited.data.byteLength);
+  const pooledData = new Uint8ClampedArray(pooledBuffer, 0, composited.data.length);
+  pooledData.set(composited.data);
+
+  return new ImageData(pooledData, imageData.width, imageData.height);
 }
 
 function hasTransparency(data: Uint8ClampedArray): boolean {
