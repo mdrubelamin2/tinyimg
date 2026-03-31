@@ -6,6 +6,7 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { X, ZoomIn, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLazyBlobUrl } from '@/hooks/useLazyBlobUrl';
 import type { ImageItem } from '@/lib/queue/types';
 import { STATUS_SUCCESS } from '@/constants/index';
 
@@ -35,8 +36,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   }, [item.results]);
 
   const currentResult = item.results[selectedFormat];
-  const originalUrl = item.previewUrl;
-  const optimizedUrl = currentResult?.downloadUrl;
+  const originalUrl = useLazyBlobUrl(item.file);
+  const optimizedUrl = useLazyBlobUrl(currentResult?.blob);
   const originalSize = item.originalSize;
   const optimizedSize = currentResult?.size ?? 0;
 
@@ -224,15 +225,15 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           <span className="text-[10px] text-muted-foreground font-medium">
             Drag to compare · ESC to close
           </span>
-          {currentResult?.downloadUrl && (
+          {optimizedUrl && (
             <a
-              href={currentResult.downloadUrl}
+              href={optimizedUrl}
               download={`tinyimg-${item.file.name.substring(0, item.file.name.lastIndexOf('.'))}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-primary to-primary/80 text-primary-foreground text-[10px] font-bold shadow-md shadow-primary/25 hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
-              aria-label={`Download ${currentResult.label ?? selectedFormat}`}
+              aria-label={`Download ${currentResult?.label ?? selectedFormat}`}
             >
               <Download size={12} />
-              <span className="uppercase">{currentResult.label ?? selectedFormat}</span>
+              <span className="uppercase">{currentResult?.label ?? selectedFormat}</span>
               <span className="opacity-70">·</span>
               <span>{formatBytes(optimizedSize)}</span>
               {savings !== '0' && (
