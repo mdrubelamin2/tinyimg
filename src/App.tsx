@@ -1,16 +1,32 @@
-import { useEffect, useState, useDeferredValue, useCallback } from 'react';
+import { useEffect, useState, useDeferredValue, useCallback, useTransition } from 'react';
 import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { preload, prefetchDNS } from 'react-dom';
-import { useImageStore, selectItemCount, selectOrderedItems } from '@/store/image-store';
-import { useSettingsStore } from '@/store/settings-store';
+import { useAtomValue } from 'jotai';
+import { Toaster } from 'react-hot-toast';
+import {
+  itemOrderAtom,
+  itemsArrayAtom,
+  itemCountAtom,
+  queueStatsAtom,
+  allDoneAtom,
+  hasErrorsAtom
+} from '@/store/atoms/image-atoms';
+import {
+  useAddFiles,
+  useRemoveItem,
+  useClearFinished,
+  useClearAll,
+  useDownloadAll
+} from '@/store/atoms/image-actions';
+import { settingsAtom } from '@/store/settings-store';
 import { Dropzone } from '@/components/Dropzone';
 import { ConfigPanel } from '@/components/ConfigPanel';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppHeader } from '@/components/AppHeader';
 import { ResultsTable } from '@/components/ResultsTable';
 import { ImagePreview } from '@/components/preview/ImagePreview';
-import { useQueueStats } from '@/hooks/useQueueStats';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { performanceMonitor } from '@/lib/performance-monitor';
 import confetti from 'canvas-confetti';
 import { Zap } from 'lucide-react';
 import {
@@ -24,7 +40,6 @@ import {
   CONFETTI_SPREAD,
   CONFETTI_ORIGIN_Y,
   CONFETTI_COLORS,
-  STATUS_ERROR,
 } from '@/constants/index';
 import type { ImageItem } from '@/lib/queue/types';
 
@@ -56,28 +71,38 @@ const FAQ_DATA = [
 ];
 
 const App: React.FC = () => {
-  const itemIds = useImageStore(state => state.itemOrder);
-  const itemsArray = useImageStore(selectOrderedItems);
-  const itemCount = useImageStore(selectItemCount);
-  const addFiles = useImageStore(state => state.addFiles);
-  const removeItem = useImageStore(state => state.removeItem);
-  const clearFinished = useImageStore(state => state.clearFinished);
-  const clearAll = useImageStore(state => state.clearAll);
-  const downloadAll = useImageStore(state => state.downloadAll);
-  const applyGlobalOptions = useImageStore(state => state.applyGlobalOptions);
+  const [, startTransition] = useTransition();
+  const itemIds = useAtomValue(itemOrderAtom);
+  const itemsArray = useAtomValue(itemsArrayAtom);
+  const itemCount = useAtomValue(itemCountAtom);
+  const addFiles = useAddFiles();
+  const removeItem = useRemoveItem();
+  const clearFinished = useClearFinished();
+  const clearAll = useClearAll();
+  const downloadAll = useDownloadAll();
 
-  const options = useSettingsStore(state => state.options);
+  const options = useAtomValue(settingsAtom);
   const deferredItemIds = useDeferredValue(itemIds);
 
   const [preview, setPreview] = useState<PreviewState | null>(null);
 
-  const { savingsPercent, allDone, hasFinishedItems, doneCount } = useQueueStats(itemsArray);
+  const { savingsPercent, hasFinishedItems, doneCount } = useAtomValue(queueStatsAtom);
+  const allDone = useAtomValue(allDoneAtom);
+  const hasErrors = useAtomValue(hasErrorsAtom);
+
+  // Initialize performance monitoring
+  useEffect(() => {
+    performanceMonitor.init();
+    
+    return () => {
+      performanceMonitor.destroy();
+    };
+  }, []);
 
   // Confetti on all-done
   useEffect(() => {
-    const zeroErrors = itemsArray.every(i => i.status !== STATUS_ERROR);
     // Check itemsArray.length > 0 because allDone can be true if itemsArray is empty
-    if (allDone && zeroErrors && itemsArray.length > 0) {
+    if (allDone && !hasErrors && itemsArray.length > 0) {
       confetti({
         particleCount: CONFETTI_PARTICLE_COUNT,
         spread: CONFETTI_SPREAD,
@@ -85,17 +110,16 @@ const App: React.FC = () => {
         colors: [...CONFETTI_COLORS],
       });
     }
-  }, [allDone, itemsArray]);
+  }, [allDone, hasErrors, itemsArray.length]); // Use length instead of array reference
 
   const handleFilesAdded = useCallback((files: File[] | DataTransferItem[]) => {
-    void addFiles(files, options);
-  }, [addFiles, options]);
+    // Wrap in startTransition - file processing is non-urgent and shouldn't block UI
+    startTransition(() => {
+      void addFiles(files, options);
+    });
+  }, [addFiles, options, startTransition]);
 
-  useEffect(() => {
-    if (itemCount > 0) {
-      applyGlobalOptions(options, false);
-    }
-  }, [options, itemCount, applyGlobalOptions]);
+  // Remove applyGlobalOptions effect - Jotai handles this automatically
 
   const handlePreview = useCallback((item: ImageItem) => {
     const formats = Object.keys(item.results);
@@ -211,6 +235,40 @@ const App: React.FC = () => {
             />
           ) : null}
         </ErrorBoundary>
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: 'rgba(255, 255, 255, 0.7)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              color: '#020617',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              fontSize: '14px',
+              fontWeight: '500',
+            },
+            success: {
+              iconTheme: {
+                primary: '#0369A1',
+                secondary: '#fff',
+              },
+            },
+            loading: {
+              iconTheme: {
+                primary: '#0369A1',
+                secondary: '#fff',
+              },
+            },
+            error: {
+              iconTheme: {
+                primary: '#ef4444',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
       </div>
     </HelmetProvider>
   );

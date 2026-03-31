@@ -1,6 +1,10 @@
 import ReactDOM from 'react-dom/client'
+import { Provider as JotaiProvider, createStore } from 'jotai'
 import App from './App.tsx'
 import './index.css'
+
+// Create Jotai store
+export const jotaiStore = createStore()
 
 const root = ReactDOM.createRoot(document.getElementById('root')!, {
   onCaughtError: (error, errorInfo) => {
@@ -14,4 +18,8 @@ const root = ReactDOM.createRoot(document.getElementById('root')!, {
   },
 })
 
-root.render(<App />)
+root.render(
+  <JotaiProvider store={jotaiStore}>
+    <App />
+  </JotaiProvider>
+)
