@@ -8,7 +8,12 @@ import { ThemeToggle } from './layout/ThemeToggle';
 
 const GITHUB_URL = 'https://github.com/mdrubelamin2/tinyimg.git';
 
-export const AppHeader: React.FC = () => (
+export interface AppHeaderProps {
+  /** Optional one-line hint (e.g. heuristic savings while jobs run). */
+  subtitle?: string | undefined;
+}
+
+export const AppHeader: React.FC<AppHeaderProps> = ({ subtitle }) => (
   <nav className="fixed top-4 left-4 right-4 z-50 glass rounded-2xl px-4 md:px-6 py-3 flex justify-between items-center shadow-2xl shadow-primary/10">
     <div className="flex items-center gap-3">
       <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/30 cursor-pointer transition-transform hover:scale-105">
@@ -21,6 +26,11 @@ export const AppHeader: React.FC = () => (
         <p className="text-[9px] md:text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
           Industrial Optimizer
         </p>
+        {subtitle ? (
+          <p className="text-[10px] md:text-[11px] text-primary/90 font-medium mt-0.5 max-w-[min(280px,55vw)] truncate">
+            {subtitle}
+          </p>
+        ) : null}
       </div>
     </div>
     <div className="flex items-center gap-2 md:gap-3">

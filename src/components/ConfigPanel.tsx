@@ -1,6 +1,6 @@
 import { useState, useTransition } from 'react';
 import { Settings, RefreshCcw, CheckCircle, FileType } from 'lucide-react';
-import { useImageStore } from '@/store/image-store';
+import { getImageStore } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
 import type { GlobalOptions } from '@/constants';
 import { SVG_INTERNAL_FORMATS } from '@/constants';
@@ -18,7 +18,7 @@ import {
 export const ConfigPanel: React.FC = () => {
   const options = useSettingsStore(state => state.options);
   const setOptions = useSettingsStore(state => state.setOptions);
-  const applyGlobalOptions = useImageStore(state => state.applyGlobalOptions);
+  const applyGlobalOptions = getImageStore().applyGlobalOptions;
 
   const [isPending, startTransition] = useTransition();
 

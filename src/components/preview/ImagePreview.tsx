@@ -4,13 +4,17 @@
  */
 
 import { useRef, useState, useEffect, useMemo } from 'react';
+import { useValue } from '@legendapp/state/react';
 import { X, ZoomIn, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { imageStore$ } from '@/store/image-store';
 import type { ImageItem } from '@/lib/queue/types';
-import { STATUS_SUCCESS } from '@/constants/index';
+import { STATUS_SUCCESS } from '@/constants';
+import { resolveOriginalSourceFile } from '@/storage/queue-binary';
+import { thumbnailCachePeek } from '@/thumbnails/thumbnail-cache';
 
 interface ImagePreviewProps {
-  item: ImageItem;
+  itemId: string;
   selectedFormat: string;
   onFormatChange: (format: string) => void;
   onClose: () => void;
@@ -21,28 +25,71 @@ const MAX_SPLIT = 0.9;
 const DEFAULT_SPLIT = MAX_SPLIT;
 
 export const ImagePreview: React.FC<ImagePreviewProps> = ({
-  item,
+  itemId,
   selectedFormat,
   onFormatChange,
   onClose,
 }) => {
+  const item = useValue(() => imageStore$.items[itemId]?.get() as ImageItem | undefined);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [split, setSplit] = useState(DEFAULT_SPLIT);
   const [isDragging, setIsDragging] = useState(false);
+  /** Object URL from resolveOriginalSourceFile when row has no thumbnail yet */
+  const [resolvedOriginalObjectUrl, setResolvedOriginalObjectUrl] = useState<string | null>(null);
+  const resolvedOriginalRef = useRef<string | null>(null);
 
   const successResults = useMemo(() => {
+    if (!item) return [];
     return Object.values(item.results).filter(r => r.status === STATUS_SUCCESS);
-  }, [item.results]);
+  }, [item]);
 
-  const currentResult = item.results[selectedFormat];
-  const originalUrl = item.previewUrl;
+  const currentResult = item?.results[selectedFormat];
+  const thumbnailOrRowPreview = item ? thumbnailCachePeek(itemId) ?? item.previewUrl : undefined;
+  const originalUrl = resolvedOriginalObjectUrl;
   const optimizedUrl = currentResult?.downloadUrl;
-  const originalSize = item.originalSize;
+  const originalSize = item?.originalSize ?? 0;
   const optimizedSize = currentResult?.size ?? 0;
+
+  useEffect(() => {
+    if (!item) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const file = await resolveOriginalSourceFile(itemId, item);
+      if (cancelled || !file) return;
+      const url = URL.createObjectURL(file);
+      if (cancelled) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (resolvedOriginalRef.current) {
+        URL.revokeObjectURL(resolvedOriginalRef.current);
+      }
+      resolvedOriginalRef.current = url;
+      setResolvedOriginalObjectUrl(url);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (resolvedOriginalRef.current) {
+        URL.revokeObjectURL(resolvedOriginalRef.current);
+        resolvedOriginalRef.current = null;
+      }
+      setResolvedOriginalObjectUrl(null);
+    };
+  }, [item, itemId, thumbnailOrRowPreview]);
 
   const savings = originalSize > 0 && optimizedSize > 0
     ? ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
     : '0';
+
+  const downloadBaseName = useMemo(() => {
+    if (!item) return '';
+    const d = item.fileName.lastIndexOf('.');
+    return d > 0 ? item.fileName.substring(0, d) : item.fileName;
+  }, [item]);
 
   const handleMove = (clientX: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -72,14 +119,33 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [onClose]);
 
   const formatBytes = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     return `${(bytes / 1024).toFixed(1)} KB`;
   };
 
-  if (!originalUrl || !optimizedUrl) return null;
+  if (!item) return null;
+
+  if (!originalUrl || !optimizedUrl) {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+        onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Loading preview"
+      >
+        <div
+          className="relative bg-surface text-surface-foreground rounded-2xl shadow-2xl px-8 py-6 border border-border"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-sm text-muted-foreground">Preparing preview…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -87,7 +153,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview comparison for ${item.file.name}`}
+      aria-label={`Preview comparison for ${item.fileName}`}
     >
       <div
         className="relative bg-surface text-surface-foreground rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden border border-border"
@@ -99,7 +165,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             <ZoomIn size={18} className="text-primary" />
             <div>
               <h3 className="font-bold text-foreground text-sm truncate max-w-[300px]">
-                {item.file.name}
+                {item.fileName}
               </h3>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
                 {currentResult?.label ?? selectedFormat} · Saved {savings}%
@@ -227,7 +293,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           {currentResult?.downloadUrl && (
             <a
               href={currentResult.downloadUrl}
-              download={`tinyimg-${item.file.name.substring(0, item.file.name.lastIndexOf('.'))}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
+              download={`tinyimg-${downloadBaseName}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-primary to-primary/80 text-primary-foreground text-[10px] font-bold shadow-md shadow-primary/25 hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
               aria-label={`Download ${currentResult.label ?? selectedFormat}`}
             >
