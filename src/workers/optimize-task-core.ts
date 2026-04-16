@@ -1,6 +1,5 @@
 /**
- * Shared optimize implementation: runs in the dedicated Vite worker and in
- * multithreading.js pool workers (dynamic import). Keep imports worker-safe.
+ * Shared optimize implementation: runs in the poolifier ThreadWorker. Keep imports worker-safe.
  */
 
 import {

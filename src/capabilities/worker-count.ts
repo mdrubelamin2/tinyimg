@@ -10,14 +10,27 @@ import {
   MB_PER_WORKER_ESTIMATE,
   DEVICE_MEMORY_RESERVE_GB,
 } from '@/constants/limits';
-
-function isCoarsePointer(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return false;
-  return window.matchMedia('(pointer: coarse)').matches;
-}
+import { availableParallelism } from 'poolifier-web-worker';
 
 function isLikelyMobile(): boolean {
-  return isCoarsePointer() || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 2);
+  const { userAgent, platform, maxTouchPoints } = window.navigator;
+
+  const isIOS = /(iphone|ipod|ipad)/i.test(userAgent);
+
+  // Workaround for ipadOS, force detection as tablet. `platform` is
+  // deprecated but remains the only reliable way to distinguish iPadOS
+  // desktop-mode (MacIntel + touch) from a real Mac on Safari/Firefox.
+  // Known limitation: if Apple ever ships a touch-screen Mac, it will
+  // also match `MacIntel + maxTouchPoints > 0` and be misclassified as
+  // iPad here. No such device exists today; revisit when/if it ships.
+  // SEE: https://github.com/lancedikson/bowser/issues/329
+  // SEE: https://stackoverflow.com/questions/58019463/how-to-detect-device-name-in-safari-on-ios-13-while-it-doesnt-show-the-correct
+  const isIpad =
+    platform === 'iPad' || (platform === 'MacIntel' && maxTouchPoints > 0);
+
+  const isAndroid = /android/i.test(userAgent);
+
+  return isIOS || isIpad || isAndroid;
 }
 
 /**
@@ -37,7 +50,7 @@ function memoryBasedMaxWorkers(): number {
  * Returns the number of optimizer workers to spawn (main thread stays reserved).
  */
 export function computeOptimalWorkerCount(): number {
-  const cores = navigator.hardwareConcurrency ?? 4;
+  const cores = availableParallelism();
   if (cores <= 2) return 1;
 
   if (isLikelyMobile()) {

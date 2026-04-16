@@ -30,12 +30,15 @@ describe('image-store queue progression', () => {
     });
     vi.stubGlobal(
       'Worker',
-      vi.fn(() => ({
-        onmessage: null,
-        onerror: null,
-        postMessage: vi.fn(),
-        terminate: vi.fn(),
-      }))
+      vi.fn(() => {
+        const w = new EventTarget();
+        return Object.assign(w, {
+          onmessage: null as null | ((ev: MessageEvent) => void),
+          onerror: null as null | ((ev: ErrorEvent) => void),
+          postMessage: vi.fn(),
+          terminate: vi.fn(),
+        });
+      })
     );
     useImageStore.getState().clearAll();
   });

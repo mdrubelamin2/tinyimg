@@ -3,6 +3,17 @@
  * All numeric boundaries that gate what the app accepts and how it behaves.
  */
 
+function hardwareConcurrencyOrFallback(): number {
+  if (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.hardwareConcurrency === 'number' &&
+    navigator.hardwareConcurrency >= 1
+  ) {
+    return navigator.hardwareConcurrency;
+  }
+  return 1;
+}
+
 // --- File intake limits ---
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 /** Compressed archive (.zip) max size before intake refuses the file (toast only, no queue row). */
@@ -15,12 +26,12 @@ export const MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024;
 export const MAX_DOWNLOAD_FILES = 200;
 
 // --- Concurrency ---
-export const CONCURRENCY_MIN = 2;
+export const CONCURRENCY_MIN = Math.max(1, Math.floor(hardwareConcurrencyOrFallback() / 4));
 /** Legacy name: desktop pool hard ceiling (see worker-count.ts). */
 export const CONCURRENCY_MAX = 16;
 export const CONCURRENCY_DEFAULT = 4;
 /** Desktop / laptop worker ceiling after cores + memory heuristics. */
-export const CONCURRENCY_MAX_DESKTOP = 16;
+export const CONCURRENCY_MAX_DESKTOP = hardwareConcurrencyOrFallback();
 export const MOBILE_MAX_WORKERS = 4;
 /** Rough WASM footprint per worker for memory-based caps (MB). */
 export const MB_PER_WORKER_ESTIMATE = 60;

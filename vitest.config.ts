@@ -12,5 +12,6 @@ export default defineConfig({
     exclude: ['src/tests/e2e/**'],
     environment: 'node',
     globals: true,
+    setupFiles: ['./src/tests/vitest-setup.ts'],
   },
 });

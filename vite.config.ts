@@ -8,11 +8,22 @@ import { visualizer } from 'rollup-plugin-visualizer';
 
 const analyze = process.env.ANALYZE === 'true';
 
+/** COOP + COEP — cross-origin isolation (SharedArrayBuffer / WASM); keep in sync with `public/_headers`. */
+const crossOriginIsolationHeaders = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+} as const;
+
 export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
       svgo: 'svgo/browser',
+      /** Prefer browser build; avoids Node-only branches in esm/mod.js (Rolldown externalization noise). */
+      'poolifier-web-worker': path.resolve(
+        __dirname,
+        'node_modules/poolifier-web-worker/browser/mod.js'
+      ),
     },
   },
   plugins: [
@@ -22,6 +33,7 @@ export default defineConfig({
     (react as any)({
       babel: {
         plugins: [
+          // Legend State: wrap Memo/Show/Computed children for React Compiler compatibility
           '@legendapp/state/babel',
           'babel-plugin-react-compiler',
         ],
@@ -42,16 +54,10 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
+    headers: crossOriginIsolationHeaders,
   },
   preview: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
+    headers: crossOriginIsolationHeaders,
   },
   worker: {
     format: 'es',
@@ -61,6 +67,7 @@ export default defineConfig({
     exclude: ['@resvg/resvg-wasm'],
   },
   build: {
+    modulePreload: false,
     reportCompressedSize: true,
     chunkSizeWarningLimit: 900,
     rollupOptions: {
@@ -78,7 +85,6 @@ export default defineConfig({
           if (id.includes('@jsquash')) return 'jsquash';
           if (id.includes('zip.js') || id.includes('@zip.js')) return 'zip-js';
           if (id.includes('svgo')) return 'svgo';
-          if (id.includes('multithreading')) return 'multithreading';
           if (id.includes('idb-keyval')) return 'idb-keyval';
           if (id.includes('class-variance-authority') || id.includes('clsx') || id.includes('tailwind-merge'))
             return 'ui-utils';

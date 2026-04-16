@@ -45,7 +45,7 @@
     "class-variance-authority": "^0.7.1",
     "idb-keyval": "^6.2.2",
     "libimagequant-wasm": "^0.2.4",
-    "multithreading": "^0.3.52",
+    "poolifier-web-worker": "^0.6.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-helmet-async": "^3.0.0",

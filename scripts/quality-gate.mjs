@@ -9,8 +9,8 @@
  * Example: node scripts/quality-gate.mjs test-images ./test-output
  *
  * If the gate fails: inspect reported image(s), SSIM and PSNR. Consider
- * adjusting worker constants in src/workers/optimizer.worker.ts or
- * adding overrides in quality-thresholds.jsonc.
+ * tuning encode paths in src/workers/optimize-task-core.ts (or related codecs)
+ * or adding overrides in quality-thresholds.jsonc.
  */
 
 import fs from 'fs';

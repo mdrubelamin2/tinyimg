@@ -1,17 +1,20 @@
 /**
- * Optimizer concurrency via multithreading.js: managed worker pool + move() for
- * structured clone of task payloads. Preserves cancel + pending-queue semantics
- * of the previous hand-rolled WorkerPool.
+ * Optimizer concurrency via poolifier-web-worker DynamicThreadPool + ThreadWorker.
+ * Preserves cancel + pending-queue semantics of the previous WorkerPool.
  */
 
-import { spawn, move, initRuntime, shutdown, type JoinHandle } from 'multithreading';
-import type { Task, WorkerOutbound } from '@/lib/queue/types.ts';
-import { computeOptimalWorkerCount } from '@/capabilities/worker-count.ts';
+import { DynamicThreadPool } from 'poolifier-web-worker';
+import type { Task, TaskOptions, WorkerOutbound } from '@/lib/queue/types.ts';
+import { CONCURRENCY_MIN } from '@/constants/limits';
+import optimizerPoolifierWorkerUrl from './optimizer-poolifier.worker.ts?worker&url';
+import { computeOptimalWorkerCount } from '@/capabilities/worker-count';
+
+type OptimizePayload = { id: string; file: File; options: TaskOptions };
 
 export interface WorkerPoolCallbacks {
   onMessage: (workerIndex: number, data: WorkerOutbound) => void;
   onError: (workerIndex: number, task: Task | null) => void;
-  onCancelled?: (taskId: string) => void;
+  onCancelled?: (taskKey: string) => void;
 }
 
 export function computeConcurrency(): number {
@@ -24,30 +27,30 @@ function taskKey(task: Task): TaskKey {
   return `${task.id}:${task.format}`;
 }
 
-/** Reset in `destroy()` so a later pool can call `initRuntime` again after `shutdown()`. */
-let optimizerRuntimeInited = false;
+function dynamicPoolBounds(maxWorkers: number): { min: number; max: number } {
+  const max = Math.max(1, maxWorkers);
+  if (max === 1) return { min: 0, max: 1 };
+  let min = Math.max(1, CONCURRENCY_MIN);
+  if (min >= max) min = Math.max(0, max - 1);
+  return { min, max };
+}
 
-/**
- * Pool: bounded concurrent `spawn()` calls into multithreading's global pool,
- * FIFO pending queue, per-item / per-task abort via `JoinHandle.abort()`.
- */
 export class WorkerPool {
   private readonly callbacks: WorkerPoolCallbacks;
   private readonly maxConcurrent: number;
+  private readonly pool: DynamicThreadPool<OptimizePayload, WorkerOutbound>;
   private pending: Task[] = [];
-  private readonly active = new Map<TaskKey, { task: Task; handle: JoinHandle<WorkerOutbound> }>();
+  private readonly active = new Map<TaskKey, { task: Task; controller: AbortController }>();
 
   constructor(concurrency: number, callbacks: WorkerPoolCallbacks) {
     this.callbacks = callbacks;
     this.maxConcurrent = Math.max(1, concurrency);
-    if (!optimizerRuntimeInited) {
-      try {
-        initRuntime({ maxWorkers: this.maxConcurrent });
-      } catch {
-        /* pool already configured (e.g. tests creating a second pool) */
-      }
-      optimizerRuntimeInited = true;
-    }
+    const { min, max } = dynamicPoolBounds(this.maxConcurrent);
+    this.pool = new DynamicThreadPool(min, max, optimizerPoolifierWorkerUrl, {
+      errorEventHandler: (e) => {
+        console.error(e);
+      },
+    });
   }
 
   addTask(task: Task): void {
@@ -63,9 +66,9 @@ export class WorkerPool {
     this.removeTasksForItem(id);
     for (const [key, entry] of this.active) {
       if (entry.task.id === id) {
-        entry.handle.abort();
+        entry.controller.abort();
         this.active.delete(key);
-        this.callbacks.onCancelled?.(id);
+        this.callbacks.onCancelled?.(key);
       }
     }
     this.pump();
@@ -75,7 +78,7 @@ export class WorkerPool {
     this.pending = this.pending.filter(t => `${t.id}:${t.format}` !== taskId);
     for (const [key, entry] of this.active) {
       if (`${entry.task.id}:${entry.task.format}` === taskId) {
-        entry.handle.abort();
+        entry.controller.abort();
         this.active.delete(key);
         this.callbacks.onCancelled?.(taskId);
       }
@@ -85,40 +88,40 @@ export class WorkerPool {
 
   destroy(): void {
     this.pending.length = 0;
-    for (const { handle } of this.active.values()) {
-      handle.abort();
+    for (const { controller } of this.active.values()) {
+      controller.abort();
     }
     this.active.clear();
-    shutdown();
-    optimizerRuntimeInited = false;
+    void this.pool.destroy();
   }
 
   private pump(): void {
     while (this.active.size < this.maxConcurrent && this.pending.length > 0) {
       const task = this.pending.shift()!;
       const key = taskKey(task);
-      const handle = spawn(move(task), async (t: Task) => {
-        const { runOptimizeTask } = await import('./optimize-task-core.ts');
-        return runOptimizeTask({ id: t.id, file: t.file, options: t.options });
-      });
-      this.active.set(key, { task, handle });
-      void this.runTask(key, task, handle);
-    }
-  }
-
-  private async runTask(key: TaskKey, task: Task, handle: JoinHandle<WorkerOutbound>): Promise<void> {
-    try {
-      const res = await handle.join();
-      if (res.ok) {
-        this.callbacks.onMessage(0, res.value);
-      } else {
-        this.callbacks.onError(0, task);
-      }
-    } catch {
-      this.callbacks.onError(0, task);
-    } finally {
-      this.active.delete(key);
-      this.pump();
+      const controller = new AbortController();
+      this.active.set(key, { task, controller });
+      const payload: OptimizePayload = {
+        id: task.id,
+        file: task.file,
+        options: task.options,
+      };
+      void this.pool
+        .execute(payload, undefined, controller.signal)
+        .then((data) => {
+          this.callbacks.onMessage(0, data);
+        })
+        .catch((err: unknown) => {
+          const aborted =
+            controller.signal.aborted ||
+            (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted')));
+          if (aborted) return;
+          this.callbacks.onError(0, task);
+        })
+        .finally(() => {
+          this.active.delete(key);
+          this.pump();
+        });
     }
   }
 }

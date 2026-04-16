@@ -1,5 +1,5 @@
 /**
- * zip.js global configuration for Vite: bundle worker + wasm as URLs (COEP/CSP-friendly).
+ * zip.js global configuration for Vite: bundle worker + wasm as URLs (COEP-friendly).
  * Call {@link ensureZipJsConfigured} before creating ZipReader / ZipWriter in the browser.
  */
 import { configure } from '@zip.js/zip.js';
