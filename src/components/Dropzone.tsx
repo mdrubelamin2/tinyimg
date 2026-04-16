@@ -72,17 +72,15 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
               <Upload size={36} className="md:w-11 md:h-11" strokeWidth={1.5} />
             )}
           </div>
-          <div className="px-4 space-y-2">
-            <h3 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
-              {dropDisabled ? 'Adding to queue…' : 'Drop anywhere on the page or paste (Ctrl+V)'}
-            </h3>
-            <p className="text-sm text-muted-foreground max-w-md font-medium leading-relaxed">
-              SVG, PNG, JPG, WebP, AVIF, GIF, BMP, TIFF, HEIC (Safari), ZIPs. Folders: drag from your desktop.
-              <br />
-              <span className="text-muted-foreground/80">Highly private.</span>{' '}
-              <span className="text-primary font-bold">Images max 25MB · ZIP max 2GB.</span>
-            </p>
-          </div>
+          <h3 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+            {dropDisabled ? 'Adding to queue…' : 'Drop anywhere on the page or paste (Ctrl+V)'}
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-md font-medium leading-relaxed">
+            SVG, PNG, JPG, WebP, AVIF, GIF, BMP, TIFF, HEIC (Safari), ZIPs. Folders: drag from your desktop.
+            <br />
+            <span className="text-muted-foreground/80">Highly private.</span>{' '}
+            <span className="text-primary font-bold">Images max 25MB · ZIP max 2GB.</span>
+          </p>
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/5 border border-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest">
             <span className={cn('w-1.5 h-1.5 rounded-full bg-primary', !dropDisabled && 'animate-pulse-subtle')} />
             {dropDisabled ? 'Working' : 'Click to browse'}
