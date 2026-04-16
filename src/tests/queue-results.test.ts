@@ -1,30 +1,64 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { STATUS_PENDING } from '@/constants';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ERR_WORKER, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS, STATUS_ERROR } from '@/constants';
 import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
-import { applyWorkerResponse, applyWorkerTaskError } from '@/lib/queue/queue-results';
+import { useImageStore } from '@/store/image-store';
 
 function createBaseItem(): ImageItem {
   return {
     id: 'item-1',
-    file: new File(['x'], 'image.png', { type: 'image/png' }),
+    fileName: 'image.png',
+    mimeType: 'image/png',
+    originalSourceKind: 'direct',
     status: STATUS_PENDING,
     progress: 0,
     originalSize: 1,
     originalFormat: 'png',
     results: {
-      webp: { format: 'webp', status: 'processing' },
+      webp: { format: 'webp', status: STATUS_PROCESSING },
     },
   };
 }
 
-describe('queue-results', () => {
+describe('queue worker results via image-store', () => {
   beforeEach(() => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    vi.stubGlobal(
+      'Worker',
+      vi.fn(() => ({
+        onmessage: null,
+        onerror: null,
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
+      }))
+    );
+    useImageStore.getState().clearAll();
   });
 
-  it('applies worker success and marks item as success', () => {
-    const queue = [createBaseItem()];
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    useImageStore.getState().clearAll();
+  });
+
+  async function flushAsyncWork(): Promise<void> {
+    for (let i = 0; i < 40; i++) {
+      await Promise.resolve();
+    }
+  }
+
+  it('applies worker RESULT and marks item success with persisted output', async () => {
+    const item = createBaseItem();
+    useImageStore.setState({
+      items: new Map([[item.id, item]]),
+      itemOrder: [item.id],
+      pendingIds: new Set([item.id]),
+    });
+
     const response: WorkerOutboundResult = {
       type: 'RESULT',
       id: 'item-1',
@@ -36,15 +70,25 @@ describe('queue-results', () => {
       savingsPercent: 0,
     };
 
-    const next = applyWorkerResponse(queue, response);
-    expect(next[0]?.status).toBe('success');
-    expect(next[0]?.results['webp']?.downloadUrl).toBe('blob:test');
-    expect(next[0]?.results['webp']?.size).toBe(3);
+    useImageStore.getState()._applyWorkerResult(response);
+    await flushAsyncWork();
+
+    const updated = useImageStore.getState().items.get('item-1');
+    expect(updated?.status).toBe(STATUS_SUCCESS);
+    expect(updated?.results['webp']?.downloadUrl).toBe('blob:test');
+    expect(updated?.results['webp']?.payloadKey).toBe('out:item-1:webp');
+    expect(updated?.results['webp']?.size).toBe(3);
   });
 
-  it('applies worker task error and marks item as error', () => {
-    const queue = [createBaseItem()];
-    const next = applyWorkerTaskError(queue, {
+  it('applies worker pool error and marks item and format as error', async () => {
+    const item = createBaseItem();
+    useImageStore.setState({
+      items: new Map([[item.id, item]]),
+      itemOrder: [item.id],
+      pendingIds: new Set([item.id]),
+    });
+
+    useImageStore.getState()._applyWorkerError({
       id: 'item-1',
       format: 'webp',
       file: new File(['x'], 'image.png', { type: 'image/png' }),
@@ -59,9 +103,11 @@ describe('queue-results', () => {
         stripMetadata: true,
       },
     });
+    useImageStore.getState()._batchApplyResults();
 
-    expect(next[0]?.status).toBe('error');
-    expect(next[0]?.results['webp']?.status).toBe('error');
+    const updated = useImageStore.getState().items.get('item-1');
+    expect(updated?.status).toBe(STATUS_ERROR);
+    expect(updated?.results['webp']?.status).toBe(STATUS_ERROR);
+    expect(updated?.results['webp']?.error).toBe(ERR_WORKER);
   });
 });
-

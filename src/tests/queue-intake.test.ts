@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
-import type { ImageItem } from '@/lib/queue-types';
+import {
+  collectItemsFromFiles,
+  intakeEntriesToItems,
+  normalizeIntakeSources,
+  type IntakeOriginalKind,
+} from '@/lib/queue/queue-intake';
+import type { ImageItem } from '@/lib/queue/types';
 
-function createItem(file: File): ImageItem {
+function createItem(file: File, intakeKind: IntakeOriginalKind): ImageItem {
   return {
     id: file.name,
-    file,
+    fileName: file.name,
+    mimeType: file.type || 'image/png',
+    originalSourceKind: intakeKind === 'direct' ? 'direct' : 'storage',
     status: 'pending',
     progress: 0,
     originalSize: file.size,
@@ -61,10 +68,10 @@ describe('queue-intake', () => {
   });
 
   it('collects all files from a dropped DataTransferItemList', async () => {
-    const first = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], 'first.png', {
+    const first = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01])], 'first.png', {
       type: 'image/png',
     });
-    const second = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], 'second.png', {
+    const second = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x02])], 'second.png', {
       type: 'image/png',
     });
 
@@ -93,11 +100,13 @@ describe('queue-intake', () => {
     ]);
     liveList.prime();
 
-    const items = await collectItemsFromFiles(liveList as unknown as DataTransferItemList, {
-      createItem,
-    });
+    const { entries } = await collectItemsFromFiles(
+      normalizeIntakeSources(liveList as unknown as DataTransferItemList),
+      { createItem }
+    );
+    const items = intakeEntriesToItems(entries);
 
-    expect(items.map(item => item.file.name)).toEqual(['first.png', 'second.png']);
+    expect(items.map(item => item.fileName)).toEqual(['first.png', 'second.png']);
   });
 
   it('falls back to getAsFile when no entry is available', async () => {
@@ -116,10 +125,12 @@ describe('queue-intake', () => {
     ]);
     liveList.prime();
 
-    const items = await collectItemsFromFiles(liveList as unknown as DataTransferItemList, {
-      createItem,
-    });
+    const { entries } = await collectItemsFromFiles(
+      normalizeIntakeSources(liveList as unknown as DataTransferItemList),
+      { createItem }
+    );
+    const items = intakeEntriesToItems(entries);
 
-    expect(items.map(item => item.file.name)).toEqual(['fallback.png']);
+    expect(items.map(item => item.fileName)).toEqual(['fallback.png']);
   });
 });

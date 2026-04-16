@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_GLOBAL_OPTIONS, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants';
 import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
+import { registerDirectDropOriginal } from '@/storage/dropped-original-files';
 import { useImageStore } from '@/store/image-store';
 
 function createItem(id: string, name: string): ImageItem {
   return {
     id,
-    file: new File(['x'], name, { type: 'image/png' }),
+    fileName: name,
+    mimeType: 'image/png',
+    originalSourceKind: 'direct',
     status: STATUS_PENDING,
     progress: 0,
     originalSize: 1,
@@ -43,7 +46,13 @@ describe('image-store queue progression', () => {
     useImageStore.getState().clearAll();
   });
 
-  function seedTwoPendingItems() {
+  async function flushAsyncWork(): Promise<void> {
+    for (let i = 0; i < 40; i++) {
+      await Promise.resolve();
+    }
+  }
+
+  async function seedTwoPendingItems() {
     const first = createItem('first', 'first.png');
     const second = createItem('second', 'second.png');
 
@@ -56,10 +65,14 @@ describe('image-store queue progression', () => {
       pendingIds: new Set([first.id, second.id]),
     });
 
+    registerDirectDropOriginal(first.id, new File(['x'], 'first.png', { type: 'image/png' }));
+    registerDirectDropOriginal(second.id, new File(['x'], 'second.png', { type: 'image/png' }));
+
     const pool = useImageStore.getState()._getPool();
     const addTask = vi.spyOn(pool, 'addTask').mockImplementation(() => {});
 
-    useImageStore.getState()._processNext(DEFAULT_GLOBAL_OPTIONS);
+    void useImageStore.getState()._processNextAsync(DEFAULT_GLOBAL_OPTIONS, { getState: useImageStore.getState });
+    await flushAsyncWork();
 
     expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_PROCESSING);
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PENDING);
@@ -69,8 +82,8 @@ describe('image-store queue progression', () => {
     return { addTask, first, second };
   }
 
-  it('starts the next pending item after the current item succeeds', () => {
-    const { addTask, first, second } = seedTwoPendingItems();
+  it('starts the next pending item after the current item succeeds', async () => {
+    const { addTask, first, second } = await seedTwoPendingItems();
 
     const response: WorkerOutboundResult = {
       type: 'RESULT',
@@ -84,6 +97,11 @@ describe('image-store queue progression', () => {
     };
 
     useImageStore.getState()._applyWorkerResult(response);
+    await flushAsyncWork();
+    await vi.waitUntil(
+      () => useImageStore.getState().items.get(second.id)?.status === STATUS_PROCESSING,
+      { timeout: 2000, interval: 1 }
+    );
 
     expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_SUCCESS);
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
@@ -91,13 +109,13 @@ describe('image-store queue progression', () => {
     expect(addTask).toHaveBeenLastCalledWith(expect.objectContaining({ id: second.id, format: 'png' }));
   });
 
-  it('starts the next pending item after the current item errors', () => {
-    const { addTask, first, second } = seedTwoPendingItems();
+  it('starts the next pending item after the current item errors', async () => {
+    const { addTask, first, second } = await seedTwoPendingItems();
 
     useImageStore.getState()._applyWorkerError({
       id: first.id,
       format: 'png',
-      file: first.file,
+      file: new File(['x'], 'first.png', { type: 'image/png' }),
       options: {
         format: 'png',
         svgInternalFormat: DEFAULT_GLOBAL_OPTIONS.svgInternalFormat,
@@ -109,6 +127,8 @@ describe('image-store queue progression', () => {
         stripMetadata: DEFAULT_GLOBAL_OPTIONS.stripMetadata,
       },
     });
+
+    await flushAsyncWork();
 
     expect(useImageStore.getState().items.get(first.id)?.status).toBe('error');
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
@@ -123,7 +143,7 @@ describe('image-store queue progression', () => {
     done.results['png'] = {
       format: 'png',
       status: STATUS_SUCCESS,
-      blob: new Blob(['ok']),
+      payloadKey: 'out:done:png',
       size: 2,
       downloadUrl: 'blob:result',
       label: 'PNG',

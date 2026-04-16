@@ -20,6 +20,15 @@ describe('validation', () => {
       const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
       expect(checkMagicBytesFromBufferExport(png, 'jpg')).toBe(false);
     });
+    it('accepts HEIC/HEIF ftyp signature', () => {
+      const buf = new Uint8Array(12);
+      buf[4] = 0x66;
+      buf[5] = 0x74;
+      buf[6] = 0x79;
+      buf[7] = 0x70;
+      expect(checkMagicBytesFromBufferExport(buf, 'heic')).toBe(true);
+      expect(checkMagicBytesFromBufferExport(buf, 'heif')).toBe(true);
+    });
   });
 
   describe('validateZipSize', () => {
