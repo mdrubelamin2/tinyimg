@@ -10,6 +10,7 @@ export * from './formats.ts';
 export * from './errors.ts';
 export * from './presets.ts';
 export * from './ui.ts';
+export * from './storage.ts';
 
 // --- Global options (depends on types from formats and limits) ---
 import type { SvgInternalFormat } from './formats.ts';

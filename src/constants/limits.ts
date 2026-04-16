@@ -5,7 +5,8 @@
 
 // --- File intake limits ---
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
-export const MAX_ZIP_FILE_SIZE_BYTES = 25 * 1024 * 1024;
+/** Compressed archive (.zip) max size before intake refuses the file (toast only, no queue row). */
+export const MAX_ZIP_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
 export const MAX_ZIP_EXTRACTED_FILES = 1000;
 export const MAX_ZIP_EXTRACTED_TOTAL_BYTES = 200 * 1024 * 1024;
 
@@ -15,8 +16,16 @@ export const MAX_DOWNLOAD_FILES = 200;
 
 // --- Concurrency ---
 export const CONCURRENCY_MIN = 2;
-export const CONCURRENCY_MAX = 6;
+/** Legacy name: desktop pool hard ceiling (see worker-count.ts). */
+export const CONCURRENCY_MAX = 16;
 export const CONCURRENCY_DEFAULT = 4;
+/** Desktop / laptop worker ceiling after cores + memory heuristics. */
+export const CONCURRENCY_MAX_DESKTOP = 16;
+export const MOBILE_MAX_WORKERS = 4;
+/** Rough WASM footprint per worker for memory-based caps (MB). */
+export const MB_PER_WORKER_ESTIMATE = 60;
+/** Reserve this many GB of reported deviceMemory before sizing workers. */
+export const DEVICE_MEMORY_RESERVE_GB = 2;
 
 // --- Worker / optimizer ---
 export const MAX_PIXELS = 256_000_000;
