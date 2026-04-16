@@ -1,9 +1,13 @@
 import {
+  DEFAULT_MIME,
   ID_RANDOM_LENGTH,
   STATUS_PENDING,
+  SUPPORTED_FORMATS,
+  isValidImageExtension,
   type GlobalOptions,
 } from '@/constants';
-import type { ImageItem, ImageResult } from '@/lib/queue-types';
+import type { ImageItem, ImageResult } from '@/lib/queue/types';
+import type { IntakeOriginalKind } from '@/lib/queue/queue-intake';
 import { revokeResultUrls } from '@/lib/download';
 
 function normalizeFormat(format: string): string {
@@ -12,7 +16,12 @@ function normalizeFormat(format: string): string {
 
 export function getFormatsToProcess(item: ImageItem, options: GlobalOptions): string[] {
   if (options.useOriginalFormats) {
-    return [normalizeFormat(item.originalFormat)];
+    const normalizedOriginal = normalizeFormat(item.originalFormat);
+    if (isValidImageExtension(normalizedOriginal)) {
+      return [normalizedOriginal];
+    }
+    const fb = [...new Set(options.formats)];
+    return fb.length > 0 ? fb : [...SUPPORTED_FORMATS];
   }
 
   const normalizedOriginal = normalizeFormat(item.originalFormat);
@@ -23,11 +32,20 @@ export function getFormatsToProcess(item: ImageItem, options: GlobalOptions): st
   return [...new Set(withOriginal)];
 }
 
-export function createQueueItem(file: File, options: GlobalOptions): ImageItem {
+export function createQueueItem(
+  file: File,
+  options: GlobalOptions,
+  intakeKind: IntakeOriginalKind
+): ImageItem {
+  if (/\.zip$/i.test(file.name)) {
+    throw new Error('Queue items must not be created for raw .zip archives (expand in intake first)');
+  }
+
   const item: ImageItem = {
     id: Math.random().toString(36).substring(2, 2 + ID_RANDOM_LENGTH),
-    file,
-    previewUrl: URL.createObjectURL(file),
+    fileName: file.name,
+    mimeType: file.type || DEFAULT_MIME,
+    originalSourceKind: intakeKind === 'direct' ? 'direct' : 'storage',
     status: STATUS_PENDING,
     progress: 0,
     originalSize: file.size,

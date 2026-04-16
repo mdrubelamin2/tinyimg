@@ -7,7 +7,7 @@ import type {
   ItemStatus,
   SvgInternalFormat,
   GlobalOptions,
-} from '@/constants/index.ts';
+} from '@/constants';
 
 export type { GlobalOptions };
 
@@ -45,7 +45,8 @@ export interface StageTiming {
 export interface ImageResult {
   format: string;
   label?: string | undefined;
-  blob?: Blob | undefined;
+  /** Session hybrid storage key (`out:id:format`); encoded bytes live here, not in Legend state */
+  payloadKey?: string | undefined;
   size?: number | undefined;
   formattedSize?: string | undefined;
   savingsPercent?: number | undefined;
@@ -55,12 +56,20 @@ export interface ImageResult {
   timing?: StageTiming | undefined;
 }
 
+/** Where the original lives: in-memory drop map vs hybrid `src:${id}` (ZIP / folder-expanded). */
+export type OriginalSourceKind = 'direct' | 'storage';
+
 // ---------------------------------------------------------------------------
 // Queue item (one per uploaded file)
 // ---------------------------------------------------------------------------
 export interface ImageItem {
   id: string;
-  file: File;
+  /** Original filename for display and download naming */
+  fileName: string;
+  /** MIME type for thumbnails and decoding */
+  mimeType: string;
+  /** `direct` → in-memory drop map by id; `storage` → hybrid session `src:${id}` */
+  originalSourceKind: OriginalSourceKind;
   previewUrl?: string | undefined;
   status: ItemStatus;
   progress: number;
@@ -146,27 +155,3 @@ export interface WorkerOutboundCancelled {
   type: 'CANCELLED';
   id: string;
 }
-
-// ---------------------------------------------------------------------------
-// Legacy compat: WorkerResponse union (bridges old queue-results.ts)
-// ---------------------------------------------------------------------------
-export interface WorkerResponseSuccess {
-  id: string;
-  format: string;
-  blob: Blob;
-  size: number;
-  label: string;
-  formattedSize: string;
-  savingsPercent: number;
-  status: 'success';
-  timing?: StageTiming | undefined;
-}
-
-export interface WorkerResponseError {
-  id: string;
-  format: string;
-  status: 'error';
-  error: string;
-}
-
-export type WorkerResponse = WorkerResponseSuccess | WorkerResponseError;

@@ -30,6 +30,9 @@ function checkMagicBytesFromBuffer(b: Uint8Array, ext: string): boolean {
       return b.length >= 12 && eq(4, [0x66, 0x74, 0x79, 0x70]); // ftyp
     case 'svg':
       return b.length >= 2 && (b[0] === 0x3c || (b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf));
+    case 'heic':
+    case 'heif':
+      return b.length >= 12 && eq(4, [0x66, 0x74, 0x79, 0x70]); // ftyp (shared with AVIF container)
     default:
       return false;
   }
