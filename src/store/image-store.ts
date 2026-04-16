@@ -1,10 +1,11 @@
 /**
- * Image store: Zustand-based queue state management.
- * Replaces the QueueProcessor God Class with composable actions.
+ * Image queue state: Legend State observables + fine-grained React selectors.
+ * Worker pool integration, RAF-batched worker results, and OPFS download unchanged in behavior.
  */
 
-import { create } from 'zustand';
 import { startTransition } from 'react';
+import { batch, observable } from '@legendapp/state';
+import { useValue } from '@legendapp/state/react';
 import type { ImageItem, ImageResult, Task, WorkerOutbound } from '@/lib/queue/types';
 import type { GlobalOptions } from '@/constants';
 import {
@@ -16,22 +17,61 @@ import {
   OUTPUT_QUALITY_MAX,
   OUTPUT_QUALITY_MIN,
   UPDATE_OPTIONS_DEBOUNCE_MS,
-} from '@/constants/index';
+} from '@/constants';
 import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
-import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
+import {
+  iterateIntakeEntries,
+  normalizeIntakeSources,
+  type CollectIntakeEntry,
+  type IntakeOriginalKind,
+} from '@/lib/queue/queue-intake';
+import { registerDirectDropOriginal, releaseDirectDropOriginal, clearDirectDropOriginals } from '@/storage/dropped-original-files';
+import {
+  persistBufferedOriginalSource,
+  resolveOriginalSourceFile,
+  deleteItemPayloads,
+  persistOutputBlob,
+} from '@/storage/queue-binary';
+import {
+  cancelThumbnail,
+  destroyThumbnailWorker,
+  enqueueThumbnails,
+} from '@/thumbnails/thumbnail-generator';
+import { toastError } from '@/notifications/toast-emitter';
+import { ERR_ZIP_EXCEEDS_LIMIT, ERR_INTAKE_STORAGE_FULL } from '@/constants';
+import { isQuotaExceededError } from '@/lib/storage/quota-error';
+import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache';
 import {
   createQueueItem,
   getFormatsToProcess,
   resetItemResultsForOptions,
 } from '@/lib/queue/queue-item';
 import { revokeResultUrls, buildAndDownloadZip } from '@/lib/download';
-import OptimizerWorkerUrl from '@/workers/optimizer.worker.ts?worker&url';
 import { useSettingsStore } from './settings-store';
 
-/**
- * Image store state definition.
- * Extracted constants for magic values to ensure clean, maintainable code.
- */
+// --- Observable session state (Map-like item bag + order + scheduling sets) ---
+export const imageStore$ = observable({
+  /** Per-id queue rows; absent key means removed */
+  items: {} as Record<string, ImageItem | undefined>,
+  itemOrder: [] as string[],
+  /** Unique pending ids (order not significant) */
+  pendingIds: [] as string[],
+  /** Visible row ids from virtualization (order not significant) */
+  visibleItemIds: [] as string[],
+});
+
+const INTAKE_UI_CHUNK = 40;
+const INTAKE_PERSIST_CONCURRENCY = 6;
+
+/** Large-drop intake progress (toast while `addFiles` is running). */
+export const intake$ = observable({
+  active: false,
+  phase: 'idle' as 'idle' | 'collecting' | 'merging',
+  label: '',
+  processed: 0,
+  total: 0,
+});
+
 interface ImageStoreState {
   items: Map<string, ImageItem>;
   itemOrder: string[];
@@ -49,38 +89,29 @@ interface ImageStoreActions {
   setItemQualityPercent: (id: string, percent: number | null, options: GlobalOptions) => void;
   setVisibleItems: (ids: string[]) => void;
   downloadAll: () => Promise<void>;
-
-  /** Called when global options change (debounced). Re-enqueues items. 
-   * @param forceAll - If true, resets ALL items. If false, only resets pending/processing items.
-   */
   applyGlobalOptions: (options: GlobalOptions, forceAll?: boolean) => void;
-
-  /** Internal: called by worker pool */
   _applyWorkerResult: (response: WorkerOutbound) => void;
   _applyWorkerError: (task: Task | null) => void;
   _batchApplyResults: () => void;
   _getPool: () => WorkerPool;
   _processNext: (options: GlobalOptions) => void;
+  _processNextAsync: (options: GlobalOptions, api: { getState: () => ImageStore }) => Promise<void>;
 }
 
 export type ImageStore = ImageStoreState & ImageStoreActions;
 
-// --- Worker pool singleton (initialized lazily) ---
 let pool: WorkerPool | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingForceAll = false;
 
-// Update batching buffers
 let responseBuffer: WorkerOutbound[] = [];
 let errorBuffer: (Task | null)[] = [];
 let flushScheduled = false;
 
 function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   if (pool) return pool;
-  const workerUrl = new URL(OptimizerWorkerUrl, import.meta.url);
-  pool = new WorkerPool(workerUrl, computeConcurrency(), {
+  pool = new WorkerPool(computeConcurrency(), {
     onMessage: (_workerIndex, data) => {
-      // Use WorkerOutbound directly - no legacy bridge needed
       storeApi.getState()._applyWorkerResult(data as WorkerOutbound);
     },
     onError: (_workerIndex, task) => {
@@ -90,11 +121,6 @@ function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   return pool;
 }
 
-// --- Helpers ---
-
-/**
- * Checks if all results for an item are in a terminal state (Success or Error).
- */
 function isTerminal(item: ImageItem): boolean {
   return !Object.values(item.results).some(
     r => r.status === STATUS_PROCESSING || r.status === STATUS_PENDING
@@ -105,9 +131,6 @@ let cachedItemsRef: Map<string, ImageItem> | null = null;
 let cachedOrderRef: string[] | null = null;
 let cachedOrderedItems: ImageItem[] = [];
 
-/**
- * Efficiently converts the items map to an ordered array using memoization.
- */
 function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem[] {
   if (items === cachedItemsRef && order === cachedOrderRef) {
     return cachedOrderedItems;
@@ -119,414 +142,686 @@ function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem
   return cachedOrderedItems;
 }
 
-/**
- * The main image store. Using Zustand for buttery-smooth performance and clean state management.
- * Strictly adheres to DRY, KISS, and SOLID principles.
- */
-export const useImageStore = create<ImageStore>()((set, get, api) => ({
-  items: new Map(),
-  itemOrder: [],
-  pendingIds: new Set(),
-  visibleItemIds: new Set(),
+function snapshotItemsMap(): Map<string, ImageItem> {
+  const m = new Map<string, ImageItem>();
+  for (const id of imageStore$.itemOrder.peek()) {
+    const it = imageStore$.items[id]?.peek();
+    if (it) m.set(id, it);
+  }
+  return m;
+}
 
-  addFiles: async (files, options) => {
-    const newItems = await collectItemsFromFiles(files, {
-      createItem: (file: File) => {
-        const item = createQueueItem(file, options);
-        // item.formattedOriginalSize = (item.originalSize / BYTES_PER_KB).toFixed(1);
-        return item;
-      },
-    });
+function replaceItemsMap(next: Map<string, ImageItem>): void {
+  for (const id of Object.keys(imageStore$.items.peek())) {
+    if (!next.has(id)) {
+      imageStore$.items[id]?.delete();
+    }
+  }
+  for (const [id, item] of next) {
+    imageStore$.items[id]!.set(item);
+  }
+}
 
-    set((state) => {
-      const nextItems = new Map(state.items);
-      const nextOrder = [...state.itemOrder];
-      const nextPending = new Set(state.pendingIds);
-      for (const item of newItems) {
-        nextItems.set(item.id, item);
-        nextOrder.push(item.id);
-        nextPending.add(item.id);
-      }
-      return { items: nextItems, itemOrder: nextOrder, pendingIds: nextPending };
-    });
-
-    get()._processNext(options);
-  },
-
-  removeItem: (id) => {
-    const item = get().items.get(id);
-    if (!item) return;
-
-    getPool(api).abortInFlightForItem(id);
-    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-    revokeResultUrls(item);
-
-    set((state) => {
-      const nextItems = new Map(state.items);
-      nextItems.delete(id);
-      const nextPending = new Set(state.pendingIds);
-      nextPending.delete(id);
-      return {
-        items: nextItems,
-        itemOrder: state.itemOrder.filter(i => i !== id),
-        pendingIds: nextPending,
-      };
-    });
-  },
-
-  clearFinished: () => {
-    set((state) => {
-      const nextItems = new Map<string, ImageItem>();
-      const nextOrder: string[] = [];
-      const nextPending = new Set<string>();
-      for (const id of state.itemOrder) {
-        const item = state.items.get(id);
-        if (!item) continue;
-        if (item.status === STATUS_PROCESSING || item.status === STATUS_PENDING) {
-          nextItems.set(id, item);
-          nextOrder.push(id);
-          if (item.status === STATUS_PENDING) {
-            nextPending.add(id);
-          }
-          continue;
+async function persistIntakeOriginalsParallel(chunk: CollectIntakeEntry[]): Promise<void> {
+  const todo = chunk.filter(e => e.item.status === STATUS_PENDING && e.intakeOriginal);
+  for (let k = 0; k < todo.length; k += INTAKE_PERSIST_CONCURRENCY) {
+    const slice = todo.slice(k, k + INTAKE_PERSIST_CONCURRENCY);
+    await Promise.all(
+      slice.map(async (ent) => {
+        const o = ent.intakeOriginal!;
+        if (o.kind === 'direct') {
+          registerDirectDropOriginal(ent.item.id, o.file);
+        } else {
+          await persistBufferedOriginalSource(ent.item.id, o.file);
         }
-        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-        revokeResultUrls(item);
-      }
-      return { items: nextItems, itemOrder: nextOrder, pendingIds: nextPending };
-    });
-  },
+      })
+    );
+  }
+}
 
-  clearAll: () => {
-    const { items } = get();
-    for (const item of items.values()) {
+export async function addFiles(
+  files: FileList | File[] | DataTransferItemList | DataTransferItem[],
+  options: GlobalOptions
+): Promise<void> {
+  batch(() => {
+    intake$.active.set(true);
+    intake$.phase.set('collecting');
+    intake$.label.set('Scanning dropped items…');
+    intake$.processed.set(0);
+    intake$.total.set(0);
+  });
+
+  try {
+    const source = normalizeIntakeSources(files);
+    /** >0 while at least one zip stream is open (nested-safe); drives per-entry merge vs batch buffer. */
+    const zipIntakeState = { depth: 0 };
+
+    const ctx = {
+      createItem: (file: File, intakeKind: IntakeOriginalKind) =>
+        createQueueItem(file, options, intakeKind),
+      onExtractingArchive: (archiveName: string) => {
+        batch(() => {
+          intake$.label.set(`Reading ${archiveName}…`);
+        });
+      },
+      onZipManifest: (archiveName: string, entryCount: number) => {
+        zipIntakeState.depth += 1;
+        batch(() => {
+          intake$.label.set(`Extracting ${archiveName}…`);
+          intake$.total.set(entryCount);
+          intake$.processed.set(0);
+        });
+      },
+      onZipProgress: (processed: number, total: number) => {
+        batch(() => {
+          intake$.processed.set(processed);
+          intake$.total.set(total);
+        });
+      },
+      onZipStreamEnd: () => {
+        zipIntakeState.depth = Math.max(0, zipIntakeState.depth - 1);
+        if (zipIntakeState.depth === 0) {
+          batch(() => {
+            intake$.total.set(0);
+            intake$.processed.set(0);
+          });
+        }
+      },
+      onZipArchiveOversized: (fileName: string) => {
+        toastError(`${fileName}: ${ERR_ZIP_EXCEEDS_LIMIT}`);
+      },
+    };
+
+    const buffer: CollectIntakeEntry[] = [];
+
+    const mergeChunkToStore = (chunk: CollectIntakeEntry[]) => {
+      batch(() => {
+        const order = [...imageStore$.itemOrder.peek()];
+        const pending = [...imageStore$.pendingIds.peek()];
+        for (const ent of chunk) {
+          imageStore$.items[ent.item.id]!.set(ent.item);
+          if (!order.includes(ent.item.id)) order.push(ent.item.id);
+          if (ent.item.status === STATUS_PENDING && !pending.includes(ent.item.id)) {
+            pending.push(ent.item.id);
+          }
+        }
+        imageStore$.itemOrder.set(order);
+        imageStore$.pendingIds.set(pending);
+      });
+      enqueueThumbnails(chunk.map(e => e.item.id));
+    };
+
+    const flushBuffer = async () => {
+      if (buffer.length === 0) return;
+      const chunk = buffer.splice(0, buffer.length);
+      await persistIntakeOriginalsParallel(chunk);
+      mergeChunkToStore(chunk);
+      await new Promise<void>(resolve => {
+        requestAnimationFrame(() => resolve());
+      });
+    };
+
+    batch(() => {
+      intake$.phase.set('merging');
+      intake$.label.set('Adding to queue…');
+    });
+
+    try {
+      for await (const ent of iterateIntakeEntries(source, ctx)) {
+        if (zipIntakeState.depth > 0) {
+          await persistIntakeOriginalsParallel([ent]);
+          mergeChunkToStore([ent]);
+          await new Promise<void>(resolve => {
+            requestAnimationFrame(() => resolve());
+          });
+        } else {
+          buffer.push(ent);
+          if (buffer.length >= INTAKE_UI_CHUNK) {
+            await flushBuffer();
+          }
+        }
+      }
+
+      await flushBuffer();
+    } catch (err) {
+      if (isQuotaExceededError(err)) {
+        toastError(ERR_INTAKE_STORAGE_FULL);
+        buffer.length = 0;
+      } else {
+        throw err;
+      }
+    }
+
+    void getState()._processNextAsync(options, { getState });
+  } finally {
+    batch(() => {
+      intake$.active.set(false);
+      intake$.phase.set('idle');
+      intake$.label.set('');
+      intake$.processed.set(0);
+      intake$.total.set(0);
+    });
+  }
+}
+
+function removeItemImpl(id: string, api: { getState: () => ImageStore }): void {
+  const item = imageStore$.items[id]?.peek();
+  if (!item) return;
+
+  getPool(api).abortInFlightForItem(id);
+  cancelThumbnail(id);
+  if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+  revokeResultUrls(item);
+  releaseDirectDropOriginal(id);
+  void deleteItemPayloads(id);
+
+  batch(() => {
+    imageStore$.items[id]?.delete();
+    imageStore$.itemOrder.set(imageStore$.itemOrder.peek().filter(i => i !== id));
+    imageStore$.pendingIds.set(imageStore$.pendingIds.peek().filter(x => x !== id));
+  });
+}
+
+function clearFinishedImpl(): void {
+  batch(() => {
+    const prevOrder = [...imageStore$.itemOrder.peek()];
+    const nextItems = new Map<string, ImageItem>();
+    const nextOrder: string[] = [];
+    const nextPending: string[] = [];
+    for (const id of prevOrder) {
+      const item = imageStore$.items[id]?.peek();
+      if (!item) continue;
+      if (item.status === STATUS_PROCESSING || item.status === STATUS_PENDING) {
+        nextItems.set(id, item);
+        nextOrder.push(id);
+        if (item.status === STATUS_PENDING) {
+          nextPending.push(id);
+        }
+        continue;
+      }
+      cancelThumbnail(id);
       if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
       revokeResultUrls(item);
+      releaseDirectDropOriginal(id);
+      void deleteItemPayloads(id);
     }
-    if (pool) pool.destroy();
-    pool = null;
-    set({ items: new Map(), itemOrder: [], pendingIds: new Set() });
-  },
+    replaceItemsMap(nextItems);
+    imageStore$.itemOrder.set(nextOrder);
+    imageStore$.pendingIds.set(nextPending);
+  });
+}
 
-  reorderItems: (fromIndex, toIndex) => {
-    set((state) => {
-      if (
-        fromIndex < 0 || toIndex < 0 ||
-        fromIndex >= state.itemOrder.length || toIndex >= state.itemOrder.length ||
-        fromIndex === toIndex
-      ) return state;
+function clearAllImpl(): void {
+  destroyThumbnailWorker();
+  thumbnailCacheClear();
+  for (const id of imageStore$.itemOrder.peek()) {
+    const item = imageStore$.items[id]?.peek();
+    if (!item) continue;
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    revokeResultUrls(item);
+    void deleteItemPayloads(id);
+  }
+  clearDirectDropOriginals();
+  if (pool) pool.destroy();
+  pool = null;
+  batch(() => {
+    for (const id of Object.keys(imageStore$.items.peek())) {
+      imageStore$.items[id]?.delete();
+    }
+    imageStore$.itemOrder.set([]);
+    imageStore$.pendingIds.set([]);
+    imageStore$.visibleItemIds.set([]);
+    intake$.active.set(false);
+    intake$.phase.set('idle');
+    intake$.label.set('');
+    intake$.processed.set(0);
+    intake$.total.set(0);
+  });
+}
 
-      const nextOrder = [...state.itemOrder];
-      const [removed] = nextOrder.splice(fromIndex, 1);
-      nextOrder.splice(toIndex, 0, removed!);
+function reorderItemsImpl(fromIndex: number, toIndex: number): void {
+  const order = [...imageStore$.itemOrder.peek()];
+  if (
+    fromIndex < 0 || toIndex < 0 ||
+    fromIndex >= order.length || toIndex >= order.length ||
+    fromIndex === toIndex
+  ) {
+    return;
+  }
+  const nextOrder = [...order];
+  const [removed] = nextOrder.splice(fromIndex, 1);
+  nextOrder.splice(toIndex, 0, removed!);
+  imageStore$.itemOrder.set(nextOrder);
+}
 
-      return { itemOrder: nextOrder };
-    });
-  },
+function setItemOutputFormatsImpl(id: string, formats: string[] | null, options: GlobalOptions, api: { getState: () => ImageStore }): void {
+  const currentPool = getPool(api);
+  currentPool.abortInFlightForItem(id);
+  currentPool.removeTasksForItem(id);
 
-  setItemOutputFormats: (id, formats, options) => {
-    const currentPool = getPool(api);
-    currentPool.abortInFlightForItem(id);
-    currentPool.removeTasksForItem(id);
+  const item = imageStore$.items[id]?.peek();
+  if (!item) return;
 
-    set((state) => {
-      const item = state.items.get(id);
-      if (!item) return state;
+  revokeResultUrls(item);
+  const nextItem: ImageItem = {
+    ...item,
+    outputFormatsOverride: formats != null && formats.length > 0 ? formats : null,
+    status: STATUS_PENDING,
+    progress: 0,
+    error: undefined,
+  };
 
-      revokeResultUrls(item);
-      const nextItem: ImageItem = {
-        ...item,
-        outputFormatsOverride: formats != null && formats.length > 0 ? formats : null,
-        status: STATUS_PENDING,
-        progress: 0,
-        error: undefined,
-      };
+  const fmts = getFormatsToProcess(nextItem, options);
+  const results: Record<string, ImageResult> = {};
+  for (const f of fmts) {
+    results[f] = { format: f, status: STATUS_PENDING };
+  }
+  nextItem.results = results;
 
-      const fmts = getFormatsToProcess(nextItem, options);
-      const results: Record<string, ImageResult> = {};
-      for (const f of fmts) {
-        results[f] = { format: f, status: STATUS_PENDING };
-      }
-      nextItem.results = results;
+  batch(() => {
+    imageStore$.items[id]!.set(nextItem);
+    const pending = [...imageStore$.pendingIds.peek()];
+    if (!pending.includes(id)) pending.push(id);
+    imageStore$.pendingIds.set(pending);
+  });
 
-      const nextItems = new Map(state.items);
-      nextItems.set(id, nextItem);
-      const nextPending = new Set(state.pendingIds);
-      nextPending.add(id);
-      return {
-        items: nextItems,
-        pendingIds: nextPending,
-      };
-    });
+  void getState()._processNextAsync(options, { getState });
+}
 
-    get()._processNext(options);
-  },
+function setItemQualityPercentImpl(id: string, percent: number | null, options: GlobalOptions, api: { getState: () => ImageStore }): void {
+  const clamped = percent == null
+    ? null
+    : Math.min(OUTPUT_QUALITY_MAX, Math.max(OUTPUT_QUALITY_MIN, Math.round(percent)));
 
-  setItemQualityPercent: (id, percent, options) => {
-    const clamped = percent == null
-      ? null
-      : Math.min(OUTPUT_QUALITY_MAX, Math.max(OUTPUT_QUALITY_MIN, Math.round(percent)));
+  const currentPool = getPool(api);
+  currentPool.abortInFlightForItem(id);
+  currentPool.removeTasksForItem(id);
 
-    const currentPool = getPool(api);
-    currentPool.abortInFlightForItem(id);
-    currentPool.removeTasksForItem(id);
+  const item = imageStore$.items[id]?.peek();
+  if (!item) return;
 
-    set((state) => {
-      const item = state.items.get(id);
-      if (!item) return state;
+  revokeResultUrls(item);
+  const nextItem: ImageItem = {
+    ...item,
+    qualityPercentOverride: clamped,
+    status: STATUS_PENDING,
+    progress: 0,
+    error: undefined,
+  };
 
-      revokeResultUrls(item);
-      const nextItem: ImageItem = {
-        ...item,
-        qualityPercentOverride: clamped,
-        status: STATUS_PENDING,
-        progress: 0,
-        error: undefined,
-      };
+  const fmts = getFormatsToProcess(nextItem, options);
+  const results: Record<string, ImageResult> = {};
+  for (const f of fmts) {
+    results[f] = { format: f, status: STATUS_PENDING };
+  }
+  nextItem.results = results;
 
-      const fmts = getFormatsToProcess(nextItem, options);
-      const results: Record<string, ImageResult> = {};
-      for (const f of fmts) {
-        results[f] = { format: f, status: STATUS_PENDING };
-      }
-      nextItem.results = results;
+  batch(() => {
+    imageStore$.items[id]!.set(nextItem);
+    const pending = [...imageStore$.pendingIds.peek()];
+    if (!pending.includes(id)) pending.push(id);
+    imageStore$.pendingIds.set(pending);
+  });
 
-      const nextItems = new Map(state.items);
-      nextItems.set(id, nextItem);
-      const nextPending = new Set(state.pendingIds);
-      nextPending.add(id);
-      return {
-        items: nextItems,
-        pendingIds: nextPending,
-      };
-    });
+  void getState()._processNextAsync(options, { getState });
+}
 
-    get()._processNext(options);
-  },
+function setVisibleItemsImpl(ids: string[]): void {
+  imageStore$.visibleItemIds.set([...ids]);
+}
 
-  setVisibleItems: (ids) => {
-    set({ visibleItemIds: new Set(ids) });
-  },
+function applyGlobalOptionsImpl(options: GlobalOptions, forceAll: boolean): void {
+  if (forceAll) pendingForceAll = true;
 
-  downloadAll: async () => {
-    const { items, itemOrder } = get();
-    const arr = itemsToArray(items, itemOrder);
-    await buildAndDownloadZip(arr);
-  },
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    const isForced = pendingForceAll;
+    pendingForceAll = false;
+    debounceTimer = null;
 
-  applyGlobalOptions: (options, forceAll = false) => {
-    if (forceAll) pendingForceAll = true;
-
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      const isForced = pendingForceAll;
-      pendingForceAll = false;
-      debounceTimer = null;
-
-      set((state) => {
-        const nextItems = new Map<string, ImageItem>();
-        const nextPending = new Set<string>();
-        for (const [id, item] of state.items) {
-          if (isForced || item.status === STATUS_PENDING || item.status === STATUS_PROCESSING) {
-            const nextItem = resetItemResultsForOptions(item, options);
-            nextItems.set(id, nextItem);
-            nextPending.add(id);
-          } else {
-            nextItems.set(id, item);
-          }
+    batch(() => {
+      const nextItems = new Map<string, ImageItem>();
+      const nextPending: string[] = [];
+      for (const id of imageStore$.itemOrder.peek()) {
+        const item = imageStore$.items[id]?.peek();
+        if (!item) continue;
+        if (isForced || item.status === STATUS_PENDING || item.status === STATUS_PROCESSING) {
+          const nextItem = resetItemResultsForOptions(item, options);
+          nextItems.set(id, nextItem);
+          nextPending.push(id);
+        } else {
+          nextItems.set(id, item);
         }
-        return { items: nextItems, pendingIds: nextPending };
-      });
+      }
+      replaceItemsMap(nextItems);
+      imageStore$.pendingIds.set(nextPending);
+    });
 
-      get()._processNext(options);
-    }, UPDATE_OPTIONS_DEBOUNCE_MS);
-  },
+    void getState()._processNextAsync(options, { getState });
+  }, UPDATE_OPTIONS_DEBOUNCE_MS);
+}
 
-  _applyWorkerResult: (response: WorkerOutbound) => {
-    responseBuffer.push(response);
-    if (!flushScheduled) {
-      flushScheduled = true;
-      requestAnimationFrame(() => {
-        get()._batchApplyResults();
-      });
-    }
-  },
+function _applyWorkerResultImpl(response: WorkerOutbound): void {
+  responseBuffer.push(response);
+  if (!flushScheduled) {
+    flushScheduled = true;
+    requestAnimationFrame(() => {
+      getState()._batchApplyResults();
+    });
+  }
+}
 
-  _applyWorkerError: (task: Task | null) => {
-    errorBuffer.push(task);
-    if (!flushScheduled) {
-      flushScheduled = true;
-      requestAnimationFrame(() => {
-        get()._batchApplyResults();
-      });
-    }
-  },
+function _applyWorkerErrorImpl(task: Task | null): void {
+  errorBuffer.push(task);
+  if (!flushScheduled) {
+    flushScheduled = true;
+    requestAnimationFrame(() => {
+      getState()._batchApplyResults();
+    });
+  }
+}
 
-  _batchApplyResults: () => {
-    const responses = [...responseBuffer] as WorkerOutbound[];
-    const errors = [...errorBuffer];
-    responseBuffer = [];
-    errorBuffer = [];
-    flushScheduled = false;
+function _batchApplyResultsImpl(): void {
+  const responses = [...responseBuffer] as WorkerOutbound[];
+  const errors = [...errorBuffer];
+  responseBuffer = [];
+  errorBuffer = [];
+  flushScheduled = false;
 
-    if (responses.length === 0 && errors.length === 0) return;
+  if (responses.length === 0 && errors.length === 0) return;
 
-    let shouldProcessNext = false;
+  const resultResponses = responses.filter((r): r is Extract<WorkerOutbound, { type: 'RESULT' }> => r.type === 'RESULT');
+  const otherResponses = responses.filter(r => r.type !== 'RESULT');
 
-    startTransition(() => {
-      set((state) => {
-        const nextItems = new Map(state.items);
-        const nextPending = new Set(state.pendingIds);
+  let shouldProcessNextSync = false;
 
-        // Process successful results
-        for (const response of responses) {
-          if (response.type === 'RESULT') {
-            const item = nextItems.get(response.id);
-            if (!item) continue;
+  startTransition(() => {
+    batch(() => {
+      const itemsMap = snapshotItemsMap();
+      let nextPending = [...imageStore$.pendingIds.peek()];
 
-            const format = response.format;
-            const result = item.results[format];
-            if (!result) continue;
-
-            const nextItem = { ...item };
-            if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
-            const downloadUrl = URL.createObjectURL(response.blob);
-
-            nextItem.results = {
-              ...item.results,
-              [format]: {
-                ...result,
-                status: STATUS_SUCCESS,
-                size: response.size,
-                formattedSize: response.formattedSize,
-                savingsPercent: response.savingsPercent,
-                blob: response.blob,
-                label: response.label,
-                downloadUrl,
-                timing: response.timing,
-              },
-            };
-
-            if (isTerminal(nextItem)) {
-              const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
-              nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
-              nextItem.progress = 100;
-              nextPending.delete(response.id);
-              shouldProcessNext = true;
-            }
-
-            nextItems.set(response.id, nextItem);
-          }
-        }
-
-        // Process errors
-        for (const task of errors) {
-          if (!task) continue;
-          const item = nextItems.get(task.id);
+      for (const response of otherResponses) {
+        if (response.type === 'ERROR') {
+          const item = itemsMap.get(response.id);
           if (!item) continue;
 
-          const result = item.results[task.format];
+          const format = response.format;
+          const result = item.results[format];
           const nextItem = { ...item };
           if (result) {
             nextItem.results = {
               ...item.results,
-              [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
+              [format]: { ...result, status: STATUS_ERROR, error: response.error },
             };
           }
 
           if (isTerminal(nextItem)) {
             nextItem.status = STATUS_ERROR;
             nextItem.progress = 100;
-            nextPending.delete(task.id);
+            nextPending = nextPending.filter(x => x !== response.id);
+            shouldProcessNextSync = true;
+          }
+
+          itemsMap.set(response.id, nextItem);
+          imageStore$.items[response.id]!.set(nextItem);
+        }
+      }
+
+      for (const task of errors) {
+        if (!task) continue;
+        const item = itemsMap.get(task.id);
+        if (!item) continue;
+
+        const result = item.results[task.format];
+        const nextItem = { ...item };
+        if (result) {
+          nextItem.results = {
+            ...item.results,
+            [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
+          };
+        }
+
+        if (isTerminal(nextItem)) {
+          nextItem.status = STATUS_ERROR;
+          nextItem.progress = 100;
+          nextPending = nextPending.filter(x => x !== task.id);
+          shouldProcessNextSync = true;
+        }
+
+        itemsMap.set(task.id, nextItem);
+        imageStore$.items[task.id]!.set(nextItem);
+      }
+
+      imageStore$.pendingIds.set(nextPending);
+    });
+
+    if (shouldProcessNextSync) {
+      void getState()._processNextAsync(useSettingsStore.getState().options, { getState });
+    }
+  });
+
+  if (resultResponses.length === 0) return;
+
+  void (async () => {
+    const opts = useSettingsStore.getState().options;
+    for (const response of resultResponses) {
+      const snapshot = imageStore$.items[response.id]?.peek();
+      if (!snapshot) continue;
+      const format = response.format;
+      const prevResult = snapshot.results[format];
+      if (!prevResult) continue;
+
+      if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl);
+      const { payloadKey, downloadUrl } = await persistOutputBlob(response.id, format, response.blob);
+
+      startTransition(() => {
+        batch(() => {
+          const item = imageStore$.items[response.id]?.peek();
+          if (!item) return;
+          const result = item.results[format];
+          if (!result) return;
+
+          const nextItem = { ...item };
+          nextItem.results = {
+            ...item.results,
+            [format]: {
+              ...result,
+              status: STATUS_SUCCESS,
+              size: response.size,
+              formattedSize: response.formattedSize,
+              savingsPercent: response.savingsPercent,
+              payloadKey,
+              label: response.label,
+              downloadUrl,
+              timing: response.timing,
+            },
+          };
+
+          let nextPending = [...imageStore$.pendingIds.peek()];
+          let shouldProcessNext = false;
+          if (isTerminal(nextItem)) {
+            const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
+            nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
+            nextItem.progress = 100;
+            nextPending = nextPending.filter(x => x !== response.id);
             shouldProcessNext = true;
           }
 
-          nextItems.set(task.id, nextItem);
-        }
+          imageStore$.items[response.id]!.set(nextItem);
+          imageStore$.pendingIds.set(nextPending);
 
-        return { items: nextItems, pendingIds: nextPending };
-      });
-
-      if (shouldProcessNext) {
-        get()._processNext(useSettingsStore.getState().options);
-      }
-    });
-  },
-
-  _getPool: () => getPool(api),
-
-  _processNext: (options) => {
-    const { items, itemOrder, pendingIds, visibleItemIds } = get();
-
-    if (pendingIds.size === 0) return;
-
-    // Use pendingIds to avoid O(N) filtering of itemOrder
-    const currentPendingArray = itemOrder.filter(id => pendingIds.has(id));
-
-    if (currentPendingArray.length === 0) return;
-
-    // Sort by priority: Visible items first, then small files if enabled
-    const sortedIds = [...currentPendingArray].sort((a, b) => {
-      const aVisible = visibleItemIds.has(a);
-      const bVisible = visibleItemIds.has(b);
-
-      if (aVisible && !bVisible) return -1;
-      if (!aVisible && bVisible) return 1;
-
-      if (options.smallFilesFirst) {
-        const itemA = items.get(a);
-        const itemB = items.get(b);
-        if (!itemA || !itemB) return 0;
-        return itemA.originalSize - itemB.originalSize;
-      }
-
-      return 0;
-    });
-
-    const nextId = sortedIds[0];
-    if (!nextId) return;
-    const nextItem = items.get(nextId);
-    if (!nextItem || nextItem.status !== STATUS_PENDING) return;
-
-    // Mark as processing
-    const processingItem: ImageItem = { ...nextItem, status: STATUS_PROCESSING };
-    const fmts = getFormatsToProcess(processingItem, options);
-    const currentPool = getPool(api);
-
-    for (const format of fmts) {
-      if (!processingItem.results[format]) continue;
-      processingItem.results = {
-        ...processingItem.results,
-        [format]: { ...processingItem.results[format]!, status: STATUS_PROCESSING },
-      };
-      currentPool.addTask({
-        id: processingItem.id,
-        format,
-        file: processingItem.file,
-        options: {
-          format,
-          svgInternalFormat: options.svgInternalFormat,
-          svgRasterizer: 'resvg' as const,
-          svgExportDensity: 'display' as const,
-          svgDisplayDpr: 2,
-          qualityPercent: processingItem.qualityPercentOverride ?? 100,
-          resizeMaxEdge: 0,
-          stripMetadata: options.stripMetadata,
-        },
+          if (shouldProcessNext) {
+            void getState()._processNextAsync(opts, { getState });
+          }
+        });
       });
     }
+  })();
+}
 
-    set((state) => {
-      const nextItems = new Map(state.items);
-      const nextPending = new Set(state.pendingIds);
-      nextItems.set(nextId, processingItem);
-      nextPending.delete(nextId);
-      return { items: nextItems, pendingIds: nextPending };
+async function _processNextAsyncImpl(
+  options: GlobalOptions,
+  api: { getState: () => ImageStore }
+): Promise<void> {
+  const items = snapshotItemsMap();
+  const itemOrder = imageStore$.itemOrder.peek();
+  const pendingIds = imageStore$.pendingIds.peek();
+  const visibleItemIds = imageStore$.visibleItemIds.peek();
+
+  if (pendingIds.length === 0) return;
+
+  const currentPendingArray = itemOrder.filter(id => pendingIds.includes(id));
+  if (currentPendingArray.length === 0) return;
+
+  const sortedIds = [...currentPendingArray].sort((a, b) => {
+    const aVisible = visibleItemIds.includes(a);
+    const bVisible = visibleItemIds.includes(b);
+
+    if (aVisible && !bVisible) return -1;
+    if (!aVisible && bVisible) return 1;
+
+    if (options.smallFilesFirst) {
+      const itemA = items.get(a);
+      const itemB = items.get(b);
+      if (!itemA || !itemB) return 0;
+      return itemA.originalSize - itemB.originalSize;
+    }
+
+    return 0;
+  });
+
+  const nextId = sortedIds[0];
+  if (!nextId) return;
+  const nextItem = items.get(nextId);
+  if (!nextItem || nextItem.status !== STATUS_PENDING) return;
+
+  const sourceFile = await resolveOriginalSourceFile(nextId, nextItem);
+  if (!sourceFile) return;
+
+  const processingItem: ImageItem = { ...nextItem, status: STATUS_PROCESSING };
+  const fmts = getFormatsToProcess(processingItem, options);
+  const currentPool = getPool(api);
+
+  for (const format of fmts) {
+    if (!processingItem.results[format]) continue;
+    processingItem.results = {
+      ...processingItem.results,
+      [format]: { ...processingItem.results[format]!, status: STATUS_PROCESSING },
+    };
+    currentPool.addTask({
+      id: processingItem.id,
+      format,
+      file: sourceFile,
+      options: {
+        format,
+        svgInternalFormat: options.svgInternalFormat,
+        svgRasterizer: 'resvg' as const,
+        svgExportDensity: 'display' as const,
+        svgDisplayDpr: 2,
+        qualityPercent: processingItem.qualityPercentOverride ?? 100,
+        resizeMaxEdge: 0,
+        stripMetadata: options.stripMetadata,
+      },
     });
-  },
-}));
+  }
 
-// --- Selector helpers for components ---
+  batch(() => {
+    imageStore$.items[nextId]!.set(processingItem);
+    imageStore$.pendingIds.set(imageStore$.pendingIds.peek().filter(x => x !== nextId));
+  });
+}
+
+function _processNextImpl(options: GlobalOptions, api: { getState: () => ImageStore }): void {
+  void _processNextAsyncImpl(options, api);
+}
+
+function getState(): ImageStore {
+  return imageStoreSingleton;
+}
+
+const imageStoreSingleton: ImageStore = {
+  get items() {
+    return snapshotItemsMap();
+  },
+  get itemOrder() {
+    return [...imageStore$.itemOrder.peek()];
+  },
+  get pendingIds() {
+    return new Set(imageStore$.pendingIds.peek() as string[]);
+  },
+  get visibleItemIds() {
+    return new Set(imageStore$.visibleItemIds.peek() as string[]);
+  },
+  addFiles,
+  removeItem(id: string) {
+    removeItemImpl(id, { getState });
+  },
+  clearFinished: clearFinishedImpl,
+  clearAll() {
+    clearAllImpl();
+  },
+  reorderItems: reorderItemsImpl,
+  setItemOutputFormats(id, formats, options) {
+    setItemOutputFormatsImpl(id, formats, options, { getState });
+  },
+  setItemQualityPercent(id, percent, options) {
+    setItemQualityPercentImpl(id, percent, options, { getState });
+  },
+  setVisibleItems: setVisibleItemsImpl,
+  async downloadAll() {
+    const arr = itemsToArray(snapshotItemsMap(), imageStore$.itemOrder.peek());
+    await buildAndDownloadZip(arr);
+  },
+  applyGlobalOptions(options, forceAll = false) {
+    applyGlobalOptionsImpl(options, forceAll ?? false);
+  },
+  _applyWorkerResult: _applyWorkerResultImpl,
+  _applyWorkerError: _applyWorkerErrorImpl,
+  _batchApplyResults() {
+    _batchApplyResultsImpl();
+  },
+  _getPool() {
+    return getPool({ getState });
+  },
+  _processNext(options) {
+    _processNextImpl(options, { getState });
+  },
+  _processNextAsync(options, api) {
+    return _processNextAsyncImpl(options, api);
+  },
+};
+
+function setState(
+  partial: Partial<Pick<ImageStoreState, 'items' | 'itemOrder' | 'pendingIds'>>
+): void {
+  batch(() => {
+    if (partial.items) {
+      replaceItemsMap(partial.items);
+    }
+    if (partial.itemOrder) {
+      imageStore$.itemOrder.set([...partial.itemOrder]);
+    }
+    if (partial.pendingIds) {
+      imageStore$.pendingIds.set([...partial.pendingIds]);
+    }
+  });
+}
+
+/**
+ * Zustand-shaped hook: subscribe to observables read inside `selector`.
+ * Prefer `useValue` from `@legendapp/state/react` at call sites for clarity.
+ */
+function useImageStoreSelect<T>(selector: (state: ImageStore) => T): T {
+  return useValue(() => selector(getState()));
+}
+
+export const useImageStore = Object.assign(useImageStoreSelect, {
+  getState,
+  setState,
+});
+
+/** Imperative store access (avoids `use*` naming that trips React Compiler). Prefer in non-hook code. */
+export { getState as getImageStore, setState as setImageStoreState };
 
 export function selectItemById(id: string) {
   return (state: ImageStore) => state.items.get(id);
