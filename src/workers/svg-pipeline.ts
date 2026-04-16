@@ -13,8 +13,8 @@ import {
   SVG_NODES_ANCHOR_MAX,
   SVG_RASTER_BYTES_MIN_FOR_HYBRID,
   SVG_RASTER_DOMINANCE_RATIO,
-} from '@/constants/index';
-import type { SvgInternalFormat } from '@/constants/index';
+} from '@/constants';
+import type { SvgInternalFormat } from '@/constants';
 import { optimizeSvg } from '@/lib/optimizer/svg-optimizer';
 import { ensureResvg } from './optimizer-wasm';
 import {

@@ -1,10 +1,12 @@
 /**
- * Worker pool v2: typed protocol, task cancellation via terminate + respawn,
- * per-item abort, and memory-aware task assignment.
+ * Optimizer concurrency via multithreading.js: managed worker pool + move() for
+ * structured clone of task payloads. Preserves cancel + pending-queue semantics
+ * of the previous hand-rolled WorkerPool.
  */
 
+import { spawn, move, initRuntime, shutdown, type JoinHandle } from 'multithreading';
 import type { Task, WorkerOutbound } from '@/lib/queue/types.ts';
-import { CONCURRENCY_MAX } from '@/constants/index.ts';
+import { computeOptimalWorkerCount } from '@/capabilities/worker-count.ts';
 
 export interface WorkerPoolCallbacks {
   onMessage: (workerIndex: number, data: WorkerOutbound) => void;
@@ -12,147 +14,111 @@ export interface WorkerPoolCallbacks {
   onCancelled?: (taskId: string) => void;
 }
 
-interface WorkerSlot {
-  worker: Worker;
-  idle: boolean;
-  currentTask: Task | null;
-}
-
 export function computeConcurrency(): number {
-  const cores = navigator.hardwareConcurrency;
-  if (!cores || cores <= 2) return 1;
-
-  const reserved = cores > 6 ? 2 : 1;
-  return Math.min(cores - reserved, CONCURRENCY_MAX);
+  return computeOptimalWorkerCount();
 }
+
+type TaskKey = string;
+
+function taskKey(task: Task): TaskKey {
+  return `${task.id}:${task.format}`;
+}
+
+/** Reset in `destroy()` so a later pool can call `initRuntime` again after `shutdown()`. */
+let optimizerRuntimeInited = false;
 
 /**
- * Pool of Web Workers with typed protocol and cancellation support.
- * Cancellation uses the terminate + respawn pattern (proven by PicShift).
+ * Pool: bounded concurrent `spawn()` calls into multithreading's global pool,
+ * FIFO pending queue, per-item / per-task abort via `JoinHandle.abort()`.
  */
 export class WorkerPool {
-  private readonly slots: WorkerSlot[] = [];
-  private taskQueue: Task[] = [];
   private readonly callbacks: WorkerPoolCallbacks;
-  private readonly workerUrl: URL;
+  private readonly maxConcurrent: number;
+  private pending: Task[] = [];
+  private readonly active = new Map<TaskKey, { task: Task; handle: JoinHandle<WorkerOutbound> }>();
 
-  constructor(
-    workerUrl: URL,
-    concurrency: number,
-    callbacks: WorkerPoolCallbacks
-  ) {
+  constructor(concurrency: number, callbacks: WorkerPoolCallbacks) {
     this.callbacks = callbacks;
-    this.workerUrl = workerUrl;
-
-    for (let i = 0; i < concurrency; i++) {
-      this.slots.push(this.createSlot(i));
+    this.maxConcurrent = Math.max(1, concurrency);
+    if (!optimizerRuntimeInited) {
+      try {
+        initRuntime({ maxWorkers: this.maxConcurrent });
+      } catch {
+        /* pool already configured (e.g. tests creating a second pool) */
+      }
+      optimizerRuntimeInited = true;
     }
   }
 
-  private createSlot(index: number): WorkerSlot {
-    const worker = new Worker(this.workerUrl, { type: 'module' });
-    worker.onmessage = (e: MessageEvent) => this.handleMessage(index, e);
-    worker.onerror = () => this.handleError(index);
-    return { worker, idle: true, currentTask: null };
-  }
-
-  private respawnSlot(index: number): void {
-    const slot = this.slots[index];
-    if (slot) {
-      slot.worker.terminate();
-    }
-    this.slots[index] = this.createSlot(index);
-  }
-
-  /** Add a task to the queue; assigns to an idle worker if available. */
   addTask(task: Task): void {
-    this.taskQueue.push(task);
-    this.drainTaskQueue();
+    this.pending.push(task);
+    this.pump();
   }
 
-  /** Remove all pending (not in-flight) tasks for a given item id. */
   removeTasksForItem(id: string): void {
-    this.taskQueue = this.taskQueue.filter(t => t.id !== id);
+    this.pending = this.pending.filter(t => t.id !== id);
   }
 
-  /**
-   * Cancel in-flight work for an item: terminate the worker processing it, respawn.
-   * Also removes any pending tasks for that item.
-   */
   abortInFlightForItem(id: string): void {
     this.removeTasksForItem(id);
-
-    for (let i = 0; i < this.slots.length; i++) {
-      const slot = this.slots[i];
-      if (slot && slot.currentTask?.id === id) {
-        this.respawnSlot(i);
+    for (const [key, entry] of this.active) {
+      if (entry.task.id === id) {
+        entry.handle.abort();
+        this.active.delete(key);
         this.callbacks.onCancelled?.(id);
       }
     }
+    this.pump();
   }
 
-  /** Cancel a specific task by taskId (format-level granularity). */
   cancelTask(taskId: string): void {
-    this.taskQueue = this.taskQueue.filter(t =>
-      `${t.id}:${t.format}` !== taskId
-    );
-
-    for (let i = 0; i < this.slots.length; i++) {
-      const slot = this.slots[i];
-      if (slot?.currentTask && `${slot.currentTask.id}:${slot.currentTask.format}` === taskId) {
-        this.respawnSlot(i);
+    this.pending = this.pending.filter(t => `${t.id}:${t.format}` !== taskId);
+    for (const [key, entry] of this.active) {
+      if (`${entry.task.id}:${entry.task.format}` === taskId) {
+        entry.handle.abort();
+        this.active.delete(key);
         this.callbacks.onCancelled?.(taskId);
       }
     }
+    this.pump();
   }
 
-  /** Terminate all workers. */
   destroy(): void {
-    for (const slot of this.slots) {
-      slot.worker.terminate();
+    this.pending.length = 0;
+    for (const { handle } of this.active.values()) {
+      handle.abort();
     }
-    this.taskQueue = [];
+    this.active.clear();
+    shutdown();
+    optimizerRuntimeInited = false;
   }
 
-  private handleMessage(workerIndex: number, e: MessageEvent): void {
-    const slot = this.slots[workerIndex];
-    if (!slot) return;
-    slot.currentTask = null;
-    slot.idle = true;
-    this.callbacks.onMessage(workerIndex, e.data as WorkerOutbound);
-    this.assignNextTask(workerIndex);
+  private pump(): void {
+    while (this.active.size < this.maxConcurrent && this.pending.length > 0) {
+      const task = this.pending.shift()!;
+      const key = taskKey(task);
+      const handle = spawn(move(task), async (t: Task) => {
+        const { runOptimizeTask } = await import('./optimize-task-core.ts');
+        return runOptimizeTask({ id: t.id, file: t.file, options: t.options });
+      });
+      this.active.set(key, { task, handle });
+      void this.runTask(key, task, handle);
+    }
   }
 
-  private handleError(workerIndex: number): void {
-    const slot = this.slots[workerIndex];
-    if (!slot) return;
-    const task = slot.currentTask;
-    slot.currentTask = null;
-    slot.idle = true;
-    this.callbacks.onError(workerIndex, task);
-    this.assignNextTask(workerIndex);
-  }
-
-  private assignNextTask(workerIndex: number): void {
-    if (this.taskQueue.length === 0) return;
-    const slot = this.slots[workerIndex];
-    if (!slot) return;
-    const task = this.taskQueue.shift()!;
-    slot.currentTask = task;
-    slot.idle = false;
-    slot.worker.postMessage({
-      id: task.id,
-      file: task.file,
-      options: task.options,
-    });
-  }
-
-  private drainTaskQueue(): void {
-    for (let i = 0; i < this.slots.length; i++) {
-      const slot = this.slots[i];
-      if (slot?.idle && this.taskQueue.length > 0) {
-        this.assignNextTask(i);
+  private async runTask(key: TaskKey, task: Task, handle: JoinHandle<WorkerOutbound>): Promise<void> {
+    try {
+      const res = await handle.join();
+      if (res.ok) {
+        this.callbacks.onMessage(0, res.value);
+      } else {
+        this.callbacks.onError(0, task);
       }
+    } catch {
+      this.callbacks.onError(0, task);
+    } finally {
+      this.active.delete(key);
+      this.pump();
     }
   }
 }
