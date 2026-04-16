@@ -7,8 +7,6 @@ import {
   CONCURRENCY_MIN,
   CONCURRENCY_MAX_DESKTOP,
   MOBILE_MAX_WORKERS,
-  MB_PER_WORKER_ESTIMATE,
-  DEVICE_MEMORY_RESERVE_GB,
 } from '@/constants/limits';
 import { availableParallelism } from 'poolifier-web-worker';
 
@@ -34,19 +32,6 @@ function isLikelyMobile(): boolean {
 }
 
 /**
- * Heuristic memory-based cap: assume ~MB_PER_WORKER_ESTIMATE MB per active WASM worker.
- */
-function memoryBasedMaxWorkers(): number {
-  const dm = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  if (dm == null || !Number.isFinite(dm)) {
-    return CONCURRENCY_MAX_DESKTOP;
-  }
-  const usableGb = Math.max(0, dm - DEVICE_MEMORY_RESERVE_GB);
-  const cap = Math.floor((usableGb * 1024) / MB_PER_WORKER_ESTIMATE);
-  return Math.max(CONCURRENCY_MIN, Math.min(CONCURRENCY_MAX_DESKTOP, cap));
-}
-
-/**
  * Returns the number of optimizer workers to spawn (main thread stays reserved).
  */
 export function computeOptimalWorkerCount(): number {
@@ -60,5 +45,5 @@ export function computeOptimalWorkerCount(): number {
 
   const reserved = cores > 6 ? 2 : 1;
   const coreCap = Math.max(1, cores - reserved);
-  return Math.max(CONCURRENCY_MIN, Math.min(coreCap, memoryBasedMaxWorkers()));
+  return Math.max(CONCURRENCY_MIN, Math.min(coreCap, CONCURRENCY_MAX_DESKTOP));
 }
