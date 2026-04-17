@@ -32,7 +32,7 @@ function dynamicPoolBounds(maxWorkers: number): { min: number; max: number } {
   if (max === 1) return { min: 0, max: 1 };
   let min = Math.max(1, CONCURRENCY_MIN);
   if (min >= max) min = Math.max(0, max - 1);
-  return { min, max: max / 2 };
+  return { min, max };
 }
 
 export class WorkerPool {
