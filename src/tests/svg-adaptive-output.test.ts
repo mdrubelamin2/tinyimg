@@ -183,7 +183,7 @@ describe('SVG Adaptive Output Pipeline', () => {
     const result = await processSvg(file, defaultOptions);
     
     // Label should indicate wrapped
-    expect(result.label).toContain('svg (webp-wrapped)');
+    expect(result.label).toContain('svg (webp)');
     
     const text = await result.blob.text();
     // Should be wrapped in an SVG with an image tag
@@ -199,7 +199,7 @@ describe('SVG Adaptive Output Pipeline', () => {
     
     const result = await processSvg(file, defaultOptions);
     
-    expect(result.label).toContain('svg (webp-wrapped)');
+    expect(result.label).toContain('svg (webp)');
     
     const text = await result.blob.text();
     expect(text).toContain('<image');
