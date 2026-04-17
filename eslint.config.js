@@ -20,7 +20,7 @@ export default defineConfig([
     ],
     plugins: reactCompilerRecommended.plugins,
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 2023,
       globals: globals.browser,
     },
     rules: {
