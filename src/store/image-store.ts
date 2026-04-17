@@ -6,7 +6,7 @@
 import { startTransition } from 'react';
 import { batch, observable } from '@legendapp/state';
 import { useValue } from '@legendapp/state/react';
-import type { ImageItem, ImageResult, Task, WorkerOutbound } from '@/lib/queue/types';
+import type { ImageItem, ImageResult, Task, WorkerOutbound, WorkerOutboundResult } from '@/lib/queue/types';
 import type { GlobalOptions } from '@/constants';
 import {
   STATUS_PENDING,
@@ -30,8 +30,9 @@ import {
   persistBufferedOriginalSource,
   resolveOriginalSourceFile,
   deleteItemPayloads,
-  persistOutputBlob,
+  persistEncodedOutput,
 } from '@/storage/queue-binary';
+import { heapMetrics } from '@/lib/dev/heap-metrics';
 import {
   cancelThumbnail,
   destroyThumbnailWorker,
@@ -104,6 +105,88 @@ let pendingForceAll = false;
 let responseBuffer: WorkerOutbound[] = [];
 let errorBuffer: (Task | null)[] = [];
 let flushScheduled = false;
+
+/** Serializes persist work across RAF batches so large `encodedBytes` are not retained concurrently. */
+let resultPersistChain: Promise<void> = Promise.resolve();
+
+function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
+  if (results.length === 0) return;
+  const totalBytes = results.reduce((sum, r) => sum + r.encodedBytes.byteLength, 0);
+  heapMetrics.resultBatchReceived(results.length, totalBytes);
+  const queue = [...results];
+  resultPersistChain = resultPersistChain.then(async () => {
+    const opts = useSettingsStore.getState().options;
+    while (queue.length > 0) {
+      const response = queue.shift()!;
+      const byteLen = response.encodedBytes.byteLength;
+      heapMetrics.persistPipelineEnter();
+      const t0 = performance.now();
+      try {
+        const snapshot = imageStore$.items[response.id]?.peek();
+        if (!snapshot) continue;
+        const rid = response.resultId;
+        const prevResult = snapshot.results[rid];
+        if (!prevResult) continue;
+
+        if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl);
+        const { payloadKey } = await persistEncodedOutput(
+          response.id,
+          rid,
+          response.encodedBytes,
+          response.mimeType
+        );
+
+        startTransition(() => {
+          batch(() => {
+            const item = imageStore$.items[response.id]?.peek();
+            if (!item) return;
+            const result = item.results[rid];
+            if (!result) return;
+
+            const nextItem = { ...item };
+            nextItem.results = {
+              ...item.results,
+              [rid]: {
+                ...result,
+                status: STATUS_SUCCESS,
+                size: response.size,
+                formattedSize: response.formattedSize,
+                savingsPercent: response.savingsPercent,
+                payloadKey,
+                label: response.label,
+                downloadUrl: undefined,
+                timing: response.timing,
+              },
+            };
+
+            let nextPending = [...imageStore$.pendingIds.peek()];
+            let shouldProcessNext = false;
+            if (isTerminal(nextItem)) {
+              const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
+              nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
+              nextItem.progress = 100;
+              nextPending = nextPending.filter(x => x !== response.id);
+              shouldProcessNext = true;
+            }
+
+            imageStore$.items[response.id]!.set(nextItem);
+            imageStore$.pendingIds.set(nextPending);
+
+            if (shouldProcessNext) {
+              void getState()._processNextAsync(opts, { getState });
+            }
+          });
+        });
+      } finally {
+        heapMetrics.persistDurationMs(performance.now() - t0, byteLen);
+        heapMetrics.persistPipelineExit();
+      }
+    }
+  });
+  void resultPersistChain.catch((err) => {
+    console.error('result persist chain', err);
+  });
+}
 
 function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
   if (pool) return pool;
@@ -609,66 +692,7 @@ function _batchApplyResultsImpl(): void {
 
   if (resultResponses.length === 0) return;
 
-  void (async () => {
-    const opts = useSettingsStore.getState().options;
-    for (const response of resultResponses) {
-      const snapshot = imageStore$.items[response.id]?.peek();
-      if (!snapshot) continue;
-      const rid = response.resultId;
-      const prevResult = snapshot.results[rid];
-      if (!prevResult) continue;
-
-      if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl);
-      const { payloadKey, downloadUrl } = await persistOutputBlob(
-        response.id,
-        rid,
-        response.blob,
-        response.format
-      );
-
-      startTransition(() => {
-        batch(() => {
-          const item = imageStore$.items[response.id]?.peek();
-          if (!item) return;
-          const result = item.results[rid];
-          if (!result) return;
-
-          const nextItem = { ...item };
-          nextItem.results = {
-            ...item.results,
-            [rid]: {
-              ...result,
-              status: STATUS_SUCCESS,
-              size: response.size,
-              formattedSize: response.formattedSize,
-              savingsPercent: response.savingsPercent,
-              payloadKey,
-              label: response.label,
-              downloadUrl,
-              timing: response.timing,
-            },
-          };
-
-          let nextPending = [...imageStore$.pendingIds.peek()];
-          let shouldProcessNext = false;
-          if (isTerminal(nextItem)) {
-            const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
-            nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
-            nextItem.progress = 100;
-            nextPending = nextPending.filter(x => x !== response.id);
-            shouldProcessNext = true;
-          }
-
-          imageStore$.items[response.id]!.set(nextItem);
-          imageStore$.pendingIds.set(nextPending);
-
-          if (shouldProcessNext) {
-            void getState()._processNextAsync(opts, { getState });
-          }
-        });
-      });
-    }
-  })();
+  schedulePersistWorkerResults(resultResponses);
 }
 
 async function _processNextAsyncImpl(
