@@ -2,7 +2,6 @@
  * App header: logo, title, theme toggle, GitHub link.
  */
 
-import React from 'react';
 import { Sparkles, Github } from 'lucide-react';
 import { ThemeToggle } from './layout/ThemeToggle';
 
@@ -13,7 +12,8 @@ export interface AppHeaderProps {
   subtitle?: string | undefined;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ subtitle }) => (
+export function AppHeader({ subtitle }: AppHeaderProps) {
+  return (
   <nav className="fixed top-4 left-4 right-4 z-50 glass rounded-2xl px-4 md:px-6 py-3 flex justify-between items-center shadow-2xl shadow-primary/10">
     <div className="flex items-center gap-3">
       <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/30 cursor-pointer transition-transform hover:scale-105">
@@ -46,4 +46,5 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ subtitle }) => (
       </a>
     </div>
   </nav>
-);
+  );
+}

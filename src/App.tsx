@@ -1,13 +1,9 @@
-import { lazy, Suspense, useEffect, useCallback, useRef, useLayoutEffect, useState } from 'react';
+import { lazy, Suspense, useCallback } from 'react';
 import { HelmetProvider, Helmet } from 'react-helmet-async';
 import { Show, useObserveEffect, useObservable, useValue } from '@legendapp/state/react';
 import { Toaster } from 'sonner';
 import { imageStore$, intake$, getImageStore } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
-import { subscribeCpuPressureToast } from '@/capabilities/cpu-pressure';
-import { clearSessionStorage } from '@/storage/hybrid-storage';
-import { clearDirectDropOriginals } from '@/storage/dropped-original-files';
-import { startSessionQuotaMonitor } from '@/storage/quota-monitor';
 import { syncIntakeProgressToast } from '@/notifications/toast-emitter';
 import { Dropzone } from '@/components/Dropzone';
 import { FileDropOverlay } from '@/components/FileDropOverlay';
@@ -18,12 +14,7 @@ import { ResultsTable } from '@/components/ResultsTable';
 import { useQueueStats } from '@/hooks/useQueueStats';
 import { queueStats$ } from '@/state/queue-stats';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import {
-  CONFETTI_PARTICLE_COUNT,
-  CONFETTI_SPREAD,
-  CONFETTI_ORIGIN_Y,
-  CONFETTI_COLORS,
-} from '@/constants';
+import { useFileDropOverlayOpen } from '@/hooks/useFileDropOverlayOpen';
 import type { ImageItem } from '@/lib/queue/types';
 
 const ImagePreviewLazy = lazy(() =>
@@ -38,7 +29,7 @@ interface PreviewState {
   selectedFormat: string;
 }
 
-const App: React.FC = () => {
+export default function App() {
   const itemCount = useValue(() => imageStore$.itemOrder.get().length);
   const preview$ = useObservable<PreviewState | null>(null);
   const preview = useValue(preview$);
@@ -47,20 +38,12 @@ const App: React.FC = () => {
   const clearFinished = getImageStore().clearFinished;
   const clearAll = getImageStore().clearAll;
   const downloadAll = getImageStore().downloadAll;
-  const applyGlobalOptions = getImageStore().applyGlobalOptions;
 
   const options = useSettingsStore((state) => state.options);
 
-  const fileDragDepthRef = useRef(0);
-  const [fileDropOverlayOpen, setFileDropOverlayOpen] = useState(false);
+  const fileDropOverlayOpen = useFileDropOverlayOpen();
 
-  const syncFileDragDepth = useCallback((next: number) => {
-    const n = Math.max(0, next);
-    fileDragDepthRef.current = n;
-    setFileDropOverlayOpen(n > 0);
-  }, []);
-
-  const { hasFinishedItems, estimatedSavingsLabel, allSuccessful } = useQueueStats();
+  const { hasFinishedItems, estimatedSavingsLabel } = useQueueStats();
 
   useObserveEffect(() => {
     syncIntakeProgressToast(
@@ -79,54 +62,12 @@ const App: React.FC = () => {
     document.title = `TinyIMG — ${helmetTitle}`;
   });
 
-  const sessionClearedRef = useRef(false);
-  useLayoutEffect(() => {
-    if (sessionClearedRef.current) return;
-    sessionClearedRef.current = true;
-    void clearSessionStorage();
-    clearDirectDropOriginals();
-  }, []);
-
-  useEffect(() => {
-    const stopQuota = startSessionQuotaMonitor();
-    const stopCpu = subscribeCpuPressureToast();
-    return () => {
-      stopQuota();
-      stopCpu();
-    };
-  }, []);
-
-  const confettiFiredRef = useRef(false);
-  useEffect(() => {
-    if (allSuccessful) {
-      if (!confettiFiredRef.current) {
-        confettiFiredRef.current = true;
-        void import('canvas-confetti').then(({ default: confetti }) => {
-          confetti({
-            particleCount: CONFETTI_PARTICLE_COUNT,
-            spread: CONFETTI_SPREAD,
-            origin: { y: CONFETTI_ORIGIN_Y },
-            colors: [...CONFETTI_COLORS],
-          });
-        });
-      }
-    } else {
-      confettiFiredRef.current = false;
-    }
-  }, [allSuccessful]);
-
   const handleFilesAdded = useCallback(
     (files: File[] | DataTransferItem[]) => {
       void addFiles(files, options);
     },
     [addFiles, options]
   );
-
-  useEffect(() => {
-    if (itemCount > 0) {
-      applyGlobalOptions(options, false);
-    }
-  }, [options, itemCount, applyGlobalOptions]);
 
   const handlePreview = useCallback(
     (item: ImageItem) => {
@@ -149,82 +90,6 @@ const App: React.FC = () => {
     onDownload: hasFinishedItems ? handleDownloadAll : undefined,
     onEscape: preview ? () => preview$.set(null) : undefined,
   });
-
-  useEffect(() => {
-    const hasFilePayload = (e: DragEvent) =>
-      Boolean(e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes('Files'));
-
-    const onDocumentDragEnter = (e: DragEvent) => {
-      if (!hasFilePayload(e)) return;
-      e.preventDefault();
-      syncFileDragDepth(fileDragDepthRef.current + 1);
-    };
-
-    const onDocumentDragLeave = (e: DragEvent) => {
-      if (!hasFilePayload(e)) return;
-      syncFileDragDepth(fileDragDepthRef.current - 1);
-    };
-
-    const onWindowDragOver = (e: DragEvent) => {
-      if (!hasFilePayload(e)) return;
-      e.preventDefault();
-    };
-
-    /** Runs in capture phase so overlay clears even when a child calls stopPropagation on drop. */
-    const onWindowDropCapture = () => {
-      syncFileDragDepth(0);
-    };
-
-    const onWindowDropBubble = (e: DragEvent) => {
-      if (!hasFilePayload(e)) return;
-      e.preventDefault();
-      const dt = e.dataTransfer;
-      if (!dt) return;
-      const items = dt.items;
-      if (items && items.length > 0) {
-        handleFilesAdded(Array.from(items));
-      } else if (dt.files?.length) {
-        handleFilesAdded(Array.from(dt.files));
-      }
-    };
-
-    const onDragEnd = () => {
-      syncFileDragDepth(0);
-    };
-
-    document.addEventListener('dragenter', onDocumentDragEnter);
-    document.addEventListener('dragleave', onDocumentDragLeave);
-    window.addEventListener('dragover', onWindowDragOver);
-    window.addEventListener('drop', onWindowDropCapture, true);
-    window.addEventListener('drop', onWindowDropBubble, false);
-    window.addEventListener('dragend', onDragEnd);
-
-    return () => {
-      document.removeEventListener('dragenter', onDocumentDragEnter);
-      document.removeEventListener('dragleave', onDocumentDragLeave);
-      window.removeEventListener('dragover', onWindowDragOver);
-      window.removeEventListener('drop', onWindowDropCapture, true);
-      window.removeEventListener('drop', onWindowDropBubble, false);
-      window.removeEventListener('dragend', onDragEnd);
-    };
-  }, [handleFilesAdded, syncFileDragDepth]);
-
-  useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.files;
-      if (!items || items.length === 0) return;
-
-      const files = Array.from(items).filter((file) => file.type.startsWith('image/'));
-
-      if (files.length > 0) {
-        e.preventDefault();
-        handleFilesAdded(files);
-      }
-    };
-
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [handleFilesAdded]);
 
   return (
     <HelmetProvider>
@@ -249,7 +114,7 @@ const App: React.FC = () => {
             <div className="flex-1 space-y-8 md:space-y-10">
               <Dropzone onFilesAdded={handleFilesAdded} />
 
-              <Show if={() => true}>
+              <Show if={() => imageStore$.itemOrder.get().length > 0}>
                 {() => {
                   const itemIds = imageStore$.itemOrder.get();
                   if (itemIds.length === 0) return null;
@@ -306,6 +171,4 @@ const App: React.FC = () => {
       </div>
     </HelmetProvider>
   );
-};
-
-export default App;
+}

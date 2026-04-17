@@ -5,6 +5,10 @@ import {
   STATUS_ERROR,
   STATUS_PROCESSING,
   STATUS_PENDING,
+  CONFETTI_PARTICLE_COUNT,
+  CONFETTI_SPREAD,
+  CONFETTI_ORIGIN_Y,
+  CONFETTI_COLORS,
 } from '@/constants';
 import type { ImageItem } from '@/lib/queue/types';
 
@@ -136,6 +140,24 @@ function statsEqual(a: QueueStats, b: QueueStats): boolean {
 export const queueStats$ = observable<QueueStats>(computeQueueStats());
 
 let rafId = 0;
+let confettiFiredForAllSuccessful = false;
+
+function maybeFireAllSuccessfulConfetti(prev: QueueStats, next: QueueStats): void {
+  if (!next.allSuccessful) {
+    confettiFiredForAllSuccessful = false;
+    return;
+  }
+  if (prev.allSuccessful || confettiFiredForAllSuccessful) return;
+  confettiFiredForAllSuccessful = true;
+  void import('canvas-confetti').then(({ default: confetti }) => {
+    confetti({
+      particleCount: CONFETTI_PARTICLE_COUNT,
+      spread: CONFETTI_SPREAD,
+      origin: { y: CONFETTI_ORIGIN_Y },
+      colors: [...CONFETTI_COLORS],
+    });
+  });
+}
 
 function scheduleStatsFlush(): void {
   if (rafId !== 0) return;
@@ -144,6 +166,7 @@ function scheduleStatsFlush(): void {
     const next = computeQueueStats();
     const prev = queueStats$.peek();
     if (statsEqual(prev, next)) return;
+    maybeFireAllSuccessfulConfetti(prev, next);
     batch(() => {
       queueStats$.set(next);
     });
