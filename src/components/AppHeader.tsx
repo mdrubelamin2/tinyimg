@@ -7,12 +7,7 @@ import { ThemeToggle } from './layout/ThemeToggle';
 
 const GITHUB_URL = 'https://github.com/mdrubelamin2/tinyimg.git';
 
-export interface AppHeaderProps {
-  /** Optional one-line hint (e.g. heuristic savings while jobs run). */
-  subtitle?: string | undefined;
-}
-
-export function AppHeader({ subtitle }: AppHeaderProps) {
+export function AppHeader() {
   return (
   <nav className="fixed z-50 glass rounded-2xl px-4 md:px-6 py-3 flex justify-between items-center shadow-2xl shadow-primary/10 top-[max(1rem,env(safe-area-inset-top,0px))] left-[max(1rem,env(safe-area-inset-left,0px))] right-[max(1rem,env(safe-area-inset-right,0px))]">
     <div className="flex items-center gap-3">
@@ -26,11 +21,6 @@ export function AppHeader({ subtitle }: AppHeaderProps) {
         <p className="text-[9px] md:text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mt-0.5">
           Industrial Optimizer
         </p>
-        {subtitle ? (
-          <p className="text-[10px] md:text-[11px] text-primary/90 font-medium mt-0.5 max-w-[min(280px,55vw)] truncate">
-            {subtitle}
-          </p>
-        ) : null}
       </div>
     </div>
     <div className="flex items-center gap-2 md:gap-3">

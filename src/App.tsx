@@ -43,7 +43,7 @@ export default function App() {
 
   const fileDropOverlayOpen = useFileDropOverlayOpen();
 
-  const { hasFinishedItems, estimatedSavingsLabel } = useQueueStats();
+  const { hasFinishedItems } = useQueueStats();
 
   useObserveEffect(() => {
     syncIntakeProgressToast(
@@ -108,7 +108,7 @@ export default function App() {
         </Helmet>
 
         <ErrorBoundary>
-          <AppHeader subtitle={estimatedSavingsLabel || undefined} />
+          <AppHeader />
 
           <main className="pt-28 md:pt-36 pb-12 px-4 md:px-8 max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-8 md:gap-10">
             <div className="flex-1 space-y-8 md:space-y-10">
