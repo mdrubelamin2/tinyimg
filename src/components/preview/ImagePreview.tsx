@@ -119,8 +119,8 @@ export function ImagePreview({
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <ZoomIn size={18} className="shrink-0 text-primary" />
-            <div className="min-w-0">
-              <h3 className="font-bold text-foreground text-sm truncate max-w-[300px]">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold text-foreground text-sm truncate min-w-0 max-w-full">
                 {item.fileName}
               </h3>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
@@ -192,15 +192,15 @@ export function ImagePreview({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border bg-muted/20 px-6 py-3">
-          <span className="text-[10px] font-medium text-muted-foreground">
+        <div className="flex flex-col gap-3 border-t border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <span className="text-center text-[10px] font-medium text-muted-foreground sm:text-left">
             Drag to compare. ESC to close
           </span>
           {currentResult?.downloadUrl && (
             <a
               href={currentResult.downloadUrl}
               download={`tinyimg-${downloadBaseName}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
-              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-primary to-primary/80 px-3 py-1.5 text-[10px] font-bold text-primary-foreground shadow-md shadow-primary/25 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+              className="flex cursor-pointer items-center justify-center gap-1.5 self-center rounded-lg bg-gradient-to-r from-primary to-primary/80 px-3 py-2 text-[10px] font-bold text-primary-foreground shadow-md shadow-primary/25 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg sm:self-auto sm:py-1.5"
               aria-label={`Download ${currentResult.label ?? selectedFormat}`}
             >
               <Download size={12} />

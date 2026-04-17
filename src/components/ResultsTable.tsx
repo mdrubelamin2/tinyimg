@@ -49,7 +49,7 @@ export const ResultsTable: FC<ResultsTableProps> = ({
         onClear={onClear}
       />
       <CardContent className="p-0">
-        <div ref={attachScrollEl} className="max-h-[600px] min-h-[280px] overflow-auto">
+        <div ref={attachScrollEl} className="max-h-[600px] min-h-[100px] overflow-auto">
           <VirtualizedQueueTableBody
             itemIds={itemIds}
             onRemove={onRemoveItem}
