@@ -182,8 +182,48 @@ export async function processSvg(
 
   return {
     blob: new Blob([svgWrapper], { type: 'image/svg+xml' }),
-    label: `svg (${internalFormat}-wrapped)`,
+    label: `svg (${internalFormat})`,
     timing,
+  };
+}
+
+/**
+ * Rasterize SVG file to raw `ImageData` (before format encode). Used when output size may differ from rasterized pixels.
+ */
+export async function rasterizeSvgFileToImageData(
+  file: File,
+  options: SvgPipelineOptions
+): Promise<{
+  imageData: ImageData;
+  timing: SvgStageTiming;
+  bitmapWidth: number;
+  bitmapHeight: number;
+}> {
+  const totalStart = nowMs();
+  const text = await file.text();
+
+  const naturalSizeStart = nowMs();
+  const { width, height } = await readSvgNaturalSize(text);
+  const naturalSizeMs = nowMs() - naturalSizeStart;
+
+  const raster = await buildSvgRaster(text, width, height, options);
+  assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
+
+  const timing: SvgStageTiming = {
+    naturalSizeMs: Math.round(naturalSizeMs),
+    renderMs: raster.timing.renderMs,
+    downscaleMs: raster.timing.downscaleMs,
+    encodeMs: 0,
+    totalMs: Math.round(nowMs() - totalStart),
+    svgRasterizerPath: raster.rasterizerPath,
+    ...(raster.effectiveDpr != null ? { svgEffectiveDpr: raster.effectiveDpr } : {}),
+  };
+
+  return {
+    imageData: raster.imageData,
+    timing,
+    bitmapWidth: raster.bitmapWidth,
+    bitmapHeight: raster.bitmapHeight,
   };
 }
 
@@ -195,37 +235,26 @@ export async function rasterizeSvgToFormat(
   options: { format: SvgRasterFormat } & SvgPipelineOptions
 ): Promise<{ blob: Blob; label: string; timing?: SvgStageTiming }> {
   const totalStart = nowMs();
-  const text = await file.text();
-
-  const naturalSizeStart = nowMs();
-  const { width, height } = await readSvgNaturalSize(text);
-  const naturalSizeMs = nowMs() - naturalSizeStart;
-
-  const raster = await buildSvgRaster(text, width, height, options);
-  assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
+  const { imageData, timing: rasterTiming, bitmapWidth, bitmapHeight } = await rasterizeSvgFileToImageData(file, options);
 
   const format = options.format;
   const encodeStart = nowMs();
   const bytes =
     options.svgExportDensity === 'display'
-      ? await encodeRasterVectorSafeWithSizeSafeguard(raster.imageData, format, {
-        displayQuality: true,
-      })
-      : await encodeRasterVectorSafeWithSizeSafeguard(raster.imageData, format);
+      ? await encodeRasterVectorSafeWithSizeSafeguard(imageData, format, {
+          displayQuality: true,
+        })
+      : await encodeRasterVectorSafeWithSizeSafeguard(imageData, format);
   const encodeMs = nowMs() - encodeStart;
   const mimeType = format === 'jpeg' ? 'image/jpeg' : `image/${format}`;
-  await assertEncodedDimensions(bytes, mimeType, raster.bitmapWidth, raster.bitmapHeight);
+  await assertEncodedDimensions(bytes, mimeType, bitmapWidth, bitmapHeight);
 
-  const pathSuffix = options.svgExportDensity === 'display' ? ` (${raster.rasterizerPath})` : '';
+  const pathSuffix = options.svgExportDensity === 'display' ? ` (${rasterTiming.svgRasterizerPath})` : '';
 
   const timing: SvgStageTiming = {
-    naturalSizeMs: Math.round(naturalSizeMs),
-    renderMs: raster.timing.renderMs,
-    downscaleMs: raster.timing.downscaleMs,
+    ...rasterTiming,
     encodeMs: Math.round(encodeMs),
     totalMs: Math.round(nowMs() - totalStart),
-    svgRasterizerPath: raster.rasterizerPath,
-    ...(raster.effectiveDpr != null ? { svgEffectiveDpr: raster.effectiveDpr } : {}),
   };
 
   return {
@@ -408,7 +437,7 @@ function assertDimensions(
   }
 }
 
-async function assertEncodedDimensions(
+export async function assertEncodedDimensions(
   bytes: ArrayBuffer,
   mimeType: string,
   expectedWidth: number,

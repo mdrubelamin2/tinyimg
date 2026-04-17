@@ -24,7 +24,7 @@ export function computeConcurrency(): number {
 type TaskKey = string;
 
 function taskKey(task: Task): TaskKey {
-  return `${task.id}:${task.format}`;
+  return `${task.id}:${task.resultId}`;
 }
 
 function dynamicPoolBounds(maxWorkers: number): { min: number; max: number } {
@@ -32,7 +32,7 @@ function dynamicPoolBounds(maxWorkers: number): { min: number; max: number } {
   if (max === 1) return { min: 0, max: 1 };
   let min = Math.max(1, CONCURRENCY_MIN);
   if (min >= max) min = Math.max(0, max - 1);
-  return { min, max };
+  return { min, max: max / 2 };
 }
 
 export class WorkerPool {
@@ -75,9 +75,9 @@ export class WorkerPool {
   }
 
   cancelTask(taskId: string): void {
-    this.pending = this.pending.filter(t => `${t.id}:${t.format}` !== taskId);
+    this.pending = this.pending.filter(t => `${t.id}:${t.resultId}` !== taskId);
     for (const [key, entry] of this.active) {
-      if (`${entry.task.id}:${entry.task.format}` === taskId) {
+      if (`${entry.task.id}:${entry.task.resultId}` === taskId) {
         entry.controller.abort();
         this.active.delete(key);
         this.callbacks.onCancelled?.(taskId);
