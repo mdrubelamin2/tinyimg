@@ -4,7 +4,7 @@
  *
  * - **Direct-drop originals** live in `dropped-original-files.ts` (in-memory map) — no duplicate hybrid `set()` for those.
  * - **Buffered sources** (ZIP entries, folder traversal, etc.) are written here via `persistBufferedOriginalSource`.
- * - **Encoded outputs** use `persistOutputBlob` / `persistOutputBytes` (same adapter chain).
+ * - **Encoded outputs** use {@link persistEncodedOutput} (bytes only; object URLs are created lazily on download/preview).
  *
  * `getBackedFile` on the adapter is an optional OPFS optimization for object URLs; IDB path uses `get` + `Blob`.
  */
@@ -72,26 +72,30 @@ async function loadSourceFileFromStorageOnly(itemId: string, item: ImageItem): P
   return new File([ab], name, { type: mime });
 }
 
-export async function persistOutputBytes(
+/**
+ * Persist encoded output bytes only (no eager `blob:` URL). Callers create object URLs on demand.
+ */
+export async function persistEncodedOutput(
   id: string,
   resultId: string,
   data: ArrayBuffer,
   mimeHint: string
-): Promise<{ payloadKey: string; downloadUrl: string }> {
+): Promise<{ payloadKey: string }> {
+  void mimeHint;
   const storage = await getSessionBinaryStorage();
   const payloadKey = outputStorageKey(id, resultId);
   await storage.set(payloadKey, data);
-  const url = await createObjectUrlForStoredPayload(storage, payloadKey, mimeHint);
-  return { payloadKey, downloadUrl: url };
+  return { payloadKey };
 }
 
+/** @deprecated Prefer {@link persistEncodedOutput}; reads full blob on caller thread. */
 export async function persistOutputBlob(
   id: string,
   resultId: string,
   blob: Blob,
   mimeFormat: string
-): Promise<{ payloadKey: string; downloadUrl: string }> {
-  return persistOutputBytes(
+): Promise<{ payloadKey: string }> {
+  return persistEncodedOutput(
     id,
     resultId,
     await blob.arrayBuffer(),
@@ -111,6 +115,15 @@ async function createObjectUrlForStoredPayload(
   const ab = await storage.get(payloadKey);
   if (!ab) return '';
   return URL.createObjectURL(new Blob([ab], { type: mimeHint || 'application/octet-stream' }));
+}
+
+/** Short-lived object URL for a stored output; caller must {@link URL.revokeObjectURL}. */
+export async function createTransientObjectUrlForPayloadKey(
+  payloadKey: string,
+  mimeHint: string
+): Promise<string> {
+  const storage = await getSessionBinaryStorage();
+  return createObjectUrlForStoredPayload(storage, payloadKey, mimeHint);
 }
 
 export async function deleteItemPayloads(id: string): Promise<void> {
