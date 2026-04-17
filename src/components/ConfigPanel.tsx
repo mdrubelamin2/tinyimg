@@ -3,7 +3,8 @@ import { Settings, RefreshCcw, CheckCircle, FileType } from 'lucide-react';
 import { getImageStore } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
 import type { GlobalOptions } from '@/constants';
-import { SVG_INTERNAL_FORMATS } from '@/constants';
+import { DEFAULT_GLOBAL_OPTIONS, SVG_INTERNAL_FORMATS } from '@/constants';
+import { globalOptionsEqual } from '@/lib/global-options-equal';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -15,7 +16,7 @@ import {
   SelectValue,
 } from './ui/select';
 
-export const ConfigPanel: React.FC = () => {
+export function ConfigPanel() {
   const options = useSettingsStore(state => state.options);
   const setOptions = useSettingsStore(state => state.setOptions);
   const applyGlobalOptions = getImageStore().applyGlobalOptions;
@@ -24,7 +25,7 @@ export const ConfigPanel: React.FC = () => {
 
   const [draft, setDraft] = useState<GlobalOptions>({ ...options });
 
-  const hasChanges = JSON.stringify(draft) !== JSON.stringify(options);
+  const hasChanges = !globalOptionsEqual(draft, options);
 
   const updateDraft = <K extends keyof GlobalOptions>(key: K, value: GlobalOptions[K]) => {
     setDraft(prev => ({ ...prev, [key]: value }));
@@ -227,13 +228,4 @@ export const ConfigPanel: React.FC = () => {
       </div>
     </div>
   );
-};
-
-const DEFAULT_GLOBAL_OPTIONS: GlobalOptions = {
-  formats: [],
-  useOriginalFormats: true,
-  includeOriginalInCustom: false,
-  smallFilesFirst: true,
-  stripMetadata: true,
-  svgInternalFormat: 'webp',
-};
+}
