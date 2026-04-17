@@ -40,12 +40,24 @@ export interface StageTiming {
 }
 
 // ---------------------------------------------------------------------------
-// Image result (one per output format per item)
+// Resize intent (worker resolves target pixels from source + preset)
+// ---------------------------------------------------------------------------
+export type TaskResizePreset =
+  | { kind: 'native' }
+  | { kind: 'target'; maintainAspect: boolean; width: number; height: number };
+
+// ---------------------------------------------------------------------------
+// Image result (one per output slot: format × size)
 // ---------------------------------------------------------------------------
 export interface ImageResult {
+  /** Stable map key and storage suffix (`out:id:resultId`) */
+  resultId: string;
+  /** Encode / MIME format (e.g. webp, jpeg) */
   format: string;
+  /** Short size variant label from config (e.g. 800w, 1200×800) */
+  variantLabel?: string | undefined;
   label?: string | undefined;
-  /** Session hybrid storage key (`out:id:format`); encoded bytes live here, not in Legend state */
+  /** Session hybrid storage key (`out:id:resultId`); encoded bytes live here, not in Legend state */
   payloadKey?: string | undefined;
   size?: number | undefined;
   formattedSize?: string | undefined;
@@ -88,13 +100,14 @@ export interface ImageItem {
 // Task options (sent to the worker for each encode job)
 // ---------------------------------------------------------------------------
 export interface TaskOptions {
+  resultId: string;
   format: string;
   svgInternalFormat: SvgInternalFormat;
   svgRasterizer: 'auto' | 'browser' | 'resvg';
   svgExportDensity: 'legacy' | 'display';
   svgDisplayDpr: number;
   qualityPercent: number;
-  resizeMaxEdge: number;
+  resizePreset: TaskResizePreset;
   stripMetadata: boolean;
 }
 
@@ -103,6 +116,7 @@ export interface TaskOptions {
 // ---------------------------------------------------------------------------
 export interface Task {
   id: string;
+  resultId: string;
   format: string;
   file: File;
   options: TaskOptions;
@@ -135,6 +149,7 @@ export interface WorkerOutboundProgress {
 export interface WorkerOutboundResult {
   type: 'RESULT';
   id: string;
+  resultId: string;
   format: string;
   blob: Blob;
   size: number;
@@ -147,6 +162,7 @@ export interface WorkerOutboundResult {
 export interface WorkerOutboundError {
   type: 'ERROR';
   id: string;
+  resultId: string;
   format: string;
   error: string;
 }

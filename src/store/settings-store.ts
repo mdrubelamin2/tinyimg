@@ -10,6 +10,27 @@ import { DEFAULT_GLOBAL_OPTIONS } from '@/constants';
 
 const STORAGE_KEY = 'tinyimg_config';
 
+/** Merge persisted options with current defaults (handles older localStorage without size fields). */
+function mergePersistedOptions(stored: unknown): GlobalOptions {
+  if (!stored || typeof stored !== 'object') return { ...DEFAULT_GLOBAL_OPTIONS };
+  const o = stored as Partial<GlobalOptions>;
+  return {
+    ...DEFAULT_GLOBAL_OPTIONS,
+    ...o,
+    formats: Array.isArray(o.formats) ? o.formats : DEFAULT_GLOBAL_OPTIONS.formats,
+    customSizePresets:
+      Array.isArray(o.customSizePresets) && o.customSizePresets.length > 0
+        ? o.customSizePresets
+        : DEFAULT_GLOBAL_OPTIONS.customSizePresets,
+    useOriginalSizes:
+      typeof o.useOriginalSizes === 'boolean' ? o.useOriginalSizes : DEFAULT_GLOBAL_OPTIONS.useOriginalSizes,
+    includeNativeSizeInCustom:
+      typeof o.includeNativeSizeInCustom === 'boolean'
+        ? o.includeNativeSizeInCustom
+        : DEFAULT_GLOBAL_OPTIONS.includeNativeSizeInCustom,
+  };
+}
+
 interface SettingsState {
   options: GlobalOptions;
   setOptions: (options: GlobalOptions) => void;
@@ -29,6 +50,14 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: STORAGE_KEY,
       partialize: (state) => ({ options: state.options }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<SettingsState> | undefined;
+        return {
+          ...current,
+          ...(p ?? {}),
+          options: mergePersistedOptions(p?.options),
+        };
+      },
     }
   )
 );

@@ -2,35 +2,14 @@ import {
   DEFAULT_MIME,
   ID_RANDOM_LENGTH,
   STATUS_PENDING,
-  SUPPORTED_FORMATS,
-  isValidImageExtension,
   type GlobalOptions,
 } from '@/constants';
 import type { ImageItem, ImageResult } from '@/lib/queue/types';
 import type { IntakeOriginalKind } from '@/lib/queue/queue-intake';
 import { revokeResultUrls } from '@/lib/download';
+import { buildOutputSlots } from '@/lib/queue/output-slots';
 
-function normalizeFormat(format: string): string {
-  return format === 'jpg' ? 'jpeg' : format;
-}
-
-export function getFormatsToProcess(item: ImageItem, options: GlobalOptions): string[] {
-  if (options.useOriginalFormats) {
-    const normalizedOriginal = normalizeFormat(item.originalFormat);
-    if (isValidImageExtension(normalizedOriginal)) {
-      return [normalizedOriginal];
-    }
-    const fb = [...new Set(options.formats)];
-    return fb.length > 0 ? fb : [...SUPPORTED_FORMATS];
-  }
-
-  const normalizedOriginal = normalizeFormat(item.originalFormat);
-  const withOriginal = options.includeOriginalInCustom
-    ? [normalizedOriginal, ...options.formats]
-    : options.formats;
-
-  return [...new Set(withOriginal)];
-}
+export { getFormatsToProcess } from '@/lib/queue/formats-to-process';
 
 export function createQueueItem(
   file: File,
@@ -53,9 +32,14 @@ export function createQueueItem(
     results: {},
   };
 
-  const formats = getFormatsToProcess(item, options);
-  for (const format of formats) {
-    item.results[format] = { format, status: STATUS_PENDING };
+  const slots = buildOutputSlots(item, options);
+  for (const slot of slots) {
+    item.results[slot.resultId] = {
+      resultId: slot.resultId,
+      format: slot.format,
+      variantLabel: slot.variantLabel,
+      status: STATUS_PENDING,
+    };
   }
 
   return item;
@@ -66,11 +50,16 @@ export function resetItemResultsForOptions(
   options: GlobalOptions
 ): ImageItem {
   revokeResultUrls(item);
-  const formats = getFormatsToProcess(item, options);
+  const slots = buildOutputSlots(item, options);
   const results: Record<string, ImageResult> = {};
 
-  for (const format of formats) {
-    results[format] = { format, status: STATUS_PENDING };
+  for (const slot of slots) {
+    results[slot.resultId] = {
+      resultId: slot.resultId,
+      format: slot.format,
+      variantLabel: slot.variantLabel,
+      status: STATUS_PENDING,
+    };
   }
 
   return { ...item, status: STATUS_PENDING, progress: 0, results };
