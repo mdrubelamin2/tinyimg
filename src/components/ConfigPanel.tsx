@@ -148,7 +148,7 @@ export function ConfigPanel() {
                   aria-label="Include original format in output"
                 />
                 <span className="text-[10px] font-bold text-foreground uppercase tracking-wider group-hover:text-primary transition-colors">
-                  Original
+                  Include Original
                 </span>
               </label>
             </div>
