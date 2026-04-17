@@ -182,7 +182,7 @@ export async function processSvg(
 
   return {
     blob: new Blob([svgWrapper], { type: 'image/svg+xml' }),
-    label: `svg (${internalFormat})`,
+    label: `svg (${internalFormat}-wrapped)`,
     timing,
   };
 }
