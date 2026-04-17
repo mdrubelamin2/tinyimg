@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, type HTMLAttributes } from 'react';
 import { TableVirtuoso } from 'react-virtuoso';
 import type { ListRange } from 'react-virtuoso';
+import { cn } from '@/lib/utils';
 import { getImageStore } from '@/store/image-store';
 import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator';
 import type { ImageItem } from '@/lib/queue/types';
@@ -55,7 +56,24 @@ export function VirtualizedQueueTableBody({
       overscan={{ main: QUEUE_VIRTUOSO_OVERSCAN_MAIN_PX, reverse: QUEUE_VIRTUOSO_OVERSCAN_REVERSE_PX }}
       rangeChanged={onRangeChanged}
       components={{
-        Table: (p) => <table {...p} className="w-full min-w-0 table-fixed border-collapse" style={p.style} />,
+        Table: (t) => {
+          const { children, className, style, ...rest } = t as HTMLAttributes<HTMLTableElement>;
+          return (
+            <table
+              {...rest}
+              className={cn('w-full min-w-0 border-collapse table-fixed', className)}
+              style={style}
+            >
+              <colgroup>
+                <col className="min-w-0" style={{ width: '28%' }} />
+                <col style={{ width: '12%' }} />
+                <col className="min-w-0" style={{ width: '40%' }} />
+                <col style={{ width: '20%', minWidth: '6.75rem' }} />
+              </colgroup>
+              {children}
+            </table>
+          );
+        },
         TableHead: StickyTableHead,
         TableRow: QueueTableVirtuosoRow,
       }}

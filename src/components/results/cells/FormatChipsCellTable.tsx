@@ -31,11 +31,11 @@ export function FormatChipsCellTable({
   const { results = {}, fileName = '' } = snap;
 
   return (
-    <td className="px-6 py-5 align-middle min-w-0 overflow-hidden">
-      <div className="flex flex-wrap gap-2 max-w-full">
+    <td className="px-3 py-4 align-middle min-w-0 md:px-6 md:py-5">
+      <div className="flex w-full min-w-0 flex-wrap content-start gap-2">
         {Object.values(results).map((res) => {
           const chipClassName = cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200 min-w-0',
+            'flex shrink-0 items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200 min-w-0',
             res.status === STATUS_SUCCESS
               ? 'bg-surface border-border shadow-sm hover:border-primary/50 hover:bg-primary/5 hover:shadow-md cursor-pointer'
               : 'bg-muted/50 border-border opacity-60 cursor-default'

@@ -15,7 +15,7 @@ export function OriginalSizeCellTable({ id }: { id: string }) {
   if (!snap) return null;
 
   return (
-    <td className="px-6 py-5 align-middle text-xs font-medium text-muted-foreground min-w-0 w-[150px]">
+    <td className="px-3 py-4 align-middle text-xs font-medium text-muted-foreground min-w-0 tabular-nums md:px-6 md:py-5">
       {snap.formattedOriginalSize ?? ((snap.originalSize ?? 0) / BYTES_PER_KB).toFixed(1)} KB
     </td>
   );

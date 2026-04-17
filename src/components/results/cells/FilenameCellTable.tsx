@@ -31,7 +31,7 @@ export function FilenameCellTable({
   };
 
   return (
-    <td className="px-8 py-5 align-middle min-w-0" data-testid="filename-cell">
+    <td className="px-3 py-4 align-middle min-w-0 md:px-6 lg:px-8 md:py-5" data-testid="filename-cell">
       <div className="flex items-center gap-3 min-w-0">
         <div
           className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 group-hover:bg-primary/10 transition-colors duration-200 shadow-sm relative cursor-pointer"
@@ -59,7 +59,7 @@ export function FilenameCellTable({
         </div>
         <div className="min-w-0">
           <p
-            className="text-sm font-semibold text-foreground truncate max-w-[150px] md:max-w-[250px]"
+            className="text-sm font-semibold text-foreground truncate min-w-0 w-full max-w-full md:max-w-[28rem]"
             data-testid="filename"
           >
             {snap.fileName}

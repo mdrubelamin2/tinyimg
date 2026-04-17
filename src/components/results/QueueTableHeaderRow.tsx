@@ -2,17 +2,19 @@
 export function QueueTableHeaderRow() {
   return (
     <tr>
-      <th scope="col" className="px-8 py-4 text-left align-middle font-bold">
+      <th scope="col" className="px-3 py-3 text-left align-middle font-bold md:px-6 lg:px-8 md:py-4">
         File Name
       </th>
-      <th scope="col" className="px-6 py-4 w-[150px] min-w-[150px] text-left align-middle font-bold">
-        Original
+      <th scope="col" className="px-3 py-3 text-left align-middle font-bold md:px-6 md:py-4">
+        <span className="md:hidden">Orig.</span>
+        <span className="hidden md:inline">Original</span>
       </th>
-      <th scope="col" className="px-6 py-4 text-left align-middle min-w-0 font-bold">
+      <th scope="col" className="px-3 py-3 text-left align-middle min-w-0 font-bold md:px-6 md:py-4">
         Status &amp; Formats
       </th>
-      <th scope="col" className="px-6 py-4 w-[100px] min-w-[100px] text-right align-middle font-bold">
-        Remove
+      <th scope="col" className="px-2 py-3 text-right align-middle font-bold md:px-6 md:py-4">
+        <span className="md:hidden">Act.</span>
+        <span className="hidden md:inline">Remove</span>
       </th>
     </tr>
   );

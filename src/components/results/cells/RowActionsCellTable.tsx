@@ -27,13 +27,13 @@ export function RowActionsCellTable({
   };
 
   return (
-    <td className="px-6 py-5 align-middle w-[100px] min-w-[100px]">
-      <div className="flex items-center justify-end min-w-0 gap-1">
+    <td className="px-2 py-4 align-middle md:px-6 md:py-5">
+      <div className="inline-flex w-full flex-wrap items-center justify-end gap-0.5 align-middle md:gap-1">
         <Button
           variant="ghost"
           size="icon"
           onClick={handlePreview}
-          className="text-muted-foreground hover:bg-primary/10 hover:text-primary cursor-pointer transition-colors duration-200 w-10 h-10"
+          className="text-muted-foreground hover:bg-primary/10 hover:text-primary cursor-pointer transition-colors duration-200 size-10 min-h-11 min-w-11 md:min-h-10 md:min-w-10"
           title="Preview"
           aria-label={`Preview ${fileName}`}
         >
@@ -43,7 +43,7 @@ export function RowActionsCellTable({
           variant="ghost"
           size="icon"
           onClick={() => onRemove(id)}
-          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200 w-10 h-10"
+          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200 size-10 min-h-11 min-w-11 md:min-h-10 md:min-w-10"
           title="Remove item"
           aria-label={`Remove ${fileName}`}
         >
