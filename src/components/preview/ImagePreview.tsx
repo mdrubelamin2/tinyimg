@@ -15,12 +15,12 @@ interface ImagePreviewProps {
   onClose: () => void;
 }
 
-export const ImagePreview: React.FC<ImagePreviewProps> = ({
+export function ImagePreview({
   itemId,
   selectedFormat,
   onFormatChange,
   onClose,
-}) => {
+}: ImagePreviewProps) {
   const item = useValue(() => imageStore$.items[itemId]?.get() as ImageItem | undefined);
 
   const [resolvedOriginalObjectUrl, setResolvedOriginalObjectUrl] = useState<string | null>(null);
@@ -38,12 +38,12 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   const optimizedSize = currentResult?.size ?? 0;
 
   useEffect(() => {
-    if (!item) return;
-
     let cancelled = false;
 
     void (async () => {
-      const file = await resolveOriginalSourceFile(item.id, item);
+      const snap = imageStore$.items[itemId]?.peek() as ImageItem | undefined;
+      if (!snap) return;
+      const file = await resolveOriginalSourceFile(snap.id, snap);
       if (cancelled || !file) return;
       const url = URL.createObjectURL(file);
       if (cancelled) {
@@ -65,7 +65,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       }
       setResolvedOriginalObjectUrl(null);
     };
-  }, [item]);
+  }, [itemId]);
 
   const savings = originalSize > 0 && optimizedSize > 0
     ? ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
@@ -76,14 +76,6 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     const d = item.fileName.lastIndexOf('.');
     return d > 0 ? item.fileName.substring(0, d) : item.fileName;
   }, [item]);
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
 
   const formatBytes = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -226,4 +218,4 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       </div>
     </div>
   );
-};
+}
