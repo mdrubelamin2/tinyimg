@@ -1,72 +1,43 @@
 /**
  * useTheme: dark mode hook with system preference detection and localStorage persistence.
+ * DOM class + matchMedia are handled from `main` (`initSystemThemeMediaListener`) and `syncThemeToDom` on updates.
  */
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useTransition } from 'react';
+import {
+  THEME_STORAGE_KEY,
+  readStoredTheme,
+  resolveTheme as resolveStoredTheme,
+  syncThemeToDom,
+  type StoredTheme,
+} from '@/bootstrap/theme-dom';
 
-const STORAGE_KEY = 'tinyimg_theme';
-type Theme = 'light' | 'dark' | 'system';
-
-function getSystemTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
+type Theme = StoredTheme;
 
 function resolveTheme(theme: Theme): 'light' | 'dark' {
-  return theme === 'system' ? getSystemTheme() : theme;
+  return resolveStoredTheme(theme);
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return 'system';
-    return (localStorage.getItem(STORAGE_KEY) as Theme) ?? 'system';
-  });
+  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme());
 
   const [isPending, startTransition] = useTransition();
   const resolved = resolveTheme(theme);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    const isDark = resolved === 'dark';
-    const hasDarkClass = root.classList.contains('dark');
-    
-    if (isDark && !hasDarkClass) {
-      root.classList.add('dark');
-    } else if (!isDark && hasDarkClass) {
-      root.classList.remove('dark');
-    }
-  }, [resolved]);
-
-  useEffect(() => {
-    if (theme !== 'system') return;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = () => {
-      const root = document.documentElement;
-      const isDark = mq.matches;
-      const hasDarkClass = root.classList.contains('dark');
-      
-      if (isDark && !hasDarkClass) {
-        root.classList.add('dark');
-      } else if (!isDark && hasDarkClass) {
-        root.classList.remove('dark');
-      }
-    };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [theme]);
-
   const setTheme = (next: Theme) => {
     startTransition(() => {
+      localStorage.setItem(THEME_STORAGE_KEY, next);
+      syncThemeToDom(resolveTheme(next));
       setThemeState(next);
-      localStorage.setItem(STORAGE_KEY, next);
     });
   };
 
   const toggleTheme = () => {
     startTransition(() => {
-      setThemeState(prev => {
-        const next = resolveTheme(prev) === 'dark' ? 'light' as const : 'dark' as const;
-        localStorage.setItem(STORAGE_KEY, next);
+      setThemeState((prev) => {
+        const next = resolveTheme(prev) === 'dark' ? ('light' as const) : ('dark' as const);
+        localStorage.setItem(THEME_STORAGE_KEY, next);
+        syncThemeToDom(resolveTheme(next));
         return next;
       });
     });

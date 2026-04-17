@@ -2,12 +2,11 @@
  * ThemeToggle: dark/light mode toggle button.
  */
 
-import React from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { Button } from '@/components/ui/button';
 
-export const ThemeToggle: React.FC = () => {
+export function ThemeToggle() {
   const { resolved, toggleTheme, isPending } = useTheme();
 
   return (
@@ -26,4 +25,4 @@ export const ThemeToggle: React.FC = () => {
       )}
     </Button>
   );
-};
+}
