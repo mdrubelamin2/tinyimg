@@ -18,8 +18,8 @@ export function sourceStorageKey(id: string): string {
   return `src:${id}`;
 }
 
-export function outputStorageKey(id: string, format: string): string {
-  return `out:${id}:${format}`;
+export function outputStorageKey(id: string, resultId: string): string {
+  return `out:${id}:${resultId}`;
 }
 
 function outputKeyPrefix(id: string): string {
@@ -74,12 +74,12 @@ async function loadSourceFileFromStorageOnly(itemId: string, item: ImageItem): P
 
 export async function persistOutputBytes(
   id: string,
-  format: string,
+  resultId: string,
   data: ArrayBuffer,
   mimeHint: string
 ): Promise<{ payloadKey: string; downloadUrl: string }> {
   const storage = await getSessionBinaryStorage();
-  const payloadKey = outputStorageKey(id, format);
+  const payloadKey = outputStorageKey(id, resultId);
   await storage.set(payloadKey, data);
   const url = await createObjectUrlForStoredPayload(storage, payloadKey, mimeHint);
   return { payloadKey, downloadUrl: url };
@@ -87,10 +87,16 @@ export async function persistOutputBytes(
 
 export async function persistOutputBlob(
   id: string,
-  format: string,
-  blob: Blob
+  resultId: string,
+  blob: Blob,
+  mimeFormat: string
 ): Promise<{ payloadKey: string; downloadUrl: string }> {
-  return persistOutputBytes(id, format, await blob.arrayBuffer(), blob.type || mimeForOutputFormat(format));
+  return persistOutputBytes(
+    id,
+    resultId,
+    await blob.arrayBuffer(),
+    blob.type || mimeForOutputFormat(mimeFormat)
+  );
 }
 
 async function createObjectUrlForStoredPayload(

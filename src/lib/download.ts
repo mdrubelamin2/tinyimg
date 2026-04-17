@@ -11,6 +11,7 @@ import {
   mimeForOutputFormat,
 } from '@/constants';
 import type { ImageItem, ImageResult } from './queue/types';
+import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { deleteOutputPayloadKey } from '@/storage/queue-binary';
 import { BlobReader, ZipWriter } from '@zip.js/zip.js';
@@ -47,12 +48,12 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
   let totalBytes = 0;
   const processedPaths = new Set<string>();
 
-  function uniqueZipPath(baseName: string, ext: string): string {
-    let candidate = `tinyimg-${baseName}.${ext}`;
+  function uniqueZipPath(fullBase: string, ext: string): string {
+    let candidate = `tinyimg-${fullBase}.${ext}`;
     let n = 1;
     while (processedPaths.has(candidate)) {
       n++;
-      candidate = `tinyimg-${baseName}-${n}.${ext}`;
+      candidate = `tinyimg-${fullBase}-${n}.${ext}`;
     }
     processedPaths.add(candidate);
     return candidate;
@@ -78,7 +79,9 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
           const dot = item.fileName.lastIndexOf('.');
           const baseName = dot > 0 ? item.fileName.substring(0, dot) : item.fileName;
           const ext = result.format === 'jpeg' ? 'jpg' : result.format;
-          const path = uniqueZipPath(baseName, ext);
+          const fullName = buildOptimizedDownloadFilename(baseName, result);
+          const zipStem = fullName.replace(/^tinyimg-/, '').replace(/\.[^.]+$/, '');
+          const path = uniqueZipPath(zipStem, ext);
 
           const blob = new Blob([ab], { type: mimeForOutputFormat(result.format) });
           await zipWriter.add(path, new BlobReader(blob));
