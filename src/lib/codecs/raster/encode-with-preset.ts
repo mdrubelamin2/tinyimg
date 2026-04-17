@@ -1,4 +1,5 @@
 import * as webp from '@jsquash/webp';
+import type { ContentPreset } from '@/workers/classify';
 import { isSmallAndTransparent } from '@/workers/classify';
 import type { RasterEncodePreset } from './types.ts';
 import { encodeAvifWithPreset } from './encode-avif.ts';
@@ -10,7 +11,8 @@ export async function encodeRasterWithPreset(
   imageData: ImageData,
   format: 'avif' | 'webp' | 'jpeg' | 'png',
   pTry: RasterEncodePreset,
-  disableSmallTransparentWebpFallback: boolean
+  disableSmallTransparentWebpFallback: boolean,
+  contentPreset?: ContentPreset
 ): Promise<ArrayBuffer> {
   const smallTransparent = isSmallAndTransparent(imageData.width, imageData.height, imageData.data);
 
@@ -27,7 +29,7 @@ export async function encodeRasterWithPreset(
     case 'jpeg':
       return encodeJpegWithPreset(imageData, pTry);
     case 'png':
-      return encodePngWithPreset(imageData, pTry, smallTransparent);
+      return encodePngWithPreset(imageData, pTry, smallTransparent, contentPreset);
     default:
       return webp.encode(imageData, {
         quality: pTry.webp.quality,

@@ -14,11 +14,13 @@ export async function encodeRasterVectorSafe(
 export async function encodeRasterVectorSafeWithSizeSafeguard(
   imageData: ImageData,
   format: 'avif' | 'webp' | 'jpeg' | 'png',
-  options?: { displayQuality?: boolean }
+  options?: { displayQuality?: boolean; lossyPreset?: RasterEncodePreset }
 ): Promise<ArrayBuffer> {
-  const vectorPreset = options?.displayQuality
-    ? (SVG_DISPLAY_VECTOR_PRESET as unknown as RasterEncodePreset)
-    : SVG_VECTOR_SAFE_PRESET;
+  const vectorPreset =
+    options?.lossyPreset ??
+    (options?.displayQuality
+      ? (SVG_DISPLAY_VECTOR_PRESET as unknown as RasterEncodePreset)
+      : SVG_VECTOR_SAFE_PRESET);
   const losslessBytes = await encodeLossless(imageData, format);
   const lossyBytes = await encodeRasterWithPreset(imageData, format, vectorPreset, true);
 

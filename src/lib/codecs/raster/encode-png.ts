@@ -1,18 +1,22 @@
 import * as png from '@jsquash/oxipng';
 import { ImageQuantizer, encode_palette_to_png } from 'libimagequant-wasm/wasm/libimagequant_wasm.js';
 import { ensureQuant } from '@/workers/optimizer-wasm';
+import type { ContentPreset } from '@/workers/classify';
 import type { RasterEncodePreset } from './types.ts';
 import { PRESETS, PNG_MILD_QUANT_MAX, PNG_MILD_QUANT_MIN } from './presets.ts';
 
 export async function encodePngWithPreset(
   imageData: ImageData,
   pTry: RasterEncodePreset,
-  smallTransparent: boolean
+  smallTransparent: boolean,
+  contentPreset?: ContentPreset
 ): Promise<ArrayBuffer> {
   await ensureQuant();
   const q = new ImageQuantizer();
   try {
-    const useMildQuant = smallTransparent && pTry === PRESETS.photo;
+    const useMildQuant =
+      smallTransparent &&
+      (contentPreset === 'photo' || (contentPreset === undefined && pTry === PRESETS.photo));
     const qMin = useMildQuant ? PNG_MILD_QUANT_MIN : pTry.png.quantMin;
     const qMax = useMildQuant ? PNG_MILD_QUANT_MAX : pTry.png.quantMax;
     q.setQuality(qMin, qMax);
