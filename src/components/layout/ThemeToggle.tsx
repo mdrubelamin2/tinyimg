@@ -7,15 +7,14 @@ import { useTheme } from '@/hooks/useTheme';
 import { Button } from '@/components/ui/button';
 
 export function ThemeToggle() {
-  const { resolved, toggleTheme, isPending } = useTheme();
+  const { resolved, toggleTheme } = useTheme();
 
   return (
     <Button
       variant="ghost"
       size="icon"
       onClick={toggleTheme}
-      disabled={isPending}
-      className="rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors duration-200 disabled:opacity-50"
+      className="rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors duration-200"
       aria-label={`Switch to ${resolved === 'dark' ? 'light' : 'dark'} mode`}
     >
       {resolved === 'dark' ? (

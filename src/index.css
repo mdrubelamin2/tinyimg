@@ -89,6 +89,12 @@
     color-scheme: dark;
   }
 
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition: none !important;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-body);

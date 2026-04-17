@@ -1,6 +1,8 @@
 export const THEME_STORAGE_KEY = 'tinyimg_theme';
 const STORAGE_KEY = THEME_STORAGE_KEY;
 
+const THEME_SWITCHING_CLASS = 'theme-switching';
+
 export type StoredTheme = 'light' | 'dark' | 'system';
 
 export function readStoredTheme(): StoredTheme {
@@ -22,11 +24,20 @@ export function syncThemeToDom(resolved: 'light' | 'dark'): void {
   const root = document.documentElement;
   const isDark = resolved === 'dark';
   const hasDarkClass = root.classList.contains('dark');
-  if (isDark && !hasDarkClass) {
+  const needsToggle = (isDark && !hasDarkClass) || (!isDark && hasDarkClass);
+  if (!needsToggle) return;
+
+  root.classList.add(THEME_SWITCHING_CLASS);
+  if (isDark) {
     root.classList.add('dark');
-  } else if (!isDark && hasDarkClass) {
+  } else {
     root.classList.remove('dark');
   }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      root.classList.remove(THEME_SWITCHING_CLASS);
+    });
+  });
 }
 
 let mediaListenerAttached = false;
