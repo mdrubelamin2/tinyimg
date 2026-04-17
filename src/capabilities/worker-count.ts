@@ -7,6 +7,8 @@ import {
   CONCURRENCY_MIN,
   CONCURRENCY_MAX_DESKTOP,
   MOBILE_MAX_WORKERS,
+  MB_PER_WORKER_ESTIMATE,
+  DEVICE_MEMORY_RESERVE_GB,
 } from '@/constants/limits';
 import { availableParallelism } from 'poolifier-web-worker';
 
@@ -32,6 +34,21 @@ function isLikelyMobile(): boolean {
 }
 
 /**
+ * When `navigator.deviceMemory` is available (Chromium), cap concurrent optimizer
+ * workers so rough WASM footprint × N stays below (reported GiB − reserve).
+ */
+function memoryBoundedWorkerCap(maxByCores: number): number {
+  const nav = globalThis.navigator as Navigator & { deviceMemory?: number };
+  const dm = nav.deviceMemory;
+  if (dm == null || !Number.isFinite(dm) || dm <= 0) return maxByCores;
+
+  const budgetGb = Math.max(0.5, dm - DEVICE_MEMORY_RESERVE_GB);
+  const budgetMb = budgetGb * 1024;
+  const byMem = Math.max(1, Math.floor(budgetMb / MB_PER_WORKER_ESTIMATE));
+  return Math.min(maxByCores, byMem);
+}
+
+/**
  * Returns the number of optimizer workers to spawn (main thread stays reserved).
  */
 export function computeOptimalWorkerCount(): number {
@@ -40,10 +57,12 @@ export function computeOptimalWorkerCount(): number {
 
   if (isLikelyMobile()) {
     const reserved = 1;
-    return Math.max(1, Math.min(cores - reserved, MOBILE_MAX_WORKERS));
+    const n = Math.max(1, Math.min(cores - reserved, MOBILE_MAX_WORKERS));
+    return memoryBoundedWorkerCap(n);
   }
 
   const reserved = cores > 6 ? 2 : 1;
   const coreCap = Math.max(1, cores - reserved);
-  return Math.max(CONCURRENCY_MIN, Math.min(coreCap, CONCURRENCY_MAX_DESKTOP));
+  const n = Math.max(CONCURRENCY_MIN, Math.min(coreCap, CONCURRENCY_MAX_DESKTOP));
+  return memoryBoundedWorkerCap(n);
 }
