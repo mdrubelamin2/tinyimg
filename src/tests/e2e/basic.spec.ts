@@ -66,7 +66,7 @@ test.describe('TinyIMG Basic Flow', () => {
 
     const row = page.locator('[data-testid^="queue-row-"]').first();
     await expect(row).toBeVisible({ timeout: E2E_DEFAULT_TIMEOUT_MS });
-    await expect(row.locator('a[download]')).toHaveCount(2, {
+    await expect(row.getByRole('button', { name: /^Download / })).toHaveCount(2, {
       timeout: E2E_OPTIMIZATION_TIMEOUT_MS,
     });
   });

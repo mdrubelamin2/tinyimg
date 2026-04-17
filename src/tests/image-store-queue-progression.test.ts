@@ -95,12 +95,14 @@ describe('image-store queue progression', () => {
   it('starts the next pending item after the current item succeeds', async () => {
     const { addTask, first, second } = await seedTwoPendingItems();
 
+    const enc = new TextEncoder().encode('done');
     const response: WorkerOutboundResult = {
       type: 'RESULT',
       id: first.id,
       resultId: 'png',
       format: 'png',
-      blob: new Blob(['done']),
+      encodedBytes: enc.buffer.slice(enc.byteOffset, enc.byteOffset + enc.byteLength),
+      mimeType: 'image/png',
       size: 4,
       label: 'png',
       formattedSize: '4.0',
