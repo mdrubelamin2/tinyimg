@@ -23,6 +23,11 @@ const ZIP_ENTRY_READ_OPTIONS: EntryGetDataOptions = {
   useCompressionStream: true,
 };
 
+/**
+ * Materializes one ZIP entry as a Blob on the main thread.
+ * Future: stream large entries directly into session OPFS (hybrid `src:`) to avoid
+ * holding uncompressed bytes twice (Blob + persist buffer) during intake.
+ */
 async function readZipEntryAsBlob(entry: FileEntry): Promise<Blob> {
   const passthrough = new TransformStream<Uint8Array, Uint8Array>();
   const blobPromise = new Response(passthrough.readable).blob();
