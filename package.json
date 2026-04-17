@@ -28,6 +28,7 @@
     ]
   },
   "dependencies": {
+    "@cloudimage/before-after": "^1.0.4",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
     "@jsquash/avif": "^2.1.1",
