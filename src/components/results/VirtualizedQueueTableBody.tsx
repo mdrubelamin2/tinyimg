@@ -2,7 +2,7 @@ import { useCallback, type HTMLAttributes } from 'react';
 import { TableVirtuoso } from 'react-virtuoso';
 import type { ListRange } from 'react-virtuoso';
 import { cn } from '@/lib/utils';
-import { getImageStore } from '@/store/image-store';
+import { getImageStore, imageStore$ } from '@/store/image-store';
 import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator';
 import type { ImageItem } from '@/lib/queue/types';
 import {
@@ -14,20 +14,18 @@ import { StickyTableHead } from './StickyTableHead';
 import { QueueTableVirtuosoRow } from './QueueTableVirtuosoRow';
 import { QueueTableHeaderRow } from './QueueTableHeaderRow';
 import { ResultRowCells } from './ResultRowCells';
+import { useValue } from '@legendapp/state/react';
+import { preview$ } from '@/store/preview-store';
 
 export interface VirtualizedQueueTableBodyProps {
-  itemIds: string[];
-  onRemove: (id: string) => void;
-  onPreview?: (item: ImageItem) => void;
   scrollParent: HTMLDivElement | null;
 }
 
 export function VirtualizedQueueTableBody({
-  itemIds,
-  onRemove,
-  onPreview,
   scrollParent,
 }: VirtualizedQueueTableBodyProps) {
+  const removeItem = getImageStore().removeItem;
+  const itemIds = useValue(imageStore$.itemOrder.get());
   const onRangeChanged = useCallback(
     (range: ListRange) => {
       const visibleIds = itemIds.slice(range.startIndex, range.endIndex + 1);
@@ -37,12 +35,15 @@ export function VirtualizedQueueTableBody({
     [itemIds]
   );
 
-  const itemContent = useCallback(
-    (_index: number, rowId: string) => (
-      <ResultRowCells id={rowId} onRemove={onRemove} {...(onPreview ? { onPreview } : {})} />
-    ),
-    [onRemove, onPreview]
-  );
+    const handlePreview = (item: ImageItem) => {
+      const resultIds = Object.keys(item.results);
+      const firstResultId = resultIds[0];
+      if (!firstResultId) return;
+      preview$.set({
+        itemId: item.id,
+        selectedResultId: firstResultId,
+      });
+    };
 
   if (itemIds.length === 0 || !scrollParent) {
     return null;
@@ -78,7 +79,9 @@ export function VirtualizedQueueTableBody({
         TableRow: QueueTableVirtuosoRow,
       }}
       fixedHeaderContent={() => <QueueTableHeaderRow />}
-      itemContent={itemContent}
+      itemContent={(_index: number, rowId: string) => (
+        <ResultRowCells id={rowId} onRemove={removeItem} onPreview={handlePreview} />
+      )}
     />
   );
 }

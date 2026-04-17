@@ -1,21 +1,20 @@
-import { lazy, Suspense, useCallback } from 'react';
-import { HelmetProvider, Helmet } from 'react-helmet-async';
-import { Show, useObserveEffect, useObservable, useValue } from '@legendapp/state/react';
-import { Toaster } from 'sonner';
-import { imageStore$, intake$, getImageStore } from '@/store/image-store';
-import { useSettingsStore } from '@/store/settings-store';
-import { syncIntakeProgressToast } from '@/notifications/toast-emitter';
-import { Dropzone } from '@/components/Dropzone';
-import { FileDropOverlay } from '@/components/FileDropOverlay';
-import { ConfigPanel } from '@/components/ConfigPanel';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AppHeader } from '@/components/AppHeader';
+import { ConfigPanel } from '@/components/ConfigPanel';
+import { Dropzone } from '@/components/Dropzone';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { FileDropOverlay } from '@/components/FileDropOverlay';
 import { ResultsTable } from '@/components/ResultsTable';
-import { useQueueStats } from '@/hooks/useQueueStats';
-import { queueStats$ } from '@/state/queue-stats';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { useFileDropOverlayOpen } from '@/hooks/useFileDropOverlayOpen';
-import type { ImageItem } from '@/lib/queue/types';
+import { useQueueStats } from '@/hooks/useQueueStats';
+import { syncIntakeProgressToast } from '@/notifications/toast-emitter';
+import { queueStats$ } from '@/state/queue-stats';
+import { getImageStore, imageStore$, intake$ } from '@/store/image-store';
+import { useSettingsStore } from '@/store/settings-store';
+import { Show, useObserveEffect, useValue } from '@legendapp/state/react';
+import { lazy, Suspense, useCallback } from 'react';
+import { Helmet, HelmetProvider } from 'react-helmet-async';
+import { Toaster } from 'sonner';
+import { preview$ } from './store/preview-store';
 
 const ImagePreviewLazy = lazy(() =>
   import('@/components/preview/ImagePreview').then((m) => ({ default: m.ImagePreview }))
@@ -24,24 +23,14 @@ const AppFooterFaq = lazy(() =>
   import('@/components/AppFooterFaq').then((m) => ({ default: m.AppFooterFaq }))
 );
 
-interface PreviewState {
-  itemId: string;
-  selectedFormat: string;
-}
-
 export default function App() {
   const itemCount = useValue(() => imageStore$.itemOrder.get().length);
-  const preview$ = useObservable<PreviewState | null>(null);
   const preview = useValue(preview$);
   const addFiles = getImageStore().addFiles;
-  const removeItem = getImageStore().removeItem;
-  const clearFinished = getImageStore().clearFinished;
-  const clearAll = getImageStore().clearAll;
+
   const downloadAll = getImageStore().downloadAll;
 
   const options = useSettingsStore((state) => state.options);
-
-  const fileDropOverlayOpen = useFileDropOverlayOpen();
 
   const { hasFinishedItems } = useQueueStats();
 
@@ -69,25 +58,8 @@ export default function App() {
     [addFiles, options]
   );
 
-  const handlePreview = useCallback(
-    (item: ImageItem) => {
-      const formats = Object.keys(item.results);
-      const firstFormat = formats[0];
-      if (!firstFormat) return;
-      preview$.set({
-        itemId: item.id,
-        selectedFormat: firstFormat,
-      });
-    },
-    [preview$]
-  );
-
-  const handleDownloadAll = useCallback(() => {
-    void downloadAll();
-  }, [downloadAll]);
-
   useKeyboardShortcuts({
-    onDownload: hasFinishedItems ? handleDownloadAll : undefined,
+    onDownload: hasFinishedItems ? downloadAll : undefined,
     onEscape: preview ? () => preview$.set(null) : undefined,
   });
 
@@ -115,25 +87,7 @@ export default function App() {
               <Dropzone onFilesAdded={handleFilesAdded} />
 
               <Show if={() => imageStore$.itemOrder.get().length > 0}>
-                {() => {
-                  const itemIds = imageStore$.itemOrder.get();
-                  if (itemIds.length === 0) return null;
-                  const stats = queueStats$.get();
-                  return (
-                    <ResultsTable
-                      itemIds={[...itemIds]}
-                      savingsPercent={stats.savingsPercent}
-                      hasFinishedItems={stats.hasFinishedItems}
-                      doneCount={stats.doneCount}
-                      totalCount={itemIds.length}
-                      onClearFinished={clearFinished}
-                      onDownloadAll={handleDownloadAll}
-                      onClear={clearAll}
-                      onRemoveItem={removeItem}
-                      onPreview={handlePreview}
-                    />
-                  );
-                }}
+                <ResultsTable />
               </Show>
             </div>
 
@@ -142,11 +96,9 @@ export default function App() {
             </div>
           </main>
 
-          <Suspense fallback={null}>
-            <AppFooterFaq />
-          </Suspense>
+          <AppFooterFaq />
 
-          <FileDropOverlay open={fileDropOverlayOpen} />
+          <FileDropOverlay />
 
           <Show if={() => preview$.get() != null}>
             {() => {
@@ -156,10 +108,10 @@ export default function App() {
                 <Suspense fallback={null}>
                   <ImagePreviewLazy
                     itemId={p.itemId}
-                    selectedFormat={p.selectedFormat}
-                    onFormatChange={(format) => {
+                    selectedResultId={p.selectedResultId}
+                    onResultChange={(resultId) => {
                       const cur = preview$.peek();
-                      if (cur) preview$.set({ ...cur, selectedFormat: format });
+                      if (cur) preview$.set({ ...cur, selectedResultId: resultId });
                     }}
                     onClose={() => preview$.set(null)}
                   />

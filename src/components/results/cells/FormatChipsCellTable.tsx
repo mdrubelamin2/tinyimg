@@ -9,8 +9,7 @@ import {
   STATUS_ERROR,
   STATUS_PROCESSING,
 } from '@/constants';
-
-const DOWNLOAD_EXT_JPEG = 'jpg';
+import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 
 export function FormatChipsCellTable({
   id,
@@ -42,19 +41,23 @@ export function FormatChipsCellTable({
           );
           const dot = fileName.lastIndexOf('.');
           const base = dot > 0 ? fileName.substring(0, dot) : fileName;
-          const downloadFilename = `tinyimg-${base}.${res.format === 'jpeg' ? DOWNLOAD_EXT_JPEG : res.format}`;
+          const downloadFilename = buildOptimizedDownloadFilename(base, res);
+          const chipTitle =
+            res.variantLabel && res.variantLabel.length > 0
+              ? `${(res.format ?? '').toUpperCase()} · ${res.variantLabel}`
+              : (res.label ?? res.format);
 
           return res.status === STATUS_SUCCESS ? (
             <a
-              key={res.format}
+              key={res.resultId}
               href={res.downloadUrl}
               download={downloadFilename}
               className={chipClassName}
-              aria-label={`Download ${res.label ?? res.format}`}
+              aria-label={`Download ${chipTitle}`}
             >
               <div className="flex flex-col">
                 <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
-                  {res.label ?? res.format}
+                  {chipTitle}
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-foreground">
@@ -70,10 +73,10 @@ export function FormatChipsCellTable({
               <Download size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
             </a>
           ) : (
-            <div key={res.format} className={chipClassName}>
+            <div key={res.resultId} className={chipClassName}>
               <div className="flex flex-col">
                 <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
-                  {res.label ?? res.format}
+                  {chipTitle}
                 </span>
                 {res.status === STATUS_ERROR ? (
                   <Badge variant="error" className="text-[9px] px-2 py-1 rounded-full italic">

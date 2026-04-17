@@ -41,11 +41,8 @@ import { toastError } from '@/notifications/toast-emitter';
 import { ERR_ZIP_EXCEEDS_LIMIT, ERR_INTAKE_STORAGE_FULL } from '@/constants';
 import { isQuotaExceededError } from '@/lib/storage/quota-error';
 import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache';
-import {
-  createQueueItem,
-  getFormatsToProcess,
-  resetItemResultsForOptions,
-} from '@/lib/queue/queue-item';
+import { createQueueItem, resetItemResultsForOptions } from '@/lib/queue/queue-item';
+import { buildOutputSlots } from '@/lib/queue/output-slots';
 import { revokeResultUrls, buildAndDownloadZip } from '@/lib/download';
 import { useSettingsStore } from './settings-store';
 
@@ -411,10 +408,15 @@ function setItemOutputFormatsImpl(id: string, formats: string[] | null, options:
     error: undefined,
   };
 
-  const fmts = getFormatsToProcess(nextItem, options);
+  const slots = buildOutputSlots(nextItem, options);
   const results: Record<string, ImageResult> = {};
-  for (const f of fmts) {
-    results[f] = { format: f, status: STATUS_PENDING };
+  for (const slot of slots) {
+    results[slot.resultId] = {
+      resultId: slot.resultId,
+      format: slot.format,
+      variantLabel: slot.variantLabel,
+      status: STATUS_PENDING,
+    };
   }
   nextItem.results = results;
 
@@ -449,10 +451,15 @@ function setItemQualityPercentImpl(id: string, percent: number | null, options: 
     error: undefined,
   };
 
-  const fmts = getFormatsToProcess(nextItem, options);
+  const slots = buildOutputSlots(nextItem, options);
   const results: Record<string, ImageResult> = {};
-  for (const f of fmts) {
-    results[f] = { format: f, status: STATUS_PENDING };
+  for (const slot of slots) {
+    results[slot.resultId] = {
+      resultId: slot.resultId,
+      format: slot.format,
+      variantLabel: slot.variantLabel,
+      status: STATUS_PENDING,
+    };
   }
   nextItem.results = results;
 
@@ -545,13 +552,13 @@ function _batchApplyResultsImpl(): void {
           const item = itemsMap.get(response.id);
           if (!item) continue;
 
-          const format = response.format;
-          const result = item.results[format];
+          const rid = response.resultId;
+          const result = item.results[rid];
           const nextItem = { ...item };
           if (result) {
             nextItem.results = {
               ...item.results,
-              [format]: { ...result, status: STATUS_ERROR, error: response.error },
+              [rid]: { ...result, status: STATUS_ERROR, error: response.error },
             };
           }
 
@@ -572,12 +579,12 @@ function _batchApplyResultsImpl(): void {
         const item = itemsMap.get(task.id);
         if (!item) continue;
 
-        const result = item.results[task.format];
+        const result = item.results[task.resultId];
         const nextItem = { ...item };
         if (result) {
           nextItem.results = {
             ...item.results,
-            [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
+            [task.resultId]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
           };
         }
 
@@ -607,24 +614,29 @@ function _batchApplyResultsImpl(): void {
     for (const response of resultResponses) {
       const snapshot = imageStore$.items[response.id]?.peek();
       if (!snapshot) continue;
-      const format = response.format;
-      const prevResult = snapshot.results[format];
+      const rid = response.resultId;
+      const prevResult = snapshot.results[rid];
       if (!prevResult) continue;
 
       if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl);
-      const { payloadKey, downloadUrl } = await persistOutputBlob(response.id, format, response.blob);
+      const { payloadKey, downloadUrl } = await persistOutputBlob(
+        response.id,
+        rid,
+        response.blob,
+        response.format
+      );
 
       startTransition(() => {
         batch(() => {
           const item = imageStore$.items[response.id]?.peek();
           if (!item) return;
-          const result = item.results[format];
+          const result = item.results[rid];
           if (!result) return;
 
           const nextItem = { ...item };
           nextItem.results = {
             ...item.results,
-            [format]: {
+            [rid]: {
               ...result,
               status: STATUS_SUCCESS,
               size: response.size,
@@ -699,27 +711,29 @@ async function _processNextAsyncImpl(
   if (!sourceFile) return;
 
   const processingItem: ImageItem = { ...nextItem, status: STATUS_PROCESSING };
-  const fmts = getFormatsToProcess(processingItem, options);
+  const slots = buildOutputSlots(processingItem, options);
   const currentPool = getPool(api);
 
-  for (const format of fmts) {
-    if (!processingItem.results[format]) continue;
+  for (const slot of slots) {
+    if (!processingItem.results[slot.resultId]) continue;
     processingItem.results = {
       ...processingItem.results,
-      [format]: { ...processingItem.results[format]!, status: STATUS_PROCESSING },
+      [slot.resultId]: { ...processingItem.results[slot.resultId]!, status: STATUS_PROCESSING },
     };
     currentPool.addTask({
       id: processingItem.id,
-      format,
+      resultId: slot.resultId,
+      format: slot.format,
       file: sourceFile,
       options: {
-        format,
+        resultId: slot.resultId,
+        format: slot.format,
         svgInternalFormat: options.svgInternalFormat,
         svgRasterizer: 'resvg' as const,
         svgExportDensity: 'display' as const,
         svgDisplayDpr: 2,
         qualityPercent: processingItem.qualityPercentOverride ?? 100,
-        resizeMaxEdge: 0,
+        resizePreset: slot.resizePreset,
         stripMetadata: options.stripMetadata,
       },
     });

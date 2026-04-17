@@ -26,7 +26,7 @@ export function QueueTableVirtuosoRow(props: ItemProps<string>) {
       {...rest}
       data-testid={`queue-row-${id}`}
       className={cn(
-        'border-b border-border/50 bg-surface/20 group hover:bg-muted/30 transition-opacity transition-colors duration-200 [&>td]:align-middle',
+        'border-b border-border/50 last:border-0 bg-surface/20 group hover:bg-muted/30 transition-opacity transition-colors duration-200 [&>td]:align-middle',
         queued && 'opacity-60'
       )}
       aria-busy={status === STATUS_PROCESSING}

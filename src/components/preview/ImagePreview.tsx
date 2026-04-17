@@ -1,6 +1,7 @@
 import { ImageCompareViewer } from '@/components/preview/ImageCompareViewer';
 import { STATUS_SUCCESS } from '@/constants';
-import type { ImageItem } from '@/lib/queue/types';
+import type { ImageItem, ImageResult } from '@/lib/queue/types';
+import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 import { cn } from '@/lib/utils';
 import { resolveOriginalSourceFile } from '@/storage/queue-binary';
 import { imageStore$ } from '@/store/image-store';
@@ -10,15 +11,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface ImagePreviewProps {
   itemId: string;
-  selectedFormat: string;
-  onFormatChange: (format: string) => void;
+  selectedResultId: string;
+  onResultChange: (resultId: string) => void;
   onClose: () => void;
+}
+
+function chipTitleForResult(result: ImageResult): string {
+  if (result.variantLabel != null && result.variantLabel.length > 0) {
+    return `${result.format.toUpperCase()} · ${result.variantLabel}`;
+  }
+  return result.label ?? result.format;
 }
 
 export function ImagePreview({
   itemId,
-  selectedFormat,
-  onFormatChange,
+  selectedResultId,
+  onResultChange,
   onClose,
 }: ImagePreviewProps) {
   const item = useValue(() => imageStore$.items[itemId]?.get() as ImageItem | undefined);
@@ -28,14 +36,18 @@ export function ImagePreview({
 
   const successResults = useMemo(() => {
     if (!item) return [];
-    return Object.values(item.results).filter(r => r.status === STATUS_SUCCESS);
+    return Object.values(item.results)
+      .filter(r => r.status === STATUS_SUCCESS)
+      .sort((a, b) => a.resultId.localeCompare(b.resultId));
   }, [item]);
 
-  const currentResult = item?.results[selectedFormat];
+  const currentResult = item?.results[selectedResultId];
   const originalUrl = resolvedOriginalObjectUrl;
   const optimizedUrl = currentResult?.downloadUrl;
   const originalSize = item?.originalSize ?? 0;
   const optimizedSize = currentResult?.size ?? 0;
+
+  console.log({currentResult, originalUrl, optimizedUrl});
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +136,7 @@ export function ImagePreview({
                 {item.fileName}
               </h3>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
-                {currentResult?.label ?? selectedFormat} · Saved {savings}%
+                {currentResult ? chipTitleForResult(currentResult) : '…'} · Saved {savings}%
               </p>
             </div>
           </div>
@@ -141,15 +153,15 @@ export function ImagePreview({
         {successResults.length > 1 && (
           <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/50 bg-gradient-to-r from-muted/20 via-muted/30 to-muted/20 overflow-x-auto scrollbar-hide">
             {successResults.map((result) => {
-              const isActive = result.format === selectedFormat;
+              const isActive = result.resultId === selectedResultId;
               const formatSavings = originalSize > 0 && result.size
                 ? ((originalSize - result.size) / originalSize * 100).toFixed(0)
                 : null;
 
               return (
                 <button
-                  key={result.format}
-                  onClick={() => onFormatChange(result.format)}
+                  key={result.resultId}
+                  onClick={() => onResultChange(result.resultId)}
                   className={cn(
                     'group relative flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 ease-out cursor-pointer',
                     isActive
@@ -162,7 +174,7 @@ export function ImagePreview({
                       'w-1 h-1 rounded-full',
                       isActive ? 'bg-white/80' : 'bg-muted-foreground/50 group-hover:bg-success'
                     )} />
-                    <span className="uppercase">{result.label ?? result.format}</span>
+                    <span className="uppercase">{chipTitleForResult(result)}</span>
                     {formatSavings && (
                       <span className={cn(
                         'ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black',
@@ -199,12 +211,12 @@ export function ImagePreview({
           {currentResult?.downloadUrl && (
             <a
               href={currentResult.downloadUrl}
-              download={`tinyimg-${downloadBaseName}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
+              download={buildOptimizedDownloadFilename(downloadBaseName, currentResult)}
               className="flex cursor-pointer items-center justify-center gap-1.5 self-center rounded-lg bg-gradient-to-r from-primary to-primary/80 px-3 py-2 text-[10px] font-bold text-primary-foreground shadow-md shadow-primary/25 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg sm:self-auto sm:py-1.5"
-              aria-label={`Download ${currentResult.label ?? selectedFormat}`}
+              aria-label={`Download ${chipTitleForResult(currentResult)}`}
             >
               <Download size={12} />
-              <span className="uppercase">{currentResult.label ?? selectedFormat}</span>
+              <span className="uppercase">{chipTitleForResult(currentResult)}</span>
               <span className="opacity-70">·</span>
               <span>{formatBytes(optimizedSize)}</span>
               {savings !== '0' && (
