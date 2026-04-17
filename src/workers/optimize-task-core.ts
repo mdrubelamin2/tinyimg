@@ -99,7 +99,8 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
   }, TASK_TIMEOUT_MS);
 
   try {
-    let resultBlob: Blob;
+    let encodedBytes: ArrayBuffer;
+    let mimeType: string;
     let label: string;
     let timing:
       | {
@@ -159,11 +160,12 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
         );
         perf?.mark('opt-encode-end');
 
-        const mimeType = format === 'jpeg' ? 'image/jpeg' : `image/${format}`;
-        await assertEncodedDimensions(bytes, mimeType, imageData.width, imageData.height);
+        const mt = format === 'jpeg' ? 'image/jpeg' : `image/${format}`;
+        await assertEncodedDimensions(bytes, mt, imageData.width, imageData.height);
 
         const pathSuffix = options.svgExportDensity === 'display' ? ` (${svgBaseTiming.svgRasterizerPath})` : '';
-        resultBlob = new Blob([bytes], { type: mimeType });
+        encodedBytes = bytes;
+        mimeType = mt;
         label = `${format}${pathSuffix}`;
         timing = {
           ...svgBaseTiming,
@@ -172,7 +174,8 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
         };
       } else {
         const res = await processSvg(file, svgPipelineOptionsFromWorker(options as OptimizeOptions));
-        resultBlob = res.blob;
+        encodedBytes = await res.blob.arrayBuffer();
+        mimeType = res.blob.type || 'image/svg+xml';
         label = res.label;
         timing = res.timing;
       }
@@ -243,9 +246,8 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
       perf?.mark('opt-encode-end');
 
       const mimeFormat = effectiveFormat === 'jpeg' ? 'jpeg' : effectiveFormat;
-      resultBlob = new Blob([bytesArray], {
-        type: `image/${mimeFormat}`,
-      });
+      encodedBytes = bytesArray;
+      mimeType = `image/${mimeFormat}`;
       label = effectiveFormat;
       if (resizeMs != null) {
         timing = { resizeMs };
@@ -292,16 +294,18 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
       }
     }
 
+    const outSize = encodedBytes.byteLength;
     finish({
       type: 'RESULT',
       id,
       resultId,
       format: requestedFormat,
-      blob: resultBlob,
-      size: resultBlob.size,
+      encodedBytes,
+      mimeType,
+      size: outSize,
       label,
-      formattedSize: (resultBlob.size / 1024).toFixed(1),
-      savingsPercent: Math.round(Math.abs(((file.size - resultBlob.size) / file.size) * 100)),
+      formattedSize: (outSize / 1024).toFixed(1),
+      savingsPercent: Math.round(Math.abs(((file.size - outSize) / file.size) * 100)),
       timing,
     });
   } catch (error) {

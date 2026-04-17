@@ -151,7 +151,9 @@ export interface WorkerOutboundResult {
   id: string;
   resultId: string;
   format: string;
-  blob: Blob;
+  /** Encoded bytes (structured-clone from worker; prefer detached buffer). */
+  encodedBytes: ArrayBuffer;
+  mimeType: string;
   size: number;
   label: string;
   formattedSize: string;
