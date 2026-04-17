@@ -14,7 +14,12 @@ function createBaseItem(): ImageItem {
     originalSize: 1,
     originalFormat: 'png',
     results: {
-      webp: { format: 'webp', status: STATUS_PROCESSING },
+      webp: {
+        resultId: 'webp',
+        format: 'webp',
+        variantLabel: '',
+        status: STATUS_PROCESSING,
+      },
     },
   };
 }
@@ -62,6 +67,7 @@ describe('queue worker results via image-store', () => {
     const response: WorkerOutboundResult = {
       type: 'RESULT',
       id: 'item-1',
+      resultId: 'webp',
       format: 'webp',
       blob: new Blob(['abc']),
       size: 3,
@@ -90,16 +96,18 @@ describe('queue worker results via image-store', () => {
 
     useImageStore.getState()._applyWorkerError({
       id: 'item-1',
+      resultId: 'webp',
       format: 'webp',
       file: new File(['x'], 'image.png', { type: 'image/png' }),
       options: {
+        resultId: 'webp',
         format: 'webp',
         svgInternalFormat: 'webp',
         svgRasterizer: 'resvg',
         svgExportDensity: 'legacy',
         svgDisplayDpr: 2,
         qualityPercent: 100,
-        resizeMaxEdge: 0,
+        resizePreset: { kind: 'native' },
         stripMetadata: true,
       },
     });

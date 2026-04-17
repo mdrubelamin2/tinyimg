@@ -15,7 +15,12 @@ function createItem(id: string, name: string): ImageItem {
     originalSize: 1,
     originalFormat: 'png',
     results: {
-      png: { format: 'png', status: STATUS_PENDING },
+      png: {
+        resultId: 'png',
+        format: 'png',
+        variantLabel: '',
+        status: STATUS_PENDING,
+      },
     },
   };
 }
@@ -80,7 +85,9 @@ describe('image-store queue progression', () => {
     expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_PROCESSING);
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PENDING);
     expect(addTask).toHaveBeenCalledTimes(1);
-    expect(addTask).toHaveBeenLastCalledWith(expect.objectContaining({ id: first.id, format: 'png' }));
+    expect(addTask).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: first.id, resultId: 'png', format: 'png' })
+    );
 
     return { addTask, first, second };
   }
@@ -91,6 +98,7 @@ describe('image-store queue progression', () => {
     const response: WorkerOutboundResult = {
       type: 'RESULT',
       id: first.id,
+      resultId: 'png',
       format: 'png',
       blob: new Blob(['done']),
       size: 4,
@@ -109,7 +117,9 @@ describe('image-store queue progression', () => {
     expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_SUCCESS);
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
     expect(addTask).toHaveBeenCalledTimes(2);
-    expect(addTask).toHaveBeenLastCalledWith(expect.objectContaining({ id: second.id, format: 'png' }));
+    expect(addTask).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: second.id, resultId: 'png', format: 'png' })
+    );
   });
 
   it('starts the next pending item after the current item errors', async () => {
@@ -117,16 +127,18 @@ describe('image-store queue progression', () => {
 
     useImageStore.getState()._applyWorkerError({
       id: first.id,
+      resultId: 'png',
       format: 'png',
       file: new File(['x'], 'first.png', { type: 'image/png' }),
       options: {
+        resultId: 'png',
         format: 'png',
         svgInternalFormat: DEFAULT_GLOBAL_OPTIONS.svgInternalFormat,
         svgRasterizer: 'resvg' as const,
         svgExportDensity: 'display' as const,
         svgDisplayDpr: 2,
         qualityPercent: 100,
-        resizeMaxEdge: 0,
+        resizePreset: { kind: 'native' },
         stripMetadata: DEFAULT_GLOBAL_OPTIONS.stripMetadata,
       },
     });
@@ -136,7 +148,9 @@ describe('image-store queue progression', () => {
     expect(useImageStore.getState().items.get(first.id)?.status).toBe('error');
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
     expect(addTask).toHaveBeenCalledTimes(2);
-    expect(addTask).toHaveBeenLastCalledWith(expect.objectContaining({ id: second.id, format: 'png' }));
+    expect(addTask).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: second.id, resultId: 'png', format: 'png' })
+    );
   });
 
   it('revokes preview and result URLs when clearing finished items', () => {
@@ -144,6 +158,7 @@ describe('image-store queue progression', () => {
     done.status = STATUS_SUCCESS;
     done.previewUrl = 'blob:preview';
     done.results['png'] = {
+      resultId: 'png',
       format: 'png',
       status: STATUS_SUCCESS,
       payloadKey: 'out:done:png',

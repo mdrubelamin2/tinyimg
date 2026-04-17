@@ -18,7 +18,7 @@ function createItem(file: File, intakeKind: IntakeOriginalKind): ImageItem {
     originalSize: file.size,
     originalFormat: 'png',
     results: {
-      png: { format: 'png', status: 'pending' },
+      png: { resultId: 'png', format: 'png', variantLabel: '', status: 'pending' },
     },
   };
 }
