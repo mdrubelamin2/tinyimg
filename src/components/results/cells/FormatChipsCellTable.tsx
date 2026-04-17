@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react';
 import { useValue } from '@legendapp/state/react';
 import { Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,7 +10,23 @@ import {
   STATUS_ERROR,
   STATUS_PROCESSING,
 } from '@/constants';
+import type { ImageResult } from '@/lib/queue/types';
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
+import { downloadStoredOutput } from '@/lib/download';
+
+/** Compact chip row: avoids retaining full `ImageResult` snapshots (e.g. timing) in React. */
+type ResultChipLite = Pick<
+  ImageResult,
+  | 'resultId'
+  | 'status'
+  | 'format'
+  | 'variantLabel'
+  | 'label'
+  | 'formattedSize'
+  | 'size'
+  | 'savingsPercent'
+  | 'payloadKey'
+>;
 
 export function FormatChipsCellTable({
   id,
@@ -19,20 +36,30 @@ export function FormatChipsCellTable({
   const snap = useValue(() => {
     const node = imageStore$.items[id];
     if (!node) return undefined;
-    return {
-      results: node.results.get(),
-      fileName: node.fileName.get(),
-    };
+    const fileName = node.fileName.get() ?? '';
+    const raw = node.results.get() ?? {};
+    const chips: ResultChipLite[] = Object.values(raw).map((r) => ({
+      resultId: r.resultId,
+      status: r.status,
+      format: r.format,
+      variantLabel: r.variantLabel,
+      label: r.label,
+      formattedSize: r.formattedSize,
+      size: r.size,
+      savingsPercent: r.savingsPercent,
+      payloadKey: r.payloadKey,
+    }));
+    return { fileName, chips };
   });
 
   if (!snap) return null;
 
-  const { results = {}, fileName = '' } = snap;
+  const { chips, fileName } = snap;
 
   return (
     <td className="px-3 py-4 align-middle min-w-0 md:px-6 md:py-5">
       <div className="flex w-full min-w-0 flex-wrap content-start gap-2">
-        {Object.values(results).map((res) => {
+        {chips.map((res) => {
           const chipClassName = cn(
             'flex shrink-0 items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200 min-w-0',
             res.status === STATUS_SUCCESS
@@ -41,21 +68,27 @@ export function FormatChipsCellTable({
           );
           const dot = fileName.lastIndexOf('.');
           const base = dot > 0 ? fileName.substring(0, dot) : fileName;
-          const downloadFilename = buildOptimizedDownloadFilename(base, res);
+          const downloadFilename = buildOptimizedDownloadFilename(base, res as ImageResult);
           const chipTitle =
             res.variantLabel && res.variantLabel.length > 0
               ? `${(res.format ?? '').toUpperCase()} · ${res.variantLabel}`
               : (res.label ?? res.format);
 
+          const onDownloadClick = (e: MouseEvent) => {
+            e.preventDefault();
+            if (res.status !== STATUS_SUCCESS || !res.payloadKey) return;
+            void downloadStoredOutput(res.payloadKey, res.format, downloadFilename);
+          };
+
           return res.status === STATUS_SUCCESS ? (
-            <a
+            <button
+              type="button"
               key={res.resultId}
-              href={res.downloadUrl}
-              download={downloadFilename}
+              onClick={onDownloadClick}
               className={chipClassName}
               aria-label={`Download ${chipTitle}`}
             >
-              <div className="flex flex-col">
+              <div className="flex flex-col text-left">
                 <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
                   {chipTitle}
                 </span>
@@ -71,7 +104,7 @@ export function FormatChipsCellTable({
                 </div>
               </div>
               <Download size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
-            </a>
+            </button>
           ) : (
             <div key={res.resultId} className={chipClassName}>
               <div className="flex flex-col">

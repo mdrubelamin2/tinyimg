@@ -1,9 +1,10 @@
 import { ImageCompareViewer } from '@/components/preview/ImageCompareViewer';
-import { STATUS_SUCCESS } from '@/constants';
+import { STATUS_SUCCESS, mimeForOutputFormat } from '@/constants';
 import type { ImageItem, ImageResult } from '@/lib/queue/types';
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 import { cn } from '@/lib/utils';
-import { resolveOriginalSourceFile } from '@/storage/queue-binary';
+import { createTransientObjectUrlForPayloadKey, resolveOriginalSourceFile } from '@/storage/queue-binary';
+import { downloadStoredOutput } from '@/lib/download';
 import { imageStore$ } from '@/store/image-store';
 import { useValue } from '@legendapp/state/react';
 import { Download, X, ZoomIn } from 'lucide-react';
@@ -34,6 +35,9 @@ export function ImagePreview({
   const [resolvedOriginalObjectUrl, setResolvedOriginalObjectUrl] = useState<string | null>(null);
   const resolvedOriginalRef = useRef<string | null>(null);
 
+  const [optimizedObjectUrl, setOptimizedObjectUrl] = useState<string | null>(null);
+  const optimizedRef = useRef<string | null>(null);
+
   const successResults = useMemo(() => {
     if (!item) return [];
     return Object.values(item.results)
@@ -43,11 +47,9 @@ export function ImagePreview({
 
   const currentResult = item?.results[selectedResultId];
   const originalUrl = resolvedOriginalObjectUrl;
-  const optimizedUrl = currentResult?.downloadUrl;
+  const optimizedUrl = optimizedObjectUrl;
   const originalSize = item?.originalSize ?? 0;
   const optimizedSize = currentResult?.size ?? 0;
-
-  console.log({currentResult, originalUrl, optimizedUrl});
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +80,43 @@ export function ImagePreview({
       setResolvedOriginalObjectUrl(null);
     };
   }, [itemId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const snap = imageStore$.items[itemId]?.peek() as ImageItem | undefined;
+      const r = snap?.results[selectedResultId];
+      if (!r || r.status !== STATUS_SUCCESS || !r.payloadKey) {
+        if (optimizedRef.current) {
+          URL.revokeObjectURL(optimizedRef.current);
+          optimizedRef.current = null;
+        }
+        setOptimizedObjectUrl(null);
+        return;
+      }
+      const mime = mimeForOutputFormat(r.format);
+      const url = await createTransientObjectUrlForPayloadKey(r.payloadKey, mime);
+      if (cancelled) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (optimizedRef.current) {
+        URL.revokeObjectURL(optimizedRef.current);
+      }
+      optimizedRef.current = url;
+      setOptimizedObjectUrl(url);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (optimizedRef.current) {
+        URL.revokeObjectURL(optimizedRef.current);
+        optimizedRef.current = null;
+      }
+      setOptimizedObjectUrl(null);
+    };
+  }, [itemId, selectedResultId, currentResult?.payloadKey, currentResult?.status]);
 
   const savings = originalSize > 0 && optimizedSize > 0
     ? ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
@@ -208,10 +247,17 @@ export function ImagePreview({
           <span className="text-center text-[10px] font-medium text-muted-foreground sm:text-left">
             Drag to compare. ESC to close
           </span>
-          {currentResult?.downloadUrl && (
-            <a
-              href={currentResult.downloadUrl}
-              download={buildOptimizedDownloadFilename(downloadBaseName, currentResult)}
+          {currentResult?.payloadKey && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentResult.payloadKey) return;
+                void downloadStoredOutput(
+                  currentResult.payloadKey,
+                  currentResult.format,
+                  buildOptimizedDownloadFilename(downloadBaseName, currentResult)
+                );
+              }}
               className="flex cursor-pointer items-center justify-center gap-1.5 self-center rounded-lg bg-gradient-to-r from-primary to-primary/80 px-3 py-2 text-[10px] font-bold text-primary-foreground shadow-md shadow-primary/25 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg sm:self-auto sm:py-1.5"
               aria-label={`Download ${chipTitleForResult(currentResult)}`}
             >
@@ -224,7 +270,7 @@ export function ImagePreview({
                   ↓{savings}%
                 </span>
               )}
-            </a>
+            </button>
           )}
         </div>
       </div>
