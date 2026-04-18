@@ -1,16 +1,11 @@
 import { getOriginPrivateDirectory } from 'native-file-system-adapter';
 import type { QuotaInfo, StorageAdapter } from '@/storage/storage-adapter';
-
-const KEY_PREFIX = 'tinyimg:';
+import { fileNameToKey, toFileName } from '@/storage/nfsa-storage-filename';
 
 /** `entries()` exists at runtime; DOM typings may lag behind. */
 type RootDir = FileSystemDirectoryHandle & {
   entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
 };
-
-function toFileName(key: string): string {
-  return `${KEY_PREFIX}${encodeURIComponent(key)}`;
-}
 
 async function resolveRoot(): Promise<RootDir> {
   try {
@@ -79,15 +74,15 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
     async deleteByPrefix(prefix: string): Promise<number> {
       let n = 0;
       for await (const [name] of root.entries()) {
-        if (!name.startsWith(KEY_PREFIX)) continue;
-        try {
-          const decoded = decodeURIComponent(name.slice(KEY_PREFIX.length));
-          if (decoded.startsWith(prefix)) {
+        const decoded = fileNameToKey(name);
+        if (decoded == null) continue;
+        if (decoded.startsWith(prefix)) {
+          try {
             await root.removeEntry(name);
             n++;
+          } catch {
+            /* noop */
           }
-        } catch {
-          /* noop */
         }
       }
       return n;
@@ -109,12 +104,11 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
 
     async clear(): Promise<void> {
       for await (const [name] of root.entries()) {
-        if (name.startsWith(KEY_PREFIX)) {
-          try {
-            await root.removeEntry(name);
-          } catch {
-            /* noop */
-          }
+        if (fileNameToKey(name) == null) continue;
+        try {
+          await root.removeEntry(name);
+        } catch {
+          /* noop */
         }
       }
     },
