@@ -85,7 +85,6 @@ export default defineConfig({
           if (id.includes('@jsquash')) return 'jsquash';
           if (id.includes('zip.js') || id.includes('@zip.js')) return 'zip-js';
           if (id.includes('svgo')) return 'svgo';
-          if (id.includes('idb-keyval')) return 'idb-keyval';
           if (id.includes('class-variance-authority') || id.includes('clsx') || id.includes('tailwind-merge'))
             return 'ui-utils';
           return 'vendor';

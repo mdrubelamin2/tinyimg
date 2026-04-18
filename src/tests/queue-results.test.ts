@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ERR_WORKER, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS, STATUS_ERROR } from '@/constants';
 import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
 import * as queueBinary from '@/storage/queue-binary';
+import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { useImageStore } from '@/store/image-store';
 
 function createBaseItem(): ImageItem {
@@ -49,7 +50,7 @@ function resultPayload(
 }
 
 describe('queue worker results via image-store', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -66,6 +67,7 @@ describe('queue worker results via image-store', () => {
       }))
     );
     useImageStore.getState().clearAll();
+    await getSessionBinaryStorage();
   });
 
   afterEach(() => {
@@ -75,7 +77,7 @@ describe('queue worker results via image-store', () => {
   });
 
   async function flushAsyncWork(): Promise<void> {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 120; i++) {
       await Promise.resolve();
     }
   }

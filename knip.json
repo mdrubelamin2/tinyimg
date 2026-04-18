@@ -7,6 +7,7 @@
     "scripts/*.mjs"
   ],
   "project": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.mjs"],
+  "ignore": ["src/native-file-system-adapter-adapters.d.ts"],
   "ignoreDependencies": [
     "conventional-changelog-conventionalcommits",
     "tailwindcss"
