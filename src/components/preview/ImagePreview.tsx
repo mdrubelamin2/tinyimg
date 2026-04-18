@@ -1,5 +1,5 @@
 import { ImageCompareViewer } from '@/components/preview/ImageCompareViewer';
-import { STATUS_SUCCESS, mimeForOutputFormat } from '@/constants';
+import { BYTES_PER_KB, STATUS_SUCCESS, mimeForOutputFormat } from '@/constants';
 import type { ImageItem, ImageResult } from '@/lib/queue/types';
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 import { cn } from '@/lib/utils';
@@ -129,8 +129,8 @@ export function ImagePreview({
   }, [item]);
 
   const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < BYTES_PER_KB) return `${bytes} B`;
+    return `${(bytes / BYTES_PER_KB).toFixed(1)} KB`;
   };
 
   if (!item) return null;

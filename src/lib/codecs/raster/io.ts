@@ -23,7 +23,9 @@ export async function getImageData(bitmap: ImageBitmap): Promise<ImageData> {
 export function checkPixelLimit(width: number, height: number): void {
   const total = width * height;
   if (total > MAX_PIXELS || !Number.isFinite(total)) {
-    throw new Error('Image dimensions too large (max 256 megapixels)');
+    throw new Error(
+      `Image dimensions too large (max ${Math.round(MAX_PIXELS / 1_000_000)} megapixels)`
+    );
   }
 }
 

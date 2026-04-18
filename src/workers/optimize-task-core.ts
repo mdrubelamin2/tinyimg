@@ -5,6 +5,7 @@
 import {
   TASK_TIMEOUT_MS,
   ERR_TASK_TIMEOUT,
+  BYTES_PER_KB,
 } from '@/constants';
 import type { SvgInternalFormat } from '@/constants';
 import { Logger } from './logger';
@@ -304,7 +305,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
       mimeType,
       size: outSize,
       label,
-      formattedSize: (outSize / 1024).toFixed(1),
+      formattedSize: (outSize / BYTES_PER_KB).toFixed(1),
       savingsPercent: Math.round(Math.abs(((file.size - outSize) / file.size) * 100)),
       timing,
     });
