@@ -40,7 +40,7 @@ import {
 } from '@/thumbnails/thumbnail-generator';
 import { toastError } from '@/notifications/toast-emitter';
 import { ERR_ZIP_EXCEEDS_LIMIT, ERR_INTAKE_STORAGE_FULL } from '@/constants';
-import { isQuotaExceededError } from '@/lib/storage/quota-error';
+import { isQuotaExceededError } from '@/storage/quota';
 import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache';
 import { createQueueItem, resetItemResultsForOptions } from '@/lib/queue/queue-item';
 import { buildOutputSlots } from '@/lib/queue/output-slots';
