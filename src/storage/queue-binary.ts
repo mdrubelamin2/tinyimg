@@ -1,35 +1,24 @@
 /**
  * Queue payload keys + read/write helpers for **session hybrid binary storage**
- * (`getSessionBinaryStorage`: OPFS when available, else IndexedDB, else in-memory for tests).
+ * (`getSessionBinaryStorage`: NFSA native OPFS → IndexedDB → memory).
  *
  * - **Direct-drop originals** live in `dropped-original-files.ts` (in-memory map) — no duplicate hybrid `set()` for those.
  * - **Buffered sources** (ZIP entries, folder traversal, etc.) are written here via `persistBufferedOriginalSource`.
  * - **Encoded outputs** use {@link persistEncodedOutput} (bytes only; object URLs are created lazily on download/preview).
- *
- * `getBackedFile` on the adapter is an optional OPFS optimization for object URLs; IDB path uses `get` + `Blob`.
  */
 
 import { mimeForOutputFormat } from '@/constants';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
+import { outKey, outKeyPrefix, srcKey } from '@/storage/keys';
 import type { ImageItem } from '@/lib/queue/types';
 import { peekDirectDropOriginal } from '@/storage/dropped-original-files';
 
-export function sourceStorageKey(id: string): string {
-  return `src:${id}`;
-}
+export { srcKey as sourceStorageKey, outKey as outputStorageKey } from '@/storage/keys';
 
-export function outputStorageKey(id: string, resultId: string): string {
-  return `out:${id}:${resultId}`;
-}
-
-function outputKeyPrefix(id: string): string {
-  return `out:${id}:`;
-}
-
-/** Persist ZIP / synthetic `File` originals into the hybrid session store (OPFS → IDB → memory). */
+/** Persist ZIP / synthetic `File` originals into the hybrid session store. */
 export async function persistBufferedOriginalSource(itemId: string, file: File): Promise<void> {
   const storage = await getSessionBinaryStorage();
-  await storage.set(sourceStorageKey(itemId), await file.arrayBuffer());
+  await storage.set(srcKey(itemId), await file.arrayBuffer());
 }
 
 /**
@@ -42,8 +31,8 @@ export async function resolveOriginalSourceFile(itemId: string, item: ImageItem)
   if (fromDrop) return fromDrop;
 
   const storage = await getSessionBinaryStorage();
-  const srcKey = sourceStorageKey(itemId);
-  if (await storage.has(srcKey)) {
+  const sk = srcKey(itemId);
+  if (await storage.has(sk)) {
     const fromStore = await loadSourceFileFromStorageOnly(itemId, item);
     if (fromStore) return fromStore;
   }
@@ -60,9 +49,9 @@ function guessNameMime(item: ImageItem, itemId: string): { name: string; mime: s
 }
 
 async function loadSourceFileFromStorageOnly(itemId: string, item: ImageItem): Promise<File | null> {
-  const key = sourceStorageKey(itemId);
+  const key = srcKey(itemId);
   const storage = await getSessionBinaryStorage();
-  const backed = await storage.getBackedFile?.(key);
+  const backed = await storage.getBackedFile(key);
   const { name, mime } = guessNameMime(item, itemId);
   if (backed) {
     return new File([backed], name, { type: mime, lastModified: backed.lastModified });
@@ -83,7 +72,7 @@ export async function persistEncodedOutput(
 ): Promise<{ payloadKey: string }> {
   void mimeHint;
   const storage = await getSessionBinaryStorage();
-  const payloadKey = outputStorageKey(id, resultId);
+  const payloadKey = outKey(id, resultId);
   await storage.set(payloadKey, data);
   return { payloadKey };
 }
@@ -108,7 +97,7 @@ async function createObjectUrlForStoredPayload(
   payloadKey: string,
   mimeHint: string
 ): Promise<string> {
-  const f = await storage.getBackedFile?.(payloadKey);
+  const f = await storage.getBackedFile(payloadKey);
   if (f) {
     return URL.createObjectURL(f);
   }
@@ -128,11 +117,11 @@ export async function createTransientObjectUrlForPayloadKey(
 
 export async function deleteItemPayloads(id: string): Promise<void> {
   const storage = await getSessionBinaryStorage();
-  const sk = sourceStorageKey(id);
+  const sk = srcKey(id);
   if (await storage.has(sk)) {
     await storage.delete(sk);
   }
-  await storage.deleteByPrefix(outputKeyPrefix(id));
+  await storage.deleteByPrefix(outKeyPrefix(id));
 }
 
 export async function deleteOutputPayloadKey(key: string | undefined): Promise<void> {
