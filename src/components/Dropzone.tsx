@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useValue } from '@legendapp/state/react';
 import { Upload, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { openFilesWithNfsa, OPEN_IMAGE_AND_ZIP_TYPES } from '@/lib/fs-access';
 import { intake$ } from '@/store/image-store';
 
 interface DropzoneProps {
@@ -15,8 +16,19 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
   const intakeBusy = useValue(() => intake$.active.get());
   const dropDisabled = intakeBusy;
 
-  const openFileDialog = () => {
-    fileInputRef.current?.click();
+  const openFileDialog = async () => {
+    try {
+      const handles = await openFilesWithNfsa({
+        multiple: true,
+        types: OPEN_IMAGE_AND_ZIP_TYPES,
+      });
+      const files = await Promise.all(handles.map((h) => h.getFile()));
+      onFilesAdded(files);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      if (e instanceof Error && e.name === 'AbortError') return;
+      fileInputRef.current?.click();
+    }
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -40,7 +52,6 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      // File picker path is already bounded; avoid startTransition so queue updates aren't deferred (e2e + fast feedback).
       onFilesAdded(filesArray);
     }
     e.target.value = '';
