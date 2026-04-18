@@ -1,8 +1,3 @@
-/**
- * Download helpers: stream ZIP into session hybrid storage, then trigger save.
- * Uses zip.js so entries are written sequentially without holding the whole archive in RAM.
- */
-
 import {
   MAX_DOWNLOAD_FILES,
   MAX_DOWNLOAD_BYTES,
@@ -12,16 +7,23 @@ import {
 } from '@/constants';
 import type { ImageItem, ImageResult } from './queue/types';
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
+import {
+  saveFileWithNfsa,
+  SAVE_PICKER_TYPES_ZIP,
+  savePickerTypesForImageOutput,
+} from '@/lib/fs-access';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { zipKey } from '@/storage/keys';
 import { createTransientObjectUrlForPayloadKey, deleteOutputPayloadKey } from '@/storage/queue-binary';
 import { BlobReader, ZipWriter } from '@zip.js/zip.js';
 import { ensureZipJsConfigured } from '@/lib/zip-js-config';
 
-/**
- * Revoke all object URLs for an item's results. Call when replacing or removing an item.
- * @param item - Queue item whose result download URLs should be revoked
- */
+function isAbortError(e: unknown): boolean {
+  if (e instanceof DOMException && e.name === 'AbortError') return true;
+  if (e instanceof Error && e.name === 'AbortError') return true;
+  return false;
+}
+
 export function revokeResultUrls(item: ImageItem): void {
   Object.values(item.results).forEach((r: ImageResult) => {
     if (r.downloadUrl) {
@@ -33,21 +35,39 @@ export function revokeResultUrls(item: ImageItem): void {
   });
 }
 
-/** Revoke all result URLs for multiple items. */
 export function revokeResultUrlsForItems(items: ImageItem[]): void {
   items.forEach(revokeResultUrls);
 }
 
-/**
- * Trigger a one-shot browser download for bytes stored under `payloadKey`.
- * Creates a short-lived object URL and revokes it after {@link DOWNLOAD_URL_REVOKE_DELAY_MS}.
- */
 export async function downloadStoredOutput(
   payloadKey: string,
   format: string,
   downloadFilename: string
 ): Promise<void> {
-  const url = await createTransientObjectUrlForPayloadKey(payloadKey, mimeForOutputFormat(format));
+  const mime = mimeForOutputFormat(format);
+  const storage = await getSessionBinaryStorage();
+  const backed = await storage.getBackedFile(payloadKey);
+  const raw = backed ? null : await storage.get(payloadKey);
+  if (!backed && !raw) return;
+
+  try {
+    const handle = await saveFileWithNfsa({
+      suggestedName: downloadFilename,
+      types: savePickerTypesForImageOutput(format),
+    });
+    const writable = await handle.createWritable();
+    if (backed) {
+      await writable.write(backed);
+    } else {
+      await writable.write(raw!);
+    }
+    await writable.close();
+    return;
+  } catch (e) {
+    if (isAbortError(e)) return;
+  }
+
+  const url = await createTransientObjectUrlForPayloadKey(payloadKey, mime);
   const a = document.createElement('a');
   a.href = url;
   a.download = downloadFilename;
@@ -59,10 +79,6 @@ export async function downloadStoredOutput(
   }, DOWNLOAD_URL_REVOKE_DELAY_MS);
 }
 
-/**
- * Build a ZIP from successful results in items, stream to session storage, then prompt download.
- * @param items - Queue items; only results with status success and a stored payload key are included
- */
 export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
   ensureZipJsConfigured();
   const storage = await getSessionBinaryStorage();
@@ -134,6 +150,26 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
     if (fileCount > 0) {
       await zipWriter.close();
       const finalFile = await fileHandle.getFile();
+
+      try {
+        const saveHandle = await saveFileWithNfsa({
+          suggestedName: zipDisplayName,
+          types: SAVE_PICKER_TYPES_ZIP,
+        });
+        const w = await saveHandle.createWritable();
+        await w.write(finalFile);
+        await w.close();
+        setTimeout(() => {
+          void removeZipTemp();
+        }, DOWNLOAD_URL_REVOKE_DELAY_MS);
+        return;
+      } catch (e) {
+        if (isAbortError(e)) {
+          await removeZipTemp();
+          return;
+        }
+      }
+
       const url = URL.createObjectURL(finalFile);
       const a = document.createElement('a');
       a.href = url;
