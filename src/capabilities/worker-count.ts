@@ -6,9 +6,11 @@
 import {
   CONCURRENCY_MIN,
   CONCURRENCY_MAX_DESKTOP,
+  CONCURRENCY_MAX_NO_DEVICE_MEMORY,
   MOBILE_MAX_WORKERS,
   MB_PER_WORKER_ESTIMATE,
   DEVICE_MEMORY_RESERVE_GB,
+  BYTES_PER_KB,
 } from '@/constants/limits';
 import { availableParallelism } from 'poolifier-web-worker';
 
@@ -40,10 +42,12 @@ function isLikelyMobile(): boolean {
 function memoryBoundedWorkerCap(maxByCores: number): number {
   const nav = globalThis.navigator as Navigator & { deviceMemory?: number };
   const dm = nav.deviceMemory;
-  if (dm == null || !Number.isFinite(dm) || dm <= 0) return maxByCores;
+  if (dm == null || !Number.isFinite(dm) || dm <= 0) {
+    return Math.min(maxByCores, CONCURRENCY_MAX_NO_DEVICE_MEMORY);
+  }
 
   const budgetGb = Math.max(0.5, dm - DEVICE_MEMORY_RESERVE_GB);
-  const budgetMb = budgetGb * 1024;
+  const budgetMb = budgetGb * BYTES_PER_KB;
   const byMem = Math.max(1, Math.floor(budgetMb / MB_PER_WORKER_ESTIMATE));
   return Math.min(maxByCores, byMem);
 }
