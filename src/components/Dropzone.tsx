@@ -16,18 +16,35 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
   const intakeBusy = useValue(() => intake$.active.get());
   const dropDisabled = intakeBusy;
 
+  const openNativeFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
   const openFileDialog = async () => {
+    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) {
+      openNativeFilePicker();
+      return;
+    }
+
     try {
       const handles = await openFilesWithNfsa({
         multiple: true,
         types: OPEN_IMAGE_AND_ZIP_TYPES,
       });
+      if (handles.length === 0) {
+        openNativeFilePicker();
+        return;
+      }
       const files = await Promise.all(handles.map((h) => h.getFile()));
+      if (files.length === 0) {
+        openNativeFilePicker();
+        return;
+      }
       onFilesAdded(files);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
       if (e instanceof Error && e.name === 'AbortError') return;
-      fileInputRef.current?.click();
+      openNativeFilePicker();
     }
   };
 
