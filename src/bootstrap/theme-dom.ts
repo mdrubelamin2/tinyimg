@@ -1,5 +1,6 @@
+import { safeGetItem } from '@/lib/safe-local-storage';
+
 export const THEME_STORAGE_KEY = 'tinyimg_theme';
-const STORAGE_KEY = THEME_STORAGE_KEY;
 
 const THEME_SWITCHING_CLASS = 'theme-switching';
 
@@ -7,7 +8,7 @@ export type StoredTheme = 'light' | 'dark' | 'system';
 
 export function readStoredTheme(): StoredTheme {
   if (typeof window === 'undefined') return 'system';
-  return (localStorage.getItem(STORAGE_KEY) as StoredTheme) ?? 'system';
+  return (safeGetItem(THEME_STORAGE_KEY) as StoredTheme) ?? 'system';
 }
 
 function getSystemTheme(): 'light' | 'dark' {

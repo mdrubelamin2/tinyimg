@@ -4,7 +4,8 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { safeLocalStorage } from '@/lib/safe-local-storage';
 import type { GlobalOptions } from '@/constants';
 import { DEFAULT_GLOBAL_OPTIONS } from '@/constants';
 
@@ -49,6 +50,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createJSONStorage(() => safeLocalStorage),
       partialize: (state) => ({ options: state.options }),
       merge: (persisted, current) => {
         const p = persisted as Partial<SettingsState> | undefined;

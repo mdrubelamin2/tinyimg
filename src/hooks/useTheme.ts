@@ -11,6 +11,7 @@ import {
   syncThemeToDom,
   type StoredTheme,
 } from '@/bootstrap/theme-dom';
+import { safeSetItem } from '@/lib/safe-local-storage';
 
 type Theme = StoredTheme;
 
@@ -24,7 +25,7 @@ export function useTheme() {
   const resolved = resolveTheme(theme);
 
   const setTheme = (next: Theme) => {
-    localStorage.setItem(THEME_STORAGE_KEY, next);
+    safeSetItem(THEME_STORAGE_KEY, next);
     syncThemeToDom(resolveTheme(next));
     setThemeState(next);
   };
@@ -32,7 +33,7 @@ export function useTheme() {
   const toggleTheme = () => {
     setThemeState((prev) => {
       const next = resolveTheme(prev) === 'dark' ? ('light' as const) : ('dark' as const);
-      localStorage.setItem(THEME_STORAGE_KEY, next);
+      safeSetItem(THEME_STORAGE_KEY, next);
       syncThemeToDom(resolveTheme(next));
       return next;
     });
