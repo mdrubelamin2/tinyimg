@@ -14,20 +14,36 @@ import type { ImageItem } from '@/lib/queue/types';
 import type { Entry, EntryGetDataOptions, FileEntry } from '@zip.js/zip.js';
 import { BlobReader, ZipReader } from '@zip.js/zip.js';
 import { ensureZipJsConfigured } from '@/lib/zip-js-config';
+import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
+import { srcKey } from '@/storage/keys';
+import type { StorageAdapter } from '@/storage/storage-adapter';
+
+type FileSystemDirectoryHandleWithEntries = FileSystemDirectoryHandle & {
+  entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+};
 
 const ZIP_PATH_IGNORE = '__MACOSX';
 
-/** Decompression off main thread + native streams when available; per-entry data via WritableStream. */
 const ZIP_ENTRY_READ_OPTIONS: EntryGetDataOptions = {
   useWebWorkers: true,
   useCompressionStream: true,
 };
 
-/**
- * Materializes one ZIP entry as a Blob on the main thread.
- * Future: stream large entries directly into session OPFS (hybrid `src:`) to avoid
- * holding uncompressed bytes twice (Blob + persist buffer) during intake.
- */
+async function streamZipEntryToStorageKey(
+  entry: FileEntry,
+  storage: StorageAdapter,
+  key: string
+): Promise<void> {
+  const handle = await storage.getWritableHandle(key);
+  const writable = await handle.createWritable();
+  try {
+    await entry.getData(writable, ZIP_ENTRY_READ_OPTIONS);
+  } catch (e) {
+    await writable.close().catch(() => {});
+    throw e;
+  }
+}
+
 async function readZipEntryAsBlob(entry: FileEntry): Promise<Blob> {
   const passthrough = new TransformStream<Uint8Array, Uint8Array>();
   const blobPromise = new Response(passthrough.readable).blob();
@@ -39,9 +55,9 @@ export function isZipArchive(fileName: string): boolean {
   return /\.zip$/i.test(fileName);
 }
 
-/** Snapshot from a drop: call synchronously inside `drop` so `webkitGetAsEntry` stays valid. */
 export type DropSnapshot =
   | { kind: 'fs-entry'; entry: FileSystemEntry }
+  | { kind: 'fs-directory-handle'; handle: FileSystemDirectoryHandle }
   | { kind: 'file'; file: File };
 
 export type IntakeUploadSource = File[] | DropSnapshot[];
@@ -52,24 +68,99 @@ function dataTransferItemsToArray(list: DataTransferItemList): DataTransferItem[
   );
 }
 
-export function snapshotDataTransferItems(items: DataTransferItem[]): DropSnapshot[] {
-  const out: DropSnapshot[] = [];
+type DataTransferItemWithHandle = DataTransferItem & {
+  getAsFileSystemHandle?: () => Promise<FileSystemHandle>;
+};
+
+type SnapshotSlot =
+  | { kind: 'done'; snap: DropSnapshot }
+  | { kind: 'pending'; item: DataTransferItem };
+
+export async function snapshotDataTransferItemsAsync(items: DataTransferItem[]): Promise<DropSnapshot[]> {
+  const slots: SnapshotSlot[] = [];
+
   for (const item of items) {
     if (item.kind !== 'file') continue;
-    const entry = (
-      item as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null }
-    ).webkitGetAsEntry?.() ?? null;
-    if (entry) {
-      out.push({ kind: 'fs-entry', entry });
-    } else {
-      const f = item.getAsFile();
-      if (f) out.push({ kind: 'file', file: f });
+
+    const wk = item as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null };
+    const webkitEntry = wk.webkitGetAsEntry?.() ?? null;
+
+    if (webkitEntry?.isDirectory) {
+      slots.push({ kind: 'done', snap: { kind: 'fs-entry', entry: webkitEntry } });
+      continue;
     }
+
+    // Entries API must be consumed synchronously (multi-file drop); do not await before this.
+    if (webkitEntry?.isFile) {
+      slots.push({ kind: 'done', snap: { kind: 'fs-entry', entry: webkitEntry } });
+      continue;
+    }
+
+    slots.push({ kind: 'pending', item });
   }
+
+  const pending = slots.filter((s): s is { kind: 'pending'; item: DataTransferItem } => s.kind === 'pending');
+
+  const handlePromises = pending.map(({ item }) => {
+    const getHandle = (item as DataTransferItemWithHandle).getAsFileSystemHandle;
+    if (typeof getHandle !== 'function') {
+      return Promise.resolve(null as FileSystemHandle | null);
+    }
+    return getHandle.call(item).catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === 'AbortError') return null;
+      if (e instanceof Error && e.name === 'AbortError') return null;
+      return null;
+    });
+  });
+
+  const handles = await Promise.all(handlePromises);
+
+  const fileFromHandlePromises = handles.map((h) => {
+    if (h?.kind === 'file') {
+      return (h as FileSystemFileHandle).getFile().catch(() => null);
+    }
+    return Promise.resolve(null as File | null);
+  });
+  const filesFromHandles = await Promise.all(fileFromHandlePromises);
+
+  const out: DropSnapshot[] = [];
+  let pi = 0;
+  for (const slot of slots) {
+    if (slot.kind === 'done') {
+      out.push(slot.snap);
+      continue;
+    }
+
+    const h = handles[pi];
+    const fileFromHandle = filesFromHandles[pi];
+    pi += 1;
+
+    if (!h) {
+      const f = slot.item.getAsFile();
+      if (f) out.push({ kind: 'file', file: f });
+      continue;
+    }
+    if (h.kind === 'directory') {
+      out.push({ kind: 'fs-directory-handle', handle: h as FileSystemDirectoryHandle });
+      continue;
+    }
+    if (h.kind === 'file') {
+      if (fileFromHandle) {
+        out.push({ kind: 'file', file: fileFromHandle });
+      } else {
+        const f = slot.item.getAsFile();
+        if (f) out.push({ kind: 'file', file: f });
+      }
+      continue;
+    }
+
+    const f = slot.item.getAsFile();
+    if (f) out.push({ kind: 'file', file: f });
+  }
+
   return out;
 }
 
-/** Drop often exposes the same .zip as both `webkitGetAsEntry` and `getAsFile`; keep FS entry, skip duplicate file snapshot. */
 function dedupeDropSnapshots(snaps: DropSnapshot[]): DropSnapshot[] {
   const zipNamesFromFs = new Set<string>();
   for (const s of snaps) {
@@ -88,9 +179,9 @@ function dedupeDropSnapshots(snaps: DropSnapshot[]): DropSnapshot[] {
 
 const HAS_FILELIST = typeof FileList !== 'undefined';
 
-export function normalizeIntakeSources(
+export async function normalizeIntakeSources(
   files: FileList | File[] | DataTransferItemList | DataTransferItem[]
-): IntakeUploadSource {
+): Promise<IntakeUploadSource> {
   if (HAS_FILELIST && files instanceof FileList) {
     return Array.from(files);
   }
@@ -99,10 +190,10 @@ export function normalizeIntakeSources(
     if (files[0] instanceof File) {
       return files as File[];
     }
-    return dedupeDropSnapshots(snapshotDataTransferItems(files as DataTransferItem[]));
+    return dedupeDropSnapshots(await snapshotDataTransferItemsAsync(files as DataTransferItem[]));
   }
   return dedupeDropSnapshots(
-    snapshotDataTransferItems(dataTransferItemsToArray(files as DataTransferItemList))
+    await snapshotDataTransferItemsAsync(dataTransferItemsToArray(files as DataTransferItemList))
   );
 }
 
@@ -113,29 +204,22 @@ function isFileUploadSource(source: IntakeUploadSource): source is File[] {
 
 export interface IntakeContext {
   createItem: (file: File, intakeKind: IntakeOriginalKind) => ImageItem;
-  /** Before zip.js reads entries (central directory). */
   onExtractingArchive?: (archiveFileName: string) => void;
-  /** After central directory read: `entryCount` file records to walk (incl. non-images). Drives intake x/y. */
   onZipManifest?: (archiveFileName: string, entryCount: number) => void;
-  /** After each manifest entry is fully handled (read + optional queue row). */
   onZipProgress?: (processed: number, total: number) => void;
-  /** When this archive stream finishes (success or throw). Clears zip-specific intake totals. */
   onZipStreamEnd?: () => void;
-  /** Compressed archive over {@link MAX_ZIP_FILE_SIZE_BYTES}; do not enqueue a row — UI should toast. */
   onZipArchiveOversized?: (fileName: string) => void;
 }
 
-/** Direct user file (picker / flat drop / `getAsFile` / folder file); buffered = ZIP-extracted bytes only. */
 export type IntakeOriginalKind = 'direct' | 'buffered';
+
+export type IntakeOriginalRef =
+  | { kind: IntakeOriginalKind; file: File }
+  | { kind: 'buffered-session'; itemId: string };
 
 export interface CollectIntakeEntry {
   item: ImageItem;
-  /**
-   * When set, `intakeKind` tells the store how to retain bytes:
-   * - `direct` → {@link registerDirectDropOriginal} (no hybrid `src:` write).
-   * - `buffered` → persist to hybrid session storage (`src:${id}`).
-   */
-  intakeOriginal?: { kind: IntakeOriginalKind; file: File } | undefined;
+  intakeOriginal?: IntakeOriginalRef | undefined;
 }
 
 export interface CollectIntakeResult {
@@ -234,20 +318,21 @@ async function* streamCollectIntakeFromZip(
     let processed = 0;
     for (const { entry, fileName } of work) {
       try {
-        const blob: Blob = await readZipEntryAsBlob(entry);
-        extractedBytes += blob.size;
+        extractedBytes += entry.uncompressedSize;
         if (extractedBytes > MAX_ZIP_EXTRACTED_TOTAL_BYTES) {
           throw new Error('ZIP uncompressed data too large');
         }
 
-        if (blob.size === 0) {
+        if (entry.uncompressedSize === 0) {
           continue;
         }
-        if (blob.size > MAX_FILE_SIZE_BYTES) {
+        if (entry.uncompressedSize > MAX_FILE_SIZE_BYTES) {
           const oversized = new File([], fileName, {
             type: getMimeType(fileName),
           });
-          yield createErrorCollectEntry(oversized, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem, 'buffered');
+          const errEnt = createErrorCollectEntry(oversized, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem, 'buffered');
+          errEnt.item.originalSize = entry.uncompressedSize;
+          yield errEnt;
           continue;
         }
 
@@ -260,11 +345,30 @@ async function* streamCollectIntakeFromZip(
           continue;
         }
 
-        const validFile = new File([blob], fileName, {
-          type: getMimeType(fileName),
-        });
-        const validated = createValidatedItem(validFile, ctx, 'buffered');
-        if (validated) yield validated;
+        const mime = getMimeType(fileName);
+        const stubFile = new File([], fileName, { type: mime });
+        const validated = createValidatedItem(stubFile, ctx, 'buffered');
+        if (!validated) continue;
+        if (validated.item.status === STATUS_ERROR) {
+          yield validated;
+          continue;
+        }
+
+        validated.item.originalSize = entry.uncompressedSize;
+
+        try {
+          const storage = await getSessionBinaryStorage();
+          await streamZipEntryToStorageKey(entry, storage, srcKey(validated.item.id));
+          validated.intakeOriginal = { kind: 'buffered-session', itemId: validated.item.id };
+          yield validated;
+        } catch {
+          const storage = await getSessionBinaryStorage();
+          await storage.delete(srcKey(validated.item.id)).catch(() => {});
+          const blob = await readZipEntryAsBlob(entry);
+          const validFile = new File([blob], fileName, { type: mime });
+          const fallback = createValidatedItem(validFile, ctx, 'buffered');
+          if (fallback) yield fallback;
+        }
       } finally {
         processed += 1;
         ctx.onZipProgress?.(processed, work.length);
@@ -325,9 +429,20 @@ async function* traverseYield(
   }
 }
 
-/**
- * Yields each queue intake entry as it becomes ready (ZIP: one row per decompressed image as streamed).
- */
+async function* traverseDirectoryHandleYield(
+  dirHandle: FileSystemDirectoryHandle,
+  ctx: IntakeContext
+): AsyncGenerator<CollectIntakeEntry> {
+  for await (const [, handle] of (dirHandle as FileSystemDirectoryHandleWithEntries).entries()) {
+    if (handle.kind === 'file') {
+      const file = await (handle as FileSystemFileHandle).getFile();
+      yield* collectPlainFileYield(file, ctx);
+    } else {
+      yield* traverseDirectoryHandleYield(handle as FileSystemDirectoryHandle, ctx);
+    }
+  }
+}
+
 export async function* iterateIntakeEntries(
   source: IntakeUploadSource,
   ctx: IntakeContext
@@ -336,6 +451,8 @@ export async function* iterateIntakeEntries(
     for (const snap of source) {
       if (snap.kind === 'fs-entry') {
         yield* traverseYield(snap.entry, ctx);
+      } else if (snap.kind === 'fs-directory-handle') {
+        yield* traverseDirectoryHandleYield(snap.handle, ctx);
       } else {
         yield* collectPlainFileYield(snap.file, ctx);
       }

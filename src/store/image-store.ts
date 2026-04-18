@@ -249,6 +249,7 @@ async function persistIntakeOriginalsParallel(chunk: CollectIntakeEntry[]): Prom
     await Promise.all(
       slice.map(async (ent) => {
         const o = ent.intakeOriginal!;
+        if (o.kind === 'buffered-session') return;
         if (o.kind === 'direct') {
           registerDirectDropOriginal(ent.item.id, o.file);
         } else {
@@ -272,7 +273,7 @@ export async function addFiles(
   });
 
   try {
-    const source = normalizeIntakeSources(files);
+    const source = await normalizeIntakeSources(files);
     /** >0 while at least one zip stream is open (nested-safe); drives per-entry merge vs batch buffer. */
     const zipIntakeState = { depth: 0 };
 
