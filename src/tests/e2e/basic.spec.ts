@@ -16,11 +16,8 @@ test.describe('TinyIMG Basic Flow', () => {
     if (!fs.existsSync(filePath)) return;
     const dropzone = page.getByRole('button', { name: /drop files or click to choose/i });
     await expect(dropzone).toBeVisible();
-    const [fileChooser] = await Promise.all([
-      page.waitForEvent('filechooser'),
-      dropzone.click(),
-    ]);
-    await fileChooser.setFiles(filePath);
+    // Prefer direct input injection: Chromium may use showOpenFilePicker (no Playwright filechooser event).
+    await dropzone.locator('input[type="file"]').setInputFiles(filePath);
     const row = page.locator('[data-testid^="queue-row-"]').first();
     await expect(row).toBeVisible({ timeout: E2E_DEFAULT_TIMEOUT_MS });
     await expect(row.getByTestId('filename')).toContainText('png-1.png');
@@ -58,11 +55,7 @@ test.describe('TinyIMG Basic Flow', () => {
     await page.getByRole('button', { name: /Apply to All/i }).click();
 
     const dropzone = page.getByRole('button', { name: /drop files or click to choose/i });
-    const [fileChooser] = await Promise.all([
-      page.waitForEvent('filechooser'),
-      dropzone.click(),
-    ]);
-    await fileChooser.setFiles(filePath);
+    await dropzone.locator('input[type="file"]').setInputFiles(filePath);
 
     const row = page.locator('[data-testid^="queue-row-"]').first();
     await expect(row).toBeVisible({ timeout: E2E_DEFAULT_TIMEOUT_MS });
