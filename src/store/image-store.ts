@@ -14,9 +14,13 @@ import {
   STATUS_SUCCESS,
   STATUS_ERROR,
   ERR_WORKER,
+  ERR_PERSIST_STORAGE_FULL,
+  ERR_PERSIST_FAILED,
   OUTPUT_QUALITY_MAX,
   OUTPUT_QUALITY_MIN,
   UPDATE_OPTIONS_DEBOUNCE_MS,
+  RESULT_PERSIST_BATCH_MAX_BYTES,
+  RESULT_PERSIST_BATCH_MAX_ITEMS,
 } from '@/constants';
 import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
 import {
@@ -109,83 +113,164 @@ let flushScheduled = false;
 /** Serializes persist work across RAF batches so large `encodedBytes` are not retained concurrently. */
 let resultPersistChain: Promise<void> = Promise.resolve();
 
+let lastPersistErrorToastAt = 0;
+const PERSIST_ERROR_TOAST_COOLDOWN_MS = 4000;
+
+function maybeToastPersistError(message: string): void {
+  const now = Date.now();
+  if (now - lastPersistErrorToastAt < PERSIST_ERROR_TOAST_COOLDOWN_MS) return;
+  lastPersistErrorToastAt = now;
+  toastError(message);
+}
+
+/** Split RESULT batches so the main thread does not retain multiple huge `ArrayBuffer`s at once. */
+export function chunkResultResponsesForPersist(
+  results: WorkerOutboundResult[]
+): WorkerOutboundResult[][] {
+  if (results.length === 0) return [];
+  const chunks: WorkerOutboundResult[][] = [];
+  let current: WorkerOutboundResult[] = [];
+  let currentBytes = 0;
+  for (const r of results) {
+    const b = r.encodedBytes.byteLength;
+    const overItems = current.length >= RESULT_PERSIST_BATCH_MAX_ITEMS;
+    const overBytes =
+      current.length > 0 && currentBytes + b > RESULT_PERSIST_BATCH_MAX_BYTES;
+    if (current.length > 0 && (overItems || overBytes)) {
+      chunks.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(r);
+    currentBytes += b;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+function applyPersistFailure(
+  response: WorkerOutboundResult,
+  errorMessage: string,
+  opts: GlobalOptions
+): void {
+  startTransition(() => {
+    batch(() => {
+      const item = imageStore$.items[response.id]?.peek();
+      if (!item) return;
+      const rid = response.resultId;
+      const result = item.results[rid];
+      if (!result) return;
+
+      const nextItem = { ...item };
+      nextItem.results = {
+        ...item.results,
+        [rid]: { ...result, status: STATUS_ERROR, error: errorMessage },
+      };
+
+      let nextPending = [...imageStore$.pendingIds.peek()];
+      let shouldProcessNext = false;
+      if (isTerminal(nextItem)) {
+        const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
+        nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
+        nextItem.progress = 100;
+        nextPending = nextPending.filter(x => x !== response.id);
+        shouldProcessNext = true;
+      }
+
+      imageStore$.items[response.id]!.set(nextItem);
+      imageStore$.pendingIds.set(nextPending);
+
+      if (shouldProcessNext) {
+        void getState()._processNextAsync(opts, { getState });
+      }
+    });
+  });
+}
+
 function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
   if (results.length === 0) return;
   const totalBytes = results.reduce((sum, r) => sum + r.encodedBytes.byteLength, 0);
   heapMetrics.resultBatchReceived(results.length, totalBytes);
   const queue = [...results];
-  resultPersistChain = resultPersistChain.then(async () => {
-    const opts = useSettingsStore.getState().options;
-    while (queue.length > 0) {
-      const response = queue.shift()!;
-      const byteLen = response.encodedBytes.byteLength;
-      heapMetrics.persistPipelineEnter();
-      const t0 = performance.now();
-      try {
-        const snapshot = imageStore$.items[response.id]?.peek();
-        if (!snapshot) continue;
-        const rid = response.resultId;
-        const prevResult = snapshot.results[rid];
-        if (!prevResult) continue;
+  resultPersistChain = resultPersistChain
+    .then(async () => {
+      const opts = useSettingsStore.getState().options;
+      while (queue.length > 0) {
+        const response = queue.shift()!;
+        const byteLen = response.encodedBytes.byteLength;
+        heapMetrics.persistPipelineEnter();
+        const t0 = performance.now();
+        try {
+          const snapshot = imageStore$.items[response.id]?.peek();
+          if (!snapshot) continue;
+          const rid = response.resultId;
+          const prevResult = snapshot.results[rid];
+          if (!prevResult) continue;
 
-        if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl);
-        const { payloadKey } = await persistEncodedOutput(
-          response.id,
-          rid,
-          response.encodedBytes,
-          response.mimeType
-        );
+          if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl);
+          try {
+            const { payloadKey } = await persistEncodedOutput(
+              response.id,
+              rid,
+              response.encodedBytes,
+              response.mimeType
+            );
 
-        startTransition(() => {
-          batch(() => {
-            const item = imageStore$.items[response.id]?.peek();
-            if (!item) return;
-            const result = item.results[rid];
-            if (!result) return;
+            startTransition(() => {
+              batch(() => {
+                const item = imageStore$.items[response.id]?.peek();
+                if (!item) return;
+                const result = item.results[rid];
+                if (!result) return;
 
-            const nextItem = { ...item };
-            nextItem.results = {
-              ...item.results,
-              [rid]: {
-                ...result,
-                status: STATUS_SUCCESS,
-                size: response.size,
-                formattedSize: response.formattedSize,
-                savingsPercent: response.savingsPercent,
-                payloadKey,
-                label: response.label,
-                downloadUrl: undefined,
-                timing: response.timing,
-              },
-            };
+                const nextItem = { ...item };
+                nextItem.results = {
+                  ...item.results,
+                  [rid]: {
+                    ...result,
+                    status: STATUS_SUCCESS,
+                    size: response.size,
+                    formattedSize: response.formattedSize,
+                    savingsPercent: response.savingsPercent,
+                    payloadKey,
+                    label: response.label,
+                    downloadUrl: undefined,
+                    timing: response.timing,
+                  },
+                };
 
-            let nextPending = [...imageStore$.pendingIds.peek()];
-            let shouldProcessNext = false;
-            if (isTerminal(nextItem)) {
-              const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
-              nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
-              nextItem.progress = 100;
-              nextPending = nextPending.filter(x => x !== response.id);
-              shouldProcessNext = true;
-            }
+                let nextPending = [...imageStore$.pendingIds.peek()];
+                let shouldProcessNext = false;
+                if (isTerminal(nextItem)) {
+                  const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
+                  nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
+                  nextItem.progress = 100;
+                  nextPending = nextPending.filter(x => x !== response.id);
+                  shouldProcessNext = true;
+                }
 
-            imageStore$.items[response.id]!.set(nextItem);
-            imageStore$.pendingIds.set(nextPending);
+                imageStore$.items[response.id]!.set(nextItem);
+                imageStore$.pendingIds.set(nextPending);
 
-            if (shouldProcessNext) {
-              void getState()._processNextAsync(opts, { getState });
-            }
-          });
-        });
-      } finally {
-        heapMetrics.persistDurationMs(performance.now() - t0, byteLen);
-        heapMetrics.persistPipelineExit();
+                if (shouldProcessNext) {
+                  void getState()._processNextAsync(opts, { getState });
+                }
+              });
+            });
+          } catch (e) {
+            const msg = isQuotaExceededError(e) ? ERR_PERSIST_STORAGE_FULL : ERR_PERSIST_FAILED;
+            maybeToastPersistError(msg);
+            applyPersistFailure(response, msg, opts);
+          }
+        } finally {
+          heapMetrics.persistDurationMs(performance.now() - t0, byteLen);
+          heapMetrics.persistPipelineExit();
+        }
       }
-    }
-  });
-  void resultPersistChain.catch((err) => {
-    console.error('result persist chain', err);
-  });
+    })
+    .catch((err) => {
+      console.error('result persist chain (unexpected)', err);
+    });
 }
 
 function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
@@ -433,6 +518,7 @@ function clearFinishedImpl(): void {
 }
 
 function clearAllImpl(): void {
+  resultPersistChain = Promise.resolve();
   destroyThumbnailWorker();
   thumbnailCacheClear();
   for (const id of imageStore$.itemOrder.peek()) {
@@ -693,7 +779,9 @@ function _batchApplyResultsImpl(): void {
 
   if (resultResponses.length === 0) return;
 
-  schedulePersistWorkerResults(resultResponses);
+  for (const chunk of chunkResultResponsesForPersist(resultResponses)) {
+    schedulePersistWorkerResults(chunk);
+  }
 }
 
 async function _processNextAsyncImpl(
