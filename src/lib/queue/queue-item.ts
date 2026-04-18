@@ -4,10 +4,11 @@ import {
   STATUS_PENDING,
   type GlobalOptions,
 } from '@/constants';
-import type { ImageItem, ImageResult } from '@/lib/queue/types';
-import type { IntakeOriginalKind } from '@/lib/queue/queue-intake';
 import { revokeResultUrls } from '@/lib/download';
 import { buildOutputSlots } from '@/lib/queue/output-slots';
+import type { IntakeOriginalKind } from '@/lib/queue/queue-intake';
+import type { ImageItem, ImageResult } from '@/lib/queue/types';
+import { nanoid } from 'nanoid';
 
 export { getFormatsToProcess } from '@/lib/queue/formats-to-process';
 
@@ -21,7 +22,7 @@ export function createQueueItem(
   }
 
   const item: ImageItem = {
-    id: Math.random().toString(36).substring(2, 2 + ID_RANDOM_LENGTH),
+    id: nanoid(ID_RANDOM_LENGTH),
     fileName: file.name,
     mimeType: file.type || DEFAULT_MIME,
     originalSourceKind: intakeKind === 'direct' ? 'direct' : 'storage',

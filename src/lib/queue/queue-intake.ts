@@ -1,22 +1,23 @@
 import {
-  MAX_FILE_SIZE_BYTES,
-  MAX_ZIP_FILE_SIZE_BYTES,
-  MAX_ZIP_EXTRACTED_FILES,
-  MAX_ZIP_EXTRACTED_TOTAL_BYTES,
-  ID_RANDOM_LENGTH,
   ERR_FILE_EXCEEDS_LIMIT,
   ERR_HEIC_BROWSER,
+  ID_RANDOM_LENGTH,
   isValidImageExtension,
+  MAX_FILE_SIZE_BYTES,
+  MAX_ZIP_EXTRACTED_FILES,
+  MAX_ZIP_EXTRACTED_TOTAL_BYTES,
+  MAX_ZIP_FILE_SIZE_BYTES,
   STATUS_ERROR,
 } from '@/constants';
-import { getMimeType, DEFAULT_MIME, isHeicDecodeLikelySupported } from '@/lib/validation';
 import type { ImageItem } from '@/lib/queue/types';
-import type { Entry, EntryGetDataOptions, FileEntry } from '@zip.js/zip.js';
-import { BlobReader, ZipReader } from '@zip.js/zip.js';
+import { DEFAULT_MIME, getMimeType, isHeicDecodeLikelySupported } from '@/lib/validation';
 import { ensureZipJsConfigured } from '@/lib/zip-js-config';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { srcKey } from '@/storage/keys';
 import type { StorageAdapter } from '@/storage/storage-adapter';
+import type { Entry, EntryGetDataOptions, FileEntry } from '@zip.js/zip.js';
+import { BlobReader, ZipReader } from '@zip.js/zip.js';
+import { nanoid } from 'nanoid';
 
 type FileSystemDirectoryHandleWithEntries = FileSystemDirectoryHandle & {
   entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
@@ -239,7 +240,7 @@ function createErrorCollectEntry(
   if (isZipArchive(file.name)) {
     return {
       item: {
-        id: Math.random().toString(36).substring(2, 2 + ID_RANDOM_LENGTH),
+        id: nanoid(ID_RANDOM_LENGTH),
         fileName: file.name,
         mimeType: file.type || DEFAULT_MIME,
         originalSourceKind: intakeKind === 'direct' ? 'direct' : 'storage',

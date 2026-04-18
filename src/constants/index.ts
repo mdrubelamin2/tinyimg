@@ -1,19 +1,15 @@
-/**
- * Barrel export: single import point for all constants.
- *
- * Usage:
- *   import { MAX_FILE_SIZE_BYTES, STATUS_PENDING, PRESETS } from '@/constants';
- */
+import { nanoid } from 'nanoid';
+import type { SvgInternalFormat } from './formats.ts';
+import { ID_RANDOM_LENGTH } from './limits.ts';
 
-export * from './limits.ts';
-export * from './formats.ts';
 export * from './errors.ts';
+export * from './formats.ts';
+export * from './limits.ts';
 export * from './presets.ts';
-export * from './ui.ts';
 export * from './storage.ts';
+export * from './ui.ts';
 
 // --- Global options (depends on types from formats and limits) ---
-import type { SvgInternalFormat } from './formats.ts';
 
 /** One row in the custom output sizes list (config panel). */
 export interface OutputSizePreset {
@@ -24,7 +20,7 @@ export interface OutputSizePreset {
 }
 
 export function newOutputSizePresetId(): string {
-  return `sz_${Math.random().toString(36).slice(2, 10)}`;
+  return `sz_${nanoid(ID_RANDOM_LENGTH)}`;
 }
 
 export interface GlobalOptions {

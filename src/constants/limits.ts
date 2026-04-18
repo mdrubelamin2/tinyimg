@@ -81,5 +81,5 @@ export const UPDATE_OPTIONS_DEBOUNCE_MS = 300;
 export const DOWNLOAD_URL_REVOKE_DELAY_MS = 10_000;
 
 // --- ID generation ---
-export const ID_RANDOM_LENGTH = 9;
+export const ID_RANDOM_LENGTH = 6;
 export const BYTES_PER_KB = 1024;
