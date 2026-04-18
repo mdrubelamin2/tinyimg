@@ -1,5 +1,5 @@
 /**
- * Download helpers: stream ZIP to Origin Private File System (OPFS), then trigger save.
+ * Download helpers: stream ZIP into session hybrid storage, then trigger save.
  * Uses zip.js so entries are written sequentially without holding the whole archive in RAM.
  */
 
@@ -13,6 +13,7 @@ import {
 import type { ImageItem, ImageResult } from './queue/types';
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
+import { zipKey } from '@/storage/keys';
 import { createTransientObjectUrlForPayloadKey, deleteOutputPayloadKey } from '@/storage/queue-binary';
 import { BlobReader, ZipWriter } from '@zip.js/zip.js';
 import { ensureZipJsConfigured } from '@/lib/zip-js-config';
@@ -59,12 +60,17 @@ export async function downloadStoredOutput(
 }
 
 /**
- * Build a ZIP from successful results in items, stream to OPFS, then prompt download.
+ * Build a ZIP from successful results in items, stream to session storage, then prompt download.
  * @param items - Queue items; only results with status success and a stored payload key are included
  */
 export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
   ensureZipJsConfigured();
   const storage = await getSessionBinaryStorage();
+  const ts = Date.now();
+  const batchId = `batch-${ts}`;
+  const zipStorageKey = zipKey(batchId);
+  const zipDisplayName = `tinyimg-batch-${ts}.zip`;
+
   let fileCount = 0;
   let totalBytes = 0;
   const processedPaths = new Set<string>();
@@ -80,11 +86,13 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
     return candidate;
   }
 
-  const root = await navigator.storage.getDirectory();
-  const zipFileName = `tinyimg-batch-${Date.now()}.zip`;
-  const fileHandle = await root.getFileHandle(zipFileName, { create: true });
+  const fileHandle = await storage.getWritableHandle(zipStorageKey);
   const writable = await fileHandle.createWritable();
   const zipWriter = new ZipWriter(writable);
+
+  async function removeZipTemp(): Promise<void> {
+    await storage.delete(zipStorageKey);
+  }
 
   try {
     for (const item of items) {
@@ -99,7 +107,7 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
           const zipStem = fullName.replace(/^tinyimg-/, '').replace(/\.[^.]+$/, '');
           const path = uniqueZipPath(zipStem, ext);
 
-          const backed = await storage.getBackedFile?.(result.payloadKey);
+          const backed = await storage.getBackedFile(result.payloadKey);
           if (backed) {
             const size = backed.size;
             if (totalBytes + size > MAX_DOWNLOAD_BYTES) continue;
@@ -129,23 +137,24 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
       const url = URL.createObjectURL(finalFile);
       const a = document.createElement('a');
       a.href = url;
-      a.download = zipFileName;
+      a.download = zipDisplayName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
 
       setTimeout(() => {
         URL.revokeObjectURL(url);
-        root.removeEntry(zipFileName).catch(console.error);
+        void removeZipTemp();
       }, DOWNLOAD_URL_REVOKE_DELAY_MS);
     } else {
       await zipWriter.close().catch(() => {});
       await writable.close().catch(() => {});
-      await root.removeEntry(zipFileName).catch(console.error);
+      await removeZipTemp();
     }
   } catch (e) {
+    await zipWriter.close().catch(() => {});
     await writable.close().catch(() => {});
-    await root.removeEntry(zipFileName).catch(() => {});
+    await removeZipTemp();
     throw e;
   }
 }
