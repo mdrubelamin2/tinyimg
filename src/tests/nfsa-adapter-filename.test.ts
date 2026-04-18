@@ -10,10 +10,10 @@ describe('nfsa-adapter filename encoding', () => {
     }
   });
 
-  it('uses tinyimg: prefix and hex payload', () => {
+  it('uses tinyimg prefix and hex payload', () => {
     const name = toFileName('out:x:y:z');
-    expect(name).toMatch(/^tinyimg:[0-9a-f]+$/);
-    expect(name.slice('tinyimg:'.length)).not.toMatch(/[^0-9a-f]/);
+    expect(name).toMatch(/^tinyimg[0-9a-f]+$/);
+    expect(name.slice('tinyimg'.length)).not.toMatch(/[^0-9a-f]/);
   });
 
   it('rejects non-tinyimg-hex names', () => {

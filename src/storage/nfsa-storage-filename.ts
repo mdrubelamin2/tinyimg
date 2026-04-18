@@ -1,4 +1,4 @@
-/** OPFS-safe opaque names: `tinyimg:` + lowercase hex(UTF-8 key). */
+/** OPFS-safe opaque names: `tinyimg` + lowercase hex(UTF-8 key). */
 export const PREFIX = 'tinyimg';
 
 /** Maps logical storage key to a single-segment filename safe for OPFS across browsers. */
