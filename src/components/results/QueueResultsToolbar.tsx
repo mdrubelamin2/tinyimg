@@ -25,7 +25,7 @@ export function QueueResultsToolbar() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 sm:justify-end">
-            <Show if={() => queueStats$.doneCount.get() > 0}>
+            <Show if={() => queueStats$.doneCount.get() || imageStore$.itemOrder.get().length}>
               <div className="text-center sm:text-right">
                 <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">
                   Optimized

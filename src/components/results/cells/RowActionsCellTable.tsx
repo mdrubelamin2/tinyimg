@@ -1,18 +1,17 @@
 import { useValue } from '@legendapp/state/react';
 import { Eye, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { imageStore$ } from '@/store/image-store';
+import { getImageStore, imageStore$ } from '@/store/image-store';
 import type { ImageItem } from '@/lib/queue/types';
 
 export function RowActionsCellTable({
   id,
-  onRemove,
   onPreview,
 }: {
   id: string;
-  onRemove: (id: string) => void;
-  onPreview?: (item: ImageItem) => void;
+  onPreview: (item: ImageItem) => void;
 }) {
+  const removeItem = getImageStore().removeItem;
   const fileName = useValue(() => {
     const node = imageStore$.items[id];
     if (!node) return undefined;
@@ -42,7 +41,7 @@ export function RowActionsCellTable({
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => onRemove(id)}
+          onClick={() => removeItem(id)}
           className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer transition-colors duration-200 size-6"
           title="Remove item"
           aria-label={`Remove ${fileName}`}
