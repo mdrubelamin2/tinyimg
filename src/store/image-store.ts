@@ -557,6 +557,14 @@ function clearFinishedImpl(): void {
 }
 
 function clearAllImpl(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  inFlightRowIds.clear();
+  largeFileInFlight = false;
+  pendingForceAll = false;
+
   resultPersistChain = Promise.resolve();
   destroyThumbnailWorker();
   thumbnailCacheClear();
