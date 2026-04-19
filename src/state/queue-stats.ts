@@ -176,7 +176,8 @@ function scheduleStatsFlush(): void {
 observe(() => {
   imageStore$.itemOrder.get();
   for (const id of imageStore$.itemOrder.peek()) {
-    imageStore$.items[id]?.get();
+    imageStore$.items[id]?.status.get();
+    imageStore$.items[id]?.results.get();
   }
   scheduleStatsFlush();
 });
