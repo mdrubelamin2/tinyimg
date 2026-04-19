@@ -1,8 +1,7 @@
 /** Max cached thumbnail object URLs; over cap evicts oldest non-visible rows first (see pickEvictionVictim). */
 const MAX_ENTRIES = 500;
 
-const lruOrder: string[] = [];
-const urlById = new Map<string, string>();
+const lruMap = new Map<string, string>();
 
 /** Called when LRU evicts an id so the UI can drop stale preview URLs and re-queue thumbnails. */
 let onEvictFromCache: ((id: string) => void) | null = null;
@@ -19,58 +18,54 @@ export function setThumbnailVisibleIdsGetter(fn: () => ReadonlySet<string>): voi
 }
 
 export function thumbnailCachePeek(id: string): string | undefined {
-  return urlById.get(id);
+  return lruMap.get(id);
 }
 
 /** Oldest non-visible id, or oldest overall if every cached id is visible (must still evict). */
 function pickEvictionVictim(): string | undefined {
   const visible = getVisibleThumbnailIds?.() ?? null;
   if (visible && visible.size > 0) {
-    for (let i = 0; i < lruOrder.length; i++) {
-      const id = lruOrder[i]!;
+    for (const id of lruMap.keys()) {
       if (!visible.has(id)) return id;
     }
   }
-  return lruOrder[0];
-}
-
-function removeFromLruOrder(id: string): void {
-  const i = lruOrder.indexOf(id);
-  if (i >= 0) lruOrder.splice(i, 1);
+  return lruMap.keys().next().value;
 }
 
 function touch(id: string): void {
-  removeFromLruOrder(id);
-  lruOrder.push(id);
-  while (lruOrder.length > MAX_ENTRIES) {
-    const evict = pickEvictionVictim();
-    if (!evict) break;
-    removeFromLruOrder(evict);
-    const u = urlById.get(evict);
+  const url = lruMap.get(id);
+  if (url === undefined) return;
+
+  lruMap.delete(id);
+  lruMap.set(id, url);
+
+  while (lruMap.size > MAX_ENTRIES) {
+    const evictId = pickEvictionVictim();
+    if (!evictId) break;
+
+    const u = lruMap.get(evictId);
     if (u) URL.revokeObjectURL(u);
-    urlById.delete(evict);
-    onEvictFromCache?.(evict);
+    lruMap.delete(evictId);
+    onEvictFromCache?.(evictId);
   }
 }
 
 export function thumbnailCacheSet(id: string, objectUrl: string): void {
-  const prev = urlById.get(id);
+  const prev = lruMap.get(id);
   if (prev && prev !== objectUrl) URL.revokeObjectURL(prev);
-  urlById.set(id, objectUrl);
+  lruMap.set(id, objectUrl);
   touch(id);
 }
 
 export function thumbnailCacheRevoke(id: string): void {
-  const u = urlById.get(id);
+  const u = lruMap.get(id);
   if (u) URL.revokeObjectURL(u);
-  urlById.delete(id);
-  removeFromLruOrder(id);
+  lruMap.delete(id);
 }
 
 export function thumbnailCacheClear(): void {
-  for (const u of urlById.values()) {
+  for (const u of lruMap.values()) {
     URL.revokeObjectURL(u);
   }
-  urlById.clear();
-  lruOrder.length = 0;
+  lruMap.clear();
 }
