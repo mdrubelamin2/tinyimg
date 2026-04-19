@@ -39,9 +39,10 @@ export default function App() {
 
   useObserveEffect(() => {
     const n = imageStore$.itemOrder.get().length;
-    const { savingsPercent: pct, hasFinishedItems: finished } = queueStats$.get();
+    const hasFinishedItems = queueStats$.hasFinishedItems.get();
+    const savingsPercent = queueStats$.savingsPercent.get();
     const helmetTitle =
-      n > 0 ? (finished ? `${n} images · ${pct}% saved` : `${n} images processing`) : 'Industrial Image Optimization';
+      n > 0 ? (hasFinishedItems ? `${n} images · ${savingsPercent}% saved` : `${n} images processing`) : 'Industrial Image Optimization';
     document.title = `TinyIMG — ${helmetTitle}`;
   });
 
