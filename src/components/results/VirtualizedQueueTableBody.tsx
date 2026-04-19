@@ -22,15 +22,13 @@ export interface VirtualizedQueueTableBodyProps {
 export function VirtualizedQueueTableBody({
   scrollParent,
 }: VirtualizedQueueTableBodyProps) {
-  const itemIds = useValue(imageStore$.itemOrder.get());
-  const onRangeChanged = useCallback(
-    (range: ListRange) => {
-      const visibleIds = itemIds.slice(range.startIndex, range.endIndex + 1);
-      prioritizeThumbnails(visibleIds);
-      getImageStore().setVisibleItems(visibleIds);
-    },
-    [itemIds]
-  );
+  const itemIds = useValue(() => imageStore$.itemOrder.get());
+
+  const onRangeChanged = (range: ListRange) => {
+    const visibleIds = itemIds.slice(range.startIndex, range.endIndex + 1);
+    prioritizeThumbnails(visibleIds);
+    getImageStore().setVisibleItems(visibleIds);
+  }
 
   const itemContent = useCallback((_index: number, rowId: string) => (
     <ResultRowCells key={rowId} id={rowId} />
