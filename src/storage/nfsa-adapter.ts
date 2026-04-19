@@ -31,6 +31,13 @@ async function resolveRoot(): Promise<RootDir> {
 export async function createNfsaAdapter(): Promise<StorageAdapter> {
   const root = await resolveRoot();
 
+  const index = new Map<string, string>();
+
+  for await (const [name] of root.entries()) {
+    const key = fileNameToKey(name);
+    if (key != null) index.set(key, name);
+  }
+
   return {
     async set(key: string, data: ArrayBuffer): Promise<void> {
       const name = toFileName(key);
@@ -39,6 +46,7 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
       try {
         await writable.write(data);
         await writable.close();
+        index.set(key, name);
       } catch (err) {
         await writable.abort().catch(() => {});
         throw err;
@@ -46,8 +54,9 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
     },
 
     async get(key: string): Promise<ArrayBuffer | null> {
+      const name = index.get(key) ?? toFileName(key);
       try {
-        const handle = await root.getFileHandle(toFileName(key));
+        const handle = await root.getFileHandle(name);
         const file = await handle.getFile();
         return await file.arrayBuffer();
       } catch {
@@ -56,8 +65,9 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
     },
 
     async getBackedFile(key: string): Promise<File | null> {
+      const name = index.get(key) ?? toFileName(key);
       try {
-        const handle = await root.getFileHandle(toFileName(key));
+        const handle = await root.getFileHandle(name);
         return await handle.getFile();
       } catch {
         return null;
@@ -65,12 +75,15 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
     },
 
     async getWritableHandle(key: string): Promise<FileSystemFileHandle> {
-      return root.getFileHandle(toFileName(key), { create: true });
+      const name = toFileName(key);
+      return root.getFileHandle(name, { create: true });
     },
 
     async delete(key: string): Promise<void> {
+      const name = index.get(key) ?? toFileName(key);
       try {
-        await root.removeEntry(toFileName(key));
+        await root.removeEntry(name);
+        index.delete(key);
       } catch {
         /* noop */
       }
@@ -78,24 +91,30 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
 
     async deleteByPrefix(prefix: string): Promise<number> {
       let n = 0;
-      for await (const [name] of root.entries()) {
-        const decoded = fileNameToKey(name);
-        if (decoded == null) continue;
-        if (decoded.startsWith(prefix)) {
-          try {
-            await root.removeEntry(name);
-            n++;
-          } catch {
-            /* noop */
-          }
+      const todo: [string, string][] = [];
+      for (const [key, name] of index) {
+        if (key.startsWith(prefix)) {
+          todo.push([key, name]);
         }
       }
+
+      await Promise.all(todo.map(async ([key, name]) => {
+        try {
+          await root.removeEntry(name);
+          index.delete(key);
+          n++;
+        } catch {
+          /* noop */
+        }
+      }));
       return n;
     },
 
     async has(key: string): Promise<boolean> {
+      if (index.has(key)) return true;
       try {
         await root.getFileHandle(toFileName(key));
+        index.set(key, toFileName(key));
         return true;
       } catch {
         return false;
@@ -108,14 +127,15 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
     },
 
     async clear(): Promise<void> {
-      for await (const [name] of root.entries()) {
-        if (fileNameToKey(name) == null) continue;
+      const todo = Array.from(index.entries());
+      await Promise.all(todo.map(async ([key, name]) => {
         try {
           await root.removeEntry(name);
+          index.delete(key);
         } catch {
           /* noop */
         }
-      }
+      }));
     },
   };
 }
