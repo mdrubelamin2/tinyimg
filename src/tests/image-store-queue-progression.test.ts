@@ -4,6 +4,14 @@ import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
 import { registerDirectDropOriginal } from '@/storage/dropped-original-files';
 import { useImageStore } from '@/store/image-store';
 
+vi.mock('@/storage/queue-binary', async () => {
+  const actual = await vi.importActual<typeof import('@/storage/queue-binary')>('@/storage/queue-binary');
+  return {
+    ...actual,
+    persistEncodedOutput: vi.fn().mockResolvedValue({ payloadKey: 'out:mock:key' }),
+  };
+});
+
 function createItem(id: string, name: string): ImageItem {
   return {
     id,
@@ -82,11 +90,15 @@ describe('image-store queue progression', () => {
     void useImageStore.getState()._processNextAsync(DEFAULT_GLOBAL_OPTIONS, { getState: useImageStore.getState });
     await flushAsyncWork();
 
+    // Multi-row dispatch: both small items fit in the available capacity and are dispatched together.
     expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_PROCESSING);
-    expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PENDING);
-    expect(addTask).toHaveBeenCalledTimes(1);
-    expect(addTask).toHaveBeenLastCalledWith(
+    expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
+    expect(addTask).toHaveBeenCalledTimes(2);
+    expect(addTask).toHaveBeenCalledWith(
       expect.objectContaining({ id: first.id, resultId: 'png', format: 'png' })
+    );
+    expect(addTask).toHaveBeenCalledWith(
+      expect.objectContaining({ id: second.id, resultId: 'png', format: 'png' })
     );
 
     return { addTask, first, second };
@@ -111,17 +123,12 @@ describe('image-store queue progression', () => {
 
     useImageStore.getState()._applyWorkerResult(response);
     await flushAsyncWork();
-    await vi.waitUntil(
-      () => useImageStore.getState().items.get(second.id)?.status === STATUS_PROCESSING,
-      { timeout: 2000, interval: 1 }
-    );
 
+    // Both were already dispatched in the seed; first is now SUCCESS, second still PROCESSING.
     expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_SUCCESS);
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
+    // addTask was called twice in seed (both rows dispatched together); no new calls needed.
     expect(addTask).toHaveBeenCalledTimes(2);
-    expect(addTask).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: second.id, resultId: 'png', format: 'png' })
-    );
   });
 
   it('starts the next pending item after the current item errors', async () => {
@@ -147,12 +154,11 @@ describe('image-store queue progression', () => {
 
     await flushAsyncWork();
 
+    // Both were already dispatched in the seed; first errored, second still PROCESSING.
     expect(useImageStore.getState().items.get(first.id)?.status).toBe('error');
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
+    // addTask was called twice in seed (both rows dispatched together); no new calls needed.
     expect(addTask).toHaveBeenCalledTimes(2);
-    expect(addTask).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: second.id, resultId: 'png', format: 'png' })
-    );
   });
 
   it('revokes preview and result URLs when clearing finished items', () => {

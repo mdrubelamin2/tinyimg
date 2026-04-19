@@ -21,6 +21,7 @@ import {
   UPDATE_OPTIONS_DEBOUNCE_MS,
   RESULT_PERSIST_BATCH_MAX_BYTES,
   RESULT_PERSIST_BATCH_MAX_ITEMS,
+  LARGE_FILE_SERIAL_THRESHOLD_BYTES,
 } from '@/constants';
 import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
 import {
@@ -113,6 +114,18 @@ let flushScheduled = false;
 /** Serializes persist work across RAF batches so large `encodedBytes` are not retained concurrently. */
 let resultPersistChain: Promise<void> = Promise.resolve();
 
+const inFlightRowIds = new Set<string>();
+
+let largeFileInFlight = false;
+
+function recomputeLargeFileFlag(): boolean {
+  for (const id of inFlightRowIds) {
+    const item = imageStore$.items[id]?.peek();
+    if (item && item.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES) return true;
+  }
+  return false;
+}
+
 let lastPersistErrorToastAt = 0;
 const PERSIST_ERROR_TOAST_COOLDOWN_MS = 4000;
 
@@ -181,6 +194,8 @@ function applyPersistFailure(
       imageStore$.pendingIds.set(nextPending);
 
       if (shouldProcessNext) {
+        inFlightRowIds.delete(response.id);
+        largeFileInFlight = recomputeLargeFileFlag();
         void getState()._processNextAsync(opts, { getState });
       }
     });
@@ -253,6 +268,8 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
                 imageStore$.pendingIds.set(nextPending);
 
                 if (shouldProcessNext) {
+                  inFlightRowIds.delete(response.id);
+                  largeFileInFlight = recomputeLargeFileFlag();
                   void getState()._processNextAsync(opts, { getState });
                 }
               });
@@ -711,6 +728,7 @@ function _batchApplyResultsImpl(): void {
   const otherResponses = responses.filter(r => r.type !== 'RESULT');
 
   let shouldProcessNextSync = false;
+  const terminalIds: string[] = [];
 
   startTransition(() => {
     batch(() => {
@@ -737,6 +755,7 @@ function _batchApplyResultsImpl(): void {
             nextItem.progress = 100;
             nextPending = nextPending.filter(x => x !== response.id);
             shouldProcessNextSync = true;
+            terminalIds.push(response.id);
           }
 
           itemsMap.set(response.id, nextItem);
@@ -763,6 +782,7 @@ function _batchApplyResultsImpl(): void {
           nextItem.progress = 100;
           nextPending = nextPending.filter(x => x !== task.id);
           shouldProcessNextSync = true;
+          terminalIds.push(task.id);
         }
 
         itemsMap.set(task.id, nextItem);
@@ -773,6 +793,10 @@ function _batchApplyResultsImpl(): void {
     });
 
     if (shouldProcessNextSync) {
+      for (const id of terminalIds) {
+        inFlightRowIds.delete(id);
+      }
+      largeFileInFlight = recomputeLargeFileFlag();
       void getState()._processNextAsync(useSettingsStore.getState().options, { getState });
     }
   });
@@ -788,6 +812,13 @@ async function _processNextAsyncImpl(
   options: GlobalOptions,
   api: { getState: () => ImageStore }
 ): Promise<void> {
+  if (largeFileInFlight) return;
+
+  const currentPool = getPool(api);
+
+  const remainingCapacity = currentPool.concurrencyLimit - currentPool.activeCount;
+  if (remainingCapacity <= 0) return;
+
   const items = snapshotItemsMap();
   const itemOrder = imageStore$.itemOrder.peek();
   const pendingIds = imageStore$.pendingIds.peek();
@@ -815,17 +846,68 @@ async function _processNextAsyncImpl(
     return 0;
   });
 
-  const nextId = sortedIds[0];
-  if (!nextId) return;
-  const nextItem = items.get(nextId);
-  if (!nextItem || nextItem.status !== STATUS_PENDING) return;
+  let capacity = remainingCapacity;
+  let dispatchedCount = 0;
+  const idsToRemoveFromPending: string[] = [];
 
-  const sourceFile = await resolveOriginalSourceFile(nextId, nextItem);
-  if (!sourceFile) return;
+  for (const candidateId of sortedIds) {
+    const candidateItem = items.get(candidateId);
+    if (!candidateItem || candidateItem.status !== STATUS_PENDING) continue;
 
-  const processingItem: ImageItem = { ...nextItem, status: STATUS_PROCESSING };
+    const isLarge = candidateItem.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES;
+
+    if (isLarge) {
+      if (inFlightRowIds.size > 0) {
+        break;
+      }
+      const sourceFile = await resolveOriginalSourceFile(candidateId, candidateItem);
+      if (!sourceFile) break;
+      _dispatchRowToPool(candidateId, candidateItem, sourceFile, currentPool, options);
+      idsToRemoveFromPending.push(candidateId);
+      dispatchedCount++;
+      break;
+    }
+
+    const slots = buildOutputSlots({ ...candidateItem, status: STATUS_PROCESSING }, options);
+    const slotsNeeded = slots.length;
+
+    if (slotsNeeded > capacity) {
+      if (dispatchedCount === 0 && inFlightRowIds.size === 0) {
+        const sourceFile = await resolveOriginalSourceFile(candidateId, candidateItem);
+        if (!sourceFile) break;
+        _dispatchRowToPool(candidateId, candidateItem, sourceFile, currentPool, options);
+        idsToRemoveFromPending.push(candidateId);
+        dispatchedCount++;
+      }
+      break;
+    }
+
+    const sourceFile = await resolveOriginalSourceFile(candidateId, candidateItem);
+    if (!sourceFile) break;
+
+    _dispatchRowToPool(candidateId, candidateItem, sourceFile, currentPool, options);
+    idsToRemoveFromPending.push(candidateId);
+    dispatchedCount++;
+    capacity -= slotsNeeded;
+  }
+
+  if (idsToRemoveFromPending.length > 0) {
+    imageStore$.pendingIds.set(pendingIds.filter(id => !idsToRemoveFromPending.includes(id)));
+  }
+}
+
+function _dispatchRowToPool(
+  id: string,
+  candidateItem: ImageItem,
+  sourceFile: File,
+  currentPool: WorkerPool,
+  options: GlobalOptions
+): void {
+  const processingItem: ImageItem = { ...candidateItem, status: STATUS_PROCESSING };
   const slots = buildOutputSlots(processingItem, options);
-  const currentPool = getPool(api);
+
+  inFlightRowIds.add(id);
+  largeFileInFlight = recomputeLargeFileFlag();
 
   for (const slot of slots) {
     if (!processingItem.results[slot.resultId]) continue;
@@ -852,10 +934,7 @@ async function _processNextAsyncImpl(
     });
   }
 
-  batch(() => {
-    imageStore$.items[nextId]!.set(processingItem);
-    imageStore$.pendingIds.set(imageStore$.pendingIds.peek().filter(x => x !== nextId));
-  });
+  imageStore$.items[id]!.set(processingItem);
 }
 
 function _processNextImpl(options: GlobalOptions, api: { getState: () => ImageStore }): void {

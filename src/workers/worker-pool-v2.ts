@@ -44,13 +44,22 @@ export class WorkerPool {
 
   constructor(concurrency: number, callbacks: WorkerPoolCallbacks) {
     this.callbacks = callbacks;
-    this.maxConcurrent = Math.max(1, concurrency);
-    const { min, max } = dynamicPoolBounds(this.maxConcurrent);
+    const maxConcurrent = Math.max(1, concurrency);
+    const { min, max } = dynamicPoolBounds(maxConcurrent);
+    this.maxConcurrent = max;
     this.pool = new DynamicThreadPool(min, max, optimizerPoolifierWorkerUrl, {
       errorEventHandler: (e) => {
         console.error(e);
       },
     });
+  }
+
+  get activeCount(): number {
+    return this.active.size;
+  }
+
+  get concurrencyLimit(): number {
+    return this.maxConcurrent;
   }
 
   addTask(task: Task): void {
