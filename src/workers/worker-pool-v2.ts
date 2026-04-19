@@ -95,13 +95,13 @@ export class WorkerPool {
     this.pump();
   }
 
-  destroy(): void {
+  async destroy(): Promise<void> {
     this.pending.length = 0;
     for (const { controller } of this.active.values()) {
       controller.abort();
     }
     this.active.clear();
-    void this.pool.destroy();
+    await this.pool.destroy();
   }
 
   private pump(): void {

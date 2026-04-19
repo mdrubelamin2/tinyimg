@@ -86,7 +86,7 @@ interface ImageStoreActions {
   addFiles: (files: FileList | File[] | DataTransferItemList | DataTransferItem[], options: GlobalOptions) => Promise<void>;
   removeItem: (id: string) => void;
   clearFinished: () => void;
-  clearAll: () => void;
+  clearAll: () => Promise<void>;
   reorderItems: (fromIndex: number, toIndex: number) => void;
   setItemOutputFormats: (id: string, formats: string[] | null, options: GlobalOptions) => void;
   setItemQualityPercent: (id: string, percent: number | null, options: GlobalOptions) => void;
@@ -556,7 +556,7 @@ function clearFinishedImpl(): void {
   });
 }
 
-function clearAllImpl(): void {
+async function clearAllImpl(): Promise<void> {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
@@ -576,7 +576,7 @@ function clearAllImpl(): void {
     void deleteItemPayloads(id);
   }
   clearDirectDropOriginals();
-  if (pool) pool.destroy();
+  if (pool) await pool.destroy();
   pool = null;
   batch(() => {
     for (const id of Object.keys(imageStore$.items.peek())) {
@@ -992,8 +992,8 @@ const imageStoreSingleton: ImageStore = {
     removeItemImpl(id, { getState });
   },
   clearFinished: clearFinishedImpl,
-  clearAll() {
-    clearAllImpl();
+  async clearAll() {
+    await clearAllImpl();
   },
   reorderItems: reorderItemsImpl,
   setItemOutputFormats(id, formats, options) {
