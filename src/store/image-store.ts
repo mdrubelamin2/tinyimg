@@ -696,6 +696,11 @@ function applyGlobalOptionsImpl(options: GlobalOptions, forceAll: boolean): void
 }
 
 function _applyWorkerResultImpl(response: WorkerOutbound): void {
+  if (response.type === 'RESULT') {
+    schedulePersistWorkerResults([response]);
+    return;
+  }
+
   responseBuffer.push(response);
   if (!flushScheduled) {
     flushScheduled = true;
@@ -724,9 +729,6 @@ function _batchApplyResultsImpl(): void {
 
   if (responses.length === 0 && errors.length === 0) return;
 
-  const resultResponses = responses.filter((r): r is Extract<WorkerOutbound, { type: 'RESULT' }> => r.type === 'RESULT');
-  const otherResponses = responses.filter(r => r.type !== 'RESULT');
-
   let shouldProcessNextSync = false;
   const terminalIds: string[] = [];
 
@@ -735,7 +737,7 @@ function _batchApplyResultsImpl(): void {
       const itemsMap = snapshotItemsMap();
       let nextPending = [...imageStore$.pendingIds.peek()];
 
-      for (const response of otherResponses) {
+      for (const response of responses) {
         if (response.type === 'ERROR') {
           const item = itemsMap.get(response.id);
           if (!item) continue;
@@ -800,12 +802,6 @@ function _batchApplyResultsImpl(): void {
       void getState()._processNextAsync(useSettingsStore.getState().options, { getState });
     }
   });
-
-  if (resultResponses.length === 0) return;
-
-  for (const chunk of chunkResultResponsesForPersist(resultResponses)) {
-    schedulePersistWorkerResults(chunk);
-  }
 }
 
 async function _processNextAsyncImpl(
