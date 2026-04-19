@@ -83,9 +83,14 @@ export function enqueueThumbnail(id: string, file: File): void {
 export function enqueueThumbnails(ids: readonly string[]): void {
   void (async () => {
     for (const id of ids) {
-      const item = imageStore$.items[id]?.peek() as ImageItem | undefined;
-      if (!item) continue;
-      const file = await resolveOriginalSourceFile(id, item);
+      if (!imageStore$.items[id]?.peek()) continue;
+      let file: File | null = null;
+      try {
+        file = await resolveOriginalSourceFile(id, imageStore$.items[id]!.peek()!);
+      } catch {
+        continue;
+      }
+      if (!imageStore$.items[id]?.peek()) continue; // post-async stale-check
       if (file) enqueueThumbnail(id, file);
     }
   })();
