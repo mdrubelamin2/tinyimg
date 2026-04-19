@@ -7,11 +7,16 @@ import { hasTransparency } from './alpha.ts';
 
 async function imageDataToRawPng(imageData: ImageData): Promise<ArrayBuffer> {
   const canvas = new OffscreenCanvas(imageData.width, imageData.height);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Could not get 2d context for lossless PNG');
-  ctx.putImageData(imageData, 0, 0);
-  const blob = await canvas.convertToBlob({ type: 'image/png' });
-  return blob.arrayBuffer();
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not get 2d context for lossless PNG');
+    ctx.putImageData(imageData, 0, 0);
+    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    return blob.arrayBuffer();
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
 }
 
 export async function encodeLossless(

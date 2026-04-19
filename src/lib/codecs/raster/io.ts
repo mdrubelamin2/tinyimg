@@ -6,18 +6,28 @@ export async function resizeImage(
   height: number
 ): Promise<ImageData> {
   const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Could not get 2d context for resize');
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  return ctx.getImageData(0, 0, width, height);
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not get 2d context for resize');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    return ctx.getImageData(0, 0, width, height);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
 }
 
 export async function getImageData(bitmap: ImageBitmap): Promise<ImageData> {
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) throw new Error('Could not get 2d context');
-  ctx.drawImage(bitmap, 0, 0);
-  return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+  try {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Could not get 2d context');
+    ctx.drawImage(bitmap, 0, 0);
+    return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
 }
 
 export function checkPixelLimit(width: number, height: number): void {

@@ -414,13 +414,18 @@ async function downscaleImageData(
   });
 
   const targetCanvas = new OffscreenCanvas(targetWidth, targetHeight);
-  const targetCtx = targetCanvas.getContext('2d', { willReadFrequently: true });
-  if (!targetCtx) throw new Error('Could not get target 2d context');
+  try {
+    const targetCtx = targetCanvas.getContext('2d', { willReadFrequently: true });
+    if (!targetCtx) throw new Error('Could not get target 2d context');
 
-  targetCtx.drawImage(bitmap, 0, 0);
-  bitmap.close();
+    targetCtx.drawImage(bitmap, 0, 0);
+    bitmap.close();
 
-  return targetCtx.getImageData(0, 0, targetWidth, targetHeight);
+    return targetCtx.getImageData(0, 0, targetWidth, targetHeight);
+  } finally {
+    targetCanvas.width = 0;
+    targetCanvas.height = 0;
+  }
 }
 
 function assertDimensions(

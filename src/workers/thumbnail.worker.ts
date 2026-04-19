@@ -61,12 +61,17 @@ self.onmessage = async (e: MessageEvent<ThumbnailWorkerInbound>) => {
     const tw = Math.max(1, Math.round(w * scale));
     const th = Math.max(1, Math.round(h * scale));
     const canvas = new OffscreenCanvas(tw, th);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Could not acquire 2d context');
-    ctx.drawImage(bmp, 0, 0, tw, th);
-    bmp.close();
-    const blob = await canvas.convertToBlob({ type: 'image/webp', quality: WEBP_QUALITY });
-    postOutbound({ type: 'THUMB_OK', id, blob });
+    try {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not acquire 2d context');
+      ctx.drawImage(bmp, 0, 0, tw, th);
+      bmp.close();
+      const blob = await canvas.convertToBlob({ type: 'image/webp', quality: WEBP_QUALITY });
+      postOutbound({ type: 'THUMB_OK', id, blob });
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
   } catch (err) {
     postOutbound({
       type: 'THUMB_ERR',
