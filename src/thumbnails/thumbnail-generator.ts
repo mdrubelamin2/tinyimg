@@ -45,6 +45,7 @@ function ensureWorker(): Worker {
     }
     if (data.type === 'THUMB_ERR') {
       console.warn('thumbnail worker', data.id, data.error);
+      queuedId.delete(data.id);
     }
     busy = false;
     pump();
@@ -98,7 +99,7 @@ export function enqueueThumbnails(ids: readonly string[]): void {
         continue;
       }
       if (!imageStore$.items[id]?.peek()) continue; // post-async stale-check
-      if (file) enqueueThumbnail(id, file);
+      if (file && file.size > 0) enqueueThumbnail(id, file);
     }
   })();
 }
