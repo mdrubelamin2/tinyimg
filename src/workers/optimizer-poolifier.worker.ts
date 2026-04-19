@@ -14,5 +14,5 @@ export default new ThreadWorker<Payload, WorkerOutbound>(
     if (data == null) throw new Error('Missing optimizer payload');
     return runOptimizeTask({ id: data.id, file: data.file, options: data.options });
   },
-  { maxInactiveTime: 60_000 }
+  { maxInactiveTime: 10_000 }
 );
