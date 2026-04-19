@@ -17,26 +17,38 @@ import {
 
 export type ContentPreset = 'photo' | 'graphic';
 
+const colorBitVec = new Uint8Array(1 << 21);
+
 export function classifyContent(imageData: ImageData): ContentPreset {
   try {
     const { data, width, height } = imageData;
     const totalPx = width * height;
     if (totalPx < SMALL_IMAGE_PX) return 'photo';
 
+    colorBitVec.fill(0);
     const step = totalPx > MAX_PIXELS_FOR_CLASSIFY ? Math.ceil(totalPx / MAX_PIXELS_FOR_CLASSIFY) : 1;
-    const colorCount = new Set<number>();
+    let uniqueColors = 0;
     const hist: number[] = new Array(HISTOGRAM_BINS).fill(0);
     for (let i = 0; i < data.length; i += 4 * step) {
       const r = data[i]!;
       const g = data[i + 1]!;
       const b = data[i + 2]!;
-      const key = (r << 16) | (g << 8) | b;
-      colorCount.add(key);
+
+      const colorIdx = (r << 16) | (g << 8) | b;
+      const byteIdx = colorIdx >> 3;
+      const bitIdx = colorIdx & 7;
+      if (!(colorBitVec[byteIdx]! & (1 << bitIdx))) {
+        colorBitVec[byteIdx] = colorBitVec[byteIdx]! | (1 << bitIdx);
+        uniqueColors++;
+      }
+
       const y = Math.round(LUMINANCE_R * r + LUMINANCE_G * g + LUMINANCE_B * b);
       const bin = Math.min(HISTOGRAM_BINS - 1, y);
       hist[bin] = (hist[bin] ?? 0) + 1;
+
+      if (uniqueColors >= GRAPHIC_COLOR_THRESHOLD) return 'photo';
     }
-    const uniqueColors = colorCount.size;
+
     let entropy = 0;
     const sampled = totalPx > MAX_PIXELS_FOR_CLASSIFY ? Math.ceil(totalPx / step) : totalPx;
     for (let i = 0; i < HISTOGRAM_BINS; i++) {
