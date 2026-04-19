@@ -6,6 +6,7 @@ import ThumbnailWorkerUrl from '@/workers/thumbnail.worker.ts?worker&url';
 import {
   thumbnailCacheRevoke,
   thumbnailCacheSet,
+  thumbnailCachePeek,
   setThumbnailEvictionHandler,
   setThumbnailVisibleIdsGetter,
 } from '@/thumbnails/thumbnail-cache';
@@ -27,13 +28,19 @@ function ensureWorker(): Worker {
     if (data.type === 'THUMB_OK') {
       const urlStr = URL.createObjectURL(data.blob);
       thumbnailCacheSet(data.id, urlStr);
-      const item = imageStore$.items[data.id]?.peek() as ImageItem | undefined;
-      if (item) {
-        const prev = item.previewUrl;
-        batch(() => {
-          imageStore$.items[data.id]?.set({ ...item, previewUrl: urlStr });
-        });
-        if (prev) URL.revokeObjectURL(prev);
+
+      const stillCached = thumbnailCachePeek(data.id) === urlStr;
+      if (stillCached) {
+        const item = imageStore$.items[data.id]?.peek() as ImageItem | undefined;
+        if (item) {
+          const prev = item.previewUrl;
+          batch(() => {
+            imageStore$.items[data.id]?.set({ ...item, previewUrl: urlStr });
+          });
+          if (prev) URL.revokeObjectURL(prev);
+        }
+      } else {
+        URL.revokeObjectURL(urlStr);
       }
     }
     if (data.type === 'THUMB_ERR') {
