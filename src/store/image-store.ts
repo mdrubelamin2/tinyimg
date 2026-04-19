@@ -211,7 +211,8 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
     .then(async () => {
       const opts = useSettingsStore.getState().options;
       while (queue.length > 0) {
-        const response = queue.shift()!;
+        let response: WorkerOutboundResult | null = queue.shift()!;
+        if (!response) continue;
         const byteLen = response.encodedBytes.byteLength;
         heapMetrics.persistPipelineEnter();
         const t0 = performance.now();
@@ -233,7 +234,7 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
 
             startTransition(() => {
               batch(() => {
-                const item = imageStore$.items[response.id]?.peek();
+                const item = imageStore$.items[response!.id]?.peek();
                 if (!item) return;
                 const result = item.results[rid];
                 if (!result) return;
@@ -244,13 +245,13 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
                   [rid]: {
                     ...result,
                     status: STATUS_SUCCESS,
-                    size: response.size,
-                    formattedSize: response.formattedSize,
-                    savingsPercent: response.savingsPercent,
+                    size: response!.size,
+                    formattedSize: response!.formattedSize,
+                    savingsPercent: response!.savingsPercent,
                     payloadKey,
-                    label: response.label,
+                    label: response!.label,
                     downloadUrl: undefined,
-                    timing: response.timing,
+                    timing: response!.timing,
                   },
                 };
 
@@ -260,15 +261,15 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
                   const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
                   nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
                   nextItem.progress = 100;
-                  nextPending = nextPending.filter(x => x !== response.id);
+                  nextPending = nextPending.filter(x => x !== response!.id);
                   shouldProcessNext = true;
                 }
 
-                imageStore$.items[response.id]!.set(nextItem);
+                imageStore$.items[response!.id]!.set(nextItem);
                 imageStore$.pendingIds.set(nextPending);
 
                 if (shouldProcessNext) {
-                  inFlightRowIds.delete(response.id);
+                  inFlightRowIds.delete(response!.id);
                   largeFileInFlight = recomputeLargeFileFlag();
                   void getState()._processNextAsync(opts, { getState });
                 }
@@ -282,6 +283,10 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
         } finally {
           heapMetrics.persistDurationMs(performance.now() - t0, byteLen);
           heapMetrics.persistPipelineExit();
+          if (response) {
+            response.encodedBytes = null as unknown as ArrayBuffer;
+            response = null;
+          }
         }
       }
     })
