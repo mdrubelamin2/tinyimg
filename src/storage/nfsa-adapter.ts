@@ -36,8 +36,13 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
       const name = toFileName(key);
       const handle = await root.getFileHandle(name, { create: true });
       const writable = await handle.createWritable();
-      await writable.write(data);
-      await writable.close();
+      try {
+        await writable.write(data);
+        await writable.close();
+      } catch (err) {
+        await writable.abort().catch(() => {});
+        throw err;
+      }
     },
 
     async get(key: string): Promise<ArrayBuffer | null> {
