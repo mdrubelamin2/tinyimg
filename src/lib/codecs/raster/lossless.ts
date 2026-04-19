@@ -39,7 +39,7 @@ export async function encodeLossless(
     }
     case 'jpeg': {
       const jpegInput = hasTransparency(imageData.data)
-        ? await compositeImageDataOnWhite(imageData)
+        ? compositeImageDataOnWhite(imageData)
         : imageData;
       return jpeg.encode(jpegInput, {
         quality: 100,

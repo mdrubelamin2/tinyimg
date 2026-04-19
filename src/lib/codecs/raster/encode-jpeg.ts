@@ -8,7 +8,7 @@ export async function encodeJpegWithPreset(
   pTry: RasterEncodePreset
 ): Promise<ArrayBuffer> {
   const jpegInput = hasTransparency(imageData.data)
-    ? await compositeImageDataOnWhite(imageData)
+    ? compositeImageDataOnWhite(imageData)
     : imageData;
   return jpeg.encode(jpegInput, {
     quality: pTry.jpeg.quality,
