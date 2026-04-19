@@ -11,19 +11,14 @@ export function FilenameCellTable({
   id: string;
   onPreview?: (item: ImageItem) => void;
 }) {
-  const snap = useValue(() => {
-    const node = imageStore$.items[id];
-    if (!node) return undefined;
-    return {
-      previewUrl: node.previewUrl.get(),
-      fileName: node.fileName.get(),
-      originalFormat: node.originalFormat.get(),
-    };
-  });
+  const node = imageStore$.items[id];
+  const previewUrl = useValue(() => node?.previewUrl.get());
+  const fileName = useValue(() => node?.fileName.get());
+  const originalFormat = useValue(() => node?.originalFormat.get());
 
-  if (!snap) return null;
+  if (!fileName) return null;
 
-  const thumbUrl = thumbnailCachePeek(id) ?? snap.previewUrl;
+  const thumbUrl = thumbnailCachePeek(id) ?? previewUrl;
 
   const handlePreview = () => {
     const item = imageStore$.items[id]?.peek() as ImageItem | undefined;
@@ -62,10 +57,10 @@ export function FilenameCellTable({
             className="text-sm font-semibold text-foreground truncate min-w-0 w-full max-w-full md:max-w-[28rem]"
             data-testid="filename"
           >
-            {snap.fileName}
+            {fileName}
           </p>
           <p className="text-[10px] text-muted-foreground font-mono tracking-tighter uppercase">
-            {snap.originalFormat}
+            {originalFormat}
           </p>
         </div>
       </div>
