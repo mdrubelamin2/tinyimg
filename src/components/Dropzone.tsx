@@ -3,15 +3,15 @@ import { useValue } from '@legendapp/state/react';
 import { Upload, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { openFilesWithNfsa, OPEN_IMAGE_AND_ZIP_TYPES } from '@/lib/fs-access';
-import { intake$ } from '@/store/image-store';
+import { getImageStore, intake$ } from '@/store/image-store';
+import { useSettingsStore } from '@/store/settings-store';
 
-interface DropzoneProps {
-  onFilesAdded: (files: File[] | DataTransferItem[]) => void;
-}
-
-export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
+export const Dropzone = () => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const options = useSettingsStore((state) => state.options);
+  const addFiles = getImageStore().addFiles;
 
   const intakeBusy = useValue(() => intake$.active.get());
   const dropDisabled = intakeBusy;
@@ -40,7 +40,7 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
         openNativeFilePicker();
         return;
       }
-      onFilesAdded(files);
+      addFiles(files, options);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
       if (e instanceof Error && e.name === 'AbortError') return;
@@ -54,7 +54,7 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
     setIsDragging(false);
     const items = e.dataTransfer.items ?? e.dataTransfer.files;
     const itemsArray = Array.from(items);
-    onFilesAdded(itemsArray);
+    addFiles(itemsArray, options);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -69,7 +69,7 @@ export const Dropzone = ({ onFilesAdded }: DropzoneProps) => {
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      onFilesAdded(filesArray);
+      addFiles(filesArray, options);
     }
     e.target.value = '';
   };

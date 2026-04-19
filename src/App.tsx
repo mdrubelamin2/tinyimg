@@ -5,13 +5,11 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FileDropOverlay } from '@/components/FileDropOverlay';
 import { ResultsTable } from '@/components/ResultsTable';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { useQueueStats } from '@/hooks/useQueueStats';
 import { syncIntakeProgressToast } from '@/notifications/toast-emitter';
 import { queueStats$ } from '@/state/queue-stats';
 import { getImageStore, imageStore$, intake$ } from '@/store/image-store';
-import { useSettingsStore } from '@/store/settings-store';
 import { Show, useObserveEffect, useValue } from '@legendapp/state/react';
-import { lazy, Suspense, useCallback } from 'react';
+import { lazy, Suspense } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { Toaster } from 'sonner';
 import { preview$ } from './store/preview-store';
@@ -26,13 +24,9 @@ const AppFooterFaq = lazy(() =>
 export default function App() {
   const itemCount = useValue(() => imageStore$.itemOrder.get().length);
   const preview = useValue(preview$);
-  const addFiles = getImageStore().addFiles;
+  const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get());
 
   const downloadAll = getImageStore().downloadAll;
-
-  const options = useSettingsStore((state) => state.options);
-
-  const { hasFinishedItems } = useQueueStats();
 
   useObserveEffect(() => {
     syncIntakeProgressToast(
@@ -50,13 +44,6 @@ export default function App() {
       n > 0 ? (finished ? `${n} images · ${pct}% saved` : `${n} images processing`) : 'Industrial Image Optimization';
     document.title = `TinyIMG — ${helmetTitle}`;
   });
-
-  const handleFilesAdded = useCallback(
-    (files: File[] | DataTransferItem[]) => {
-      void addFiles(files, options);
-    },
-    [addFiles, options]
-  );
 
   useKeyboardShortcuts({
     onDownload: hasFinishedItems ? downloadAll : undefined,
@@ -84,7 +71,7 @@ export default function App() {
 
           <main className="pt-28 md:pt-36 pb-12 px-4 md:px-8 max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-8 md:gap-10">
             <div className="flex-1 space-y-8 md:space-y-10">
-              <Dropzone onFilesAdded={handleFilesAdded} />
+              <Dropzone />
 
               <Show if={() => imageStore$.itemOrder.get().length > 0}>
                 <ResultsTable />
