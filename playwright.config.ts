@@ -24,6 +24,25 @@ export default defineConfig({
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
     },
+    {
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'mobile-firefox',
+      use: {
+        browserName: 'firefox',
+        viewport: devices['Galaxy S8'].viewport,
+        deviceScaleFactor: devices['Galaxy S8'].deviceScaleFactor,
+        hasTouch: devices['Galaxy S8'].hasTouch,
+        userAgent:
+          'Mozilla/5.0 (Android 13; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
+      },
+    },
+    {
+      name: 'mobile-safari',
+      use: { ...devices['iPhone 13'] },
+    },
   ],
   webServer: {
     command: 'npm run dev',

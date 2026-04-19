@@ -2,7 +2,7 @@
  * useKeyboardShortcuts: global keyboard shortcuts for power users.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 
 interface ShortcutHandlers {
   onDelete?: (() => void) | undefined;
@@ -11,30 +11,30 @@ interface ShortcutHandlers {
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
+  const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
+    }
+
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      handlers.onDelete?.();
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault();
+      handlers.onDownload?.();
+    }
+
+    if (e.key === 'Escape') {
+      handlers.onEscape?.();
+    }
+  });
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't fire shortcuts when typing in inputs
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        handlers.onDelete?.();
-      }
-
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault();
-        handlers.onDownload?.();
-      }
-
-      if (e.key === 'Escape') {
-        handlers.onEscape?.();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlers]);
+    const wrapped = (e: KeyboardEvent) => onKeyDown(e);
+    window.addEventListener('keydown', wrapped);
+    return () => window.removeEventListener('keydown', wrapped);
+  }, []);
 }

@@ -5,7 +5,12 @@
 
 // --- User-facing error messages ---
 export const ERR_FILE_EXCEEDS_LIMIT = 'File exceeds 25MB limit';
-export const ERR_ZIP_EXCEEDS_LIMIT = 'ZIP exceeds 25MB limit';
+export const ERR_ZIP_EXCEEDS_LIMIT = 'ZIP exceeds 2GB limit';
+export const ERR_INTAKE_STORAGE_FULL =
+  'Could not save files: browser storage is full. Clear the queue or download results, then try again.';
+export const ERR_PERSIST_STORAGE_FULL =
+  'Could not save optimized output: browser storage is full. Free space (clear finished items or download results), then retry.';
+export const ERR_PERSIST_FAILED = 'Could not save optimized output.';
 export const ERR_INVALID_FILE = 'Invalid or unsupported file content';
 export const ERR_WORKER = 'Worker error';
 export const ERR_TASK_TIMEOUT = 'Task timed out';

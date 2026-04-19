@@ -2,6 +2,7 @@ import { describe, it, vi } from 'vitest';
 import { processSvg } from '@/workers/svg-pipeline';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 // Mock File for Node environment
 class MockFile {
@@ -14,9 +15,20 @@ class MockFile {
   async text() { return this.content; }
 }
 
-const PROJECT_ROOT = '/Volumes/Others/projects/tinyimg2';
+function findRepoRoot(startDir: string): string {
+  let dir = startDir;
+  for (;;) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw new Error('Could not find package.json above test file');
+    }
+    dir = parent;
+  }
+}
 
-// @ts-expect-error - mock fetch doesn't need all properties
+const PROJECT_ROOT = findRepoRoot(path.dirname(fileURLToPath(import.meta.url)));
+
 global.fetch = vi.fn().mockImplementation((url) => {
   const cleanUrl = url.toString().replace(/^file:\/\//, '');
   if (cleanUrl.startsWith('http')) {

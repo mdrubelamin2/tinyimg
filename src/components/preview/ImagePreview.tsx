@@ -1,85 +1,158 @@
-/**
- * ImagePreview: before/after split-view comparison with tabs for multiple formats.
- * Canvas-based with draggable divider for comparing original vs optimized.
- */
-
-import { useRef, useState, useEffect, useMemo } from 'react';
-import { X, ZoomIn, Download } from 'lucide-react';
+import { ImageCompareViewer } from '@/components/preview/ImageCompareViewer';
+import { BYTES_PER_KB, STATUS_SUCCESS, mimeForOutputFormat } from '@/constants';
+import type { ImageItem, ImageResult } from '@/lib/queue/types';
+import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 import { cn } from '@/lib/utils';
-import type { ImageItem } from '@/lib/queue/types';
-import { STATUS_SUCCESS } from '@/constants/index';
+import { createTransientObjectUrlForPayloadKey, resolveOriginalSourceFile } from '@/storage/queue-binary';
+import { downloadStoredOutput } from '@/lib/download';
+import { imageStore$ } from '@/store/image-store';
+import { useValue } from '@legendapp/state/react';
+import { Download, X, ZoomIn } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface ImagePreviewProps {
-  item: ImageItem;
-  selectedFormat: string;
-  onFormatChange: (format: string) => void;
+  itemId: string;
+  selectedResultId: string;
+  onResultChange: (resultId: string) => void;
   onClose: () => void;
 }
 
-const MIN_SPLIT = 0.1;
-const MAX_SPLIT = 0.9;
-const DEFAULT_SPLIT = MAX_SPLIT;
+function chipTitleForResult(result: ImageResult): string {
+  if (result.variantLabel != null && result.variantLabel.length > 0) {
+    return `${result.format.toUpperCase()} · ${result.variantLabel}`;
+  }
+  return result.label ?? result.format;
+}
 
-export const ImagePreview: React.FC<ImagePreviewProps> = ({
-  item,
-  selectedFormat,
-  onFormatChange,
+export function ImagePreview({
+  itemId,
+  selectedResultId,
+  onResultChange,
   onClose,
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [split, setSplit] = useState(DEFAULT_SPLIT);
-  const [isDragging, setIsDragging] = useState(false);
+}: ImagePreviewProps) {
+  const item = useValue(() => imageStore$.items[itemId]?.get() as ImageItem | undefined);
+
+  const [resolvedOriginalObjectUrl, setResolvedOriginalObjectUrl] = useState<string | null>(null);
+  const resolvedOriginalRef = useRef<string | null>(null);
+
+  const [optimizedObjectUrl, setOptimizedObjectUrl] = useState<string | null>(null);
+  const optimizedRef = useRef<string | null>(null);
 
   const successResults = useMemo(() => {
-    return Object.values(item.results).filter(r => r.status === STATUS_SUCCESS);
-  }, [item.results]);
+    if (!item) return [];
+    return Object.values(item.results)
+      .filter(r => r.status === STATUS_SUCCESS)
+      .sort((a, b) => a.resultId.localeCompare(b.resultId));
+  }, [item]);
 
-  const currentResult = item.results[selectedFormat];
-  const originalUrl = item.previewUrl;
-  const optimizedUrl = currentResult?.downloadUrl;
-  const originalSize = item.originalSize;
+  const currentResult = item?.results[selectedResultId];
+  const originalUrl = resolvedOriginalObjectUrl;
+  const optimizedUrl = optimizedObjectUrl;
+  const originalSize = item?.originalSize ?? 0;
   const optimizedSize = currentResult?.size ?? 0;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const snap = imageStore$.items[itemId]?.peek() as ImageItem | undefined;
+      if (!snap) return;
+      const file = await resolveOriginalSourceFile(snap.id, snap);
+      if (cancelled || !file) return;
+      const url = URL.createObjectURL(file);
+      if (cancelled) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (resolvedOriginalRef.current) {
+        URL.revokeObjectURL(resolvedOriginalRef.current);
+      }
+      resolvedOriginalRef.current = url;
+      setResolvedOriginalObjectUrl(url);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (resolvedOriginalRef.current) {
+        URL.revokeObjectURL(resolvedOriginalRef.current);
+        resolvedOriginalRef.current = null;
+      }
+      setResolvedOriginalObjectUrl(null);
+    };
+  }, [itemId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const snap = imageStore$.items[itemId]?.peek() as ImageItem | undefined;
+      const r = snap?.results[selectedResultId];
+      if (!r || r.status !== STATUS_SUCCESS || !r.payloadKey) {
+        if (optimizedRef.current) {
+          URL.revokeObjectURL(optimizedRef.current);
+          optimizedRef.current = null;
+        }
+        setOptimizedObjectUrl(null);
+        return;
+      }
+      const mime = mimeForOutputFormat(r.format);
+      const url = await createTransientObjectUrlForPayloadKey(r.payloadKey, mime);
+      if (cancelled) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      if (optimizedRef.current) {
+        URL.revokeObjectURL(optimizedRef.current);
+      }
+      optimizedRef.current = url;
+      setOptimizedObjectUrl(url);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (optimizedRef.current) {
+        URL.revokeObjectURL(optimizedRef.current);
+        optimizedRef.current = null;
+      }
+      setOptimizedObjectUrl(null);
+    };
+  }, [itemId, selectedResultId, currentResult?.payloadKey, currentResult?.status]);
 
   const savings = originalSize > 0 && optimizedSize > 0
     ? ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
     : '0';
 
-  const handleMove = (clientX: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = (clientX - rect.left) / rect.width;
-    setSplit(Math.max(MIN_SPLIT, Math.min(MAX_SPLIT, x)));
-  };
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    setIsDragging(true);
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    handleMove(e.clientX);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDragging) return;
-    handleMove(e.clientX);
-  };
-
-  const handlePointerUp = () => {
-    setIsDragging(false);
-  };
-
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, []);
+  const downloadBaseName = useMemo(() => {
+    if (!item) return '';
+    const d = item.fileName.lastIndexOf('.');
+    return d > 0 ? item.fileName.substring(0, d) : item.fileName;
+  }, [item]);
 
   const formatBytes = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < BYTES_PER_KB) return `${bytes} B`;
+    return `${(bytes / BYTES_PER_KB).toFixed(1)} KB`;
   };
 
-  if (!originalUrl || !optimizedUrl) return null;
+  if (!item) return null;
+
+  if (!originalUrl || !optimizedUrl) {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+        onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Loading preview"
+      >
+        <div
+          className="relative bg-surface text-surface-foreground rounded-2xl shadow-2xl px-8 py-6 border border-border"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-sm text-muted-foreground">Preparing preview…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -87,28 +160,28 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Preview comparison for ${item.file.name}`}
+      aria-label={`Preview comparison for ${item.fileName}`}
     >
       <div
-        className="relative bg-surface text-surface-foreground rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden border border-border"
+        className="relative flex min-h-0 max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface text-surface-foreground shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <ZoomIn size={18} className="text-primary" />
-            <div>
-              <h3 className="font-bold text-foreground text-sm truncate max-w-[300px]">
-                {item.file.name}
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <ZoomIn size={18} className="shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold text-foreground text-sm truncate min-w-0 max-w-full">
+                {item.fileName}
               </h3>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
-                {currentResult?.label ?? selectedFormat} · Saved {savings}%
+                {currentResult ? chipTitleForResult(currentResult) : '…'} · Saved {savings}%
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-muted transition-colors"
+            className="shrink-0 p-2 rounded-full hover:bg-muted transition-colors"
             aria-label="Close preview"
           >
             <X size={20} className="text-muted-foreground" />
@@ -119,15 +192,15 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         {successResults.length > 1 && (
           <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border/50 bg-gradient-to-r from-muted/20 via-muted/30 to-muted/20 overflow-x-auto scrollbar-hide">
             {successResults.map((result) => {
-              const isActive = result.format === selectedFormat;
+              const isActive = result.resultId === selectedResultId;
               const formatSavings = originalSize > 0 && result.size
                 ? ((originalSize - result.size) / originalSize * 100).toFixed(0)
                 : null;
 
               return (
                 <button
-                  key={result.format}
-                  onClick={() => onFormatChange(result.format)}
+                  key={result.resultId}
+                  onClick={() => onResultChange(result.resultId)}
                   className={cn(
                     'group relative flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 ease-out cursor-pointer',
                     isActive
@@ -140,7 +213,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
                       'w-1 h-1 rounded-full',
                       isActive ? 'bg-white/80' : 'bg-muted-foreground/50 group-hover:bg-success'
                     )} />
-                    <span className="uppercase">{result.label ?? result.format}</span>
+                    <span className="uppercase">{chipTitleForResult(result)}</span>
                     {formatSavings && (
                       <span className={cn(
                         'ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black',
@@ -158,92 +231,49 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           </div>
         )}
 
-        {/* Split view */}
-        <div
-          ref={containerRef}
-          className="relative w-full aspect-video bg-muted cursor-ew-resize select-none overflow-hidden"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-        >
-          {/* Original (full width behind) */}
-          <img
-            src={originalUrl}
-            alt="Original"
-            className="absolute inset-0 w-full h-full object-contain"
-            draggable={false}
-          />
-
-          {/* Optimized (clipped) */}
-          <div
-            className="absolute inset-0 overflow-hidden"
-            style={{ width: `${split * 100}%` }}
-          >
-            <img
-              src={optimizedUrl}
-              alt="Optimized"
-              className="absolute inset-0 w-full h-full object-contain"
-              style={{ width: `${100 / split}%`, maxWidth: 'none' }}
-              draggable={false}
+        <div className="relative aspect-video w-full shrink-0 touch-none select-none overflow-hidden bg-muted min-h-0">
+          <div className="absolute inset-0 min-h-0 overflow-hidden">
+            <ImageCompareViewer
+              originalUrl={originalUrl}
+              optimizedUrl={optimizedUrl}
+              initialPositionPercent={90}
+              className="!rounded-none border-0 bg-transparent"
             />
-          </div>
-
-          {/* Divider line */}
-          <div
-            className={cn(
-              "absolute top-0 bottom-0 w-1 bg-gradient-to-b from-primary to-cta shadow-lg shadow-primary/30 transition-opacity",
-              isDragging ? "opacity-100" : "opacity-90"
-            )}
-            style={{ left: `${split * 100}%` }}
-          >
-            <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-surface shadow-lg flex items-center justify-center">
-              <div className="flex gap-0.5">
-                <div className="w-0.5 h-3 bg-muted-foreground rounded-full" />
-                <div className="w-0.5 h-3 bg-muted-foreground rounded-full" />
-              </div>
-            </div>
-          </div>
-
-          {/* Labels */}
-          <div
-            className="absolute top-3 left-3 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] font-bold uppercase tracking-wider transition-opacity duration-200"
-            style={{ opacity: 0.2 + (split * 0.6) }}
-          >
-            Optimized · {formatBytes(optimizedSize)}
-          </div>
-          <div
-            className="absolute top-3 right-3 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] font-bold uppercase tracking-wider transition-opacity duration-200"
-            style={{ opacity: 0.2 + ((1 - split) * 0.6) }}
-          >
-            Original · {formatBytes(originalSize)}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-3 border-t border-border bg-muted/20">
-          <span className="text-[10px] text-muted-foreground font-medium">
-            Drag to compare · ESC to close
+        <div className="flex flex-col gap-3 border-t border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <span className="text-center text-[10px] font-medium text-muted-foreground sm:text-left">
+            Drag to compare. ESC to close
           </span>
-          {currentResult?.downloadUrl && (
-            <a
-              href={currentResult.downloadUrl}
-              download={`tinyimg-${item.file.name.substring(0, item.file.name.lastIndexOf('.'))}.${selectedFormat === 'jpeg' ? 'jpg' : selectedFormat}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-primary to-primary/80 text-primary-foreground text-[10px] font-bold shadow-md shadow-primary/25 hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
-              aria-label={`Download ${currentResult.label ?? selectedFormat}`}
+          {currentResult?.payloadKey && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentResult.payloadKey) return;
+                void downloadStoredOutput(
+                  currentResult.payloadKey,
+                  currentResult.format,
+                  buildOptimizedDownloadFilename(downloadBaseName, currentResult)
+                );
+              }}
+              className="flex cursor-pointer items-center justify-center gap-1.5 self-center rounded-lg bg-gradient-to-r from-primary to-primary/80 px-3 py-2 text-[10px] font-bold text-primary-foreground shadow-md shadow-primary/25 transition-all duration-200 hover:scale-[1.02] hover:shadow-lg sm:self-auto sm:py-1.5"
+              aria-label={`Download ${chipTitleForResult(currentResult)}`}
             >
               <Download size={12} />
-              <span className="uppercase">{currentResult.label ?? selectedFormat}</span>
+              <span className="uppercase">{chipTitleForResult(currentResult)}</span>
               <span className="opacity-70">·</span>
               <span>{formatBytes(optimizedSize)}</span>
               {savings !== '0' && (
-                <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[9px]">
+                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[9px]">
                   ↓{savings}%
                 </span>
               )}
-            </a>
+            </button>
           )}
         </div>
       </div>
     </div>
   );
-};
+}

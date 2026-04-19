@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-require-imports */
 import { describe, it, expect, vi } from 'vitest';
+import { TextEncoder as NodeTextEncoder } from 'node:util';
 import { processSvg } from '@/workers/svg-pipeline';
 
 // Define ImageData mock globally for node environment
@@ -76,8 +76,7 @@ if (typeof (global as any).OffscreenCanvas === 'undefined') {
 }
 
 if (typeof global.TextEncoder === 'undefined') {
-  const util = require('util');
-  (global as any).TextEncoder = util.TextEncoder;
+  (global as any).TextEncoder = NodeTextEncoder;
 }
 vi.mock('@/lib/optimizer/svg-optimizer', () => ({
   optimizeSvg: vi.fn(async (text: string) => {
@@ -184,7 +183,7 @@ describe('SVG Adaptive Output Pipeline', () => {
     const result = await processSvg(file, defaultOptions);
     
     // Label should indicate wrapped
-    expect(result.label).toContain('svg (webp-wrapped)');
+    expect(result.label).toContain('svg (webp)');
     
     const text = await result.blob.text();
     // Should be wrapped in an SVG with an image tag
@@ -200,7 +199,7 @@ describe('SVG Adaptive Output Pipeline', () => {
     
     const result = await processSvg(file, defaultOptions);
     
-    expect(result.label).toContain('svg (webp-wrapped)');
+    expect(result.label).toContain('svg (webp)');
     
     const text = await result.blob.text();
     expect(text).toContain('<image');

@@ -2,14 +2,14 @@
  * App header: logo, title, theme toggle, GitHub link.
  */
 
-import React from 'react';
 import { Sparkles, Github } from 'lucide-react';
 import { ThemeToggle } from './layout/ThemeToggle';
 
 const GITHUB_URL = 'https://github.com/mdrubelamin2/tinyimg.git';
 
-export const AppHeader: React.FC = () => (
-  <nav className="fixed top-4 left-4 right-4 z-50 glass rounded-2xl px-4 md:px-6 py-3 flex justify-between items-center shadow-2xl shadow-primary/10">
+export function AppHeader() {
+  return (
+  <nav className="fixed z-50 glass rounded-2xl px-4 md:px-6 py-3 flex justify-between items-center shadow-2xl shadow-primary/10 top-[max(1rem,env(safe-area-inset-top,0px))] left-[max(1rem,env(safe-area-inset-left,0px))] right-[max(1rem,env(safe-area-inset-right,0px))]">
     <div className="flex items-center gap-3">
       <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/30 cursor-pointer transition-transform hover:scale-105">
         <Sparkles size={20} fill="currentColor" />
@@ -36,4 +36,5 @@ export const AppHeader: React.FC = () => (
       </a>
     </div>
   </nav>
-);
+  );
+}

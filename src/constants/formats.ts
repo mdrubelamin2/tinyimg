@@ -56,6 +56,20 @@ export function mimeByFormat(format: string): string {
   return `image/${format === 'jpeg' ? 'jpeg' : format}`;
 }
 
+/**
+ * MIME type for `Blob` / object URLs for queue result formats (batch ZIP and hybrid storage).
+ * Differs from {@link mimeByFormat} for e.g. `svg` (`image/svg+xml` vs `image/svg`).
+ */
+export function mimeForOutputFormat(format: string): string {
+  if (format === 'jpeg' || format === 'jpg') return 'image/jpeg';
+  if (format === 'png') return 'image/png';
+  if (format === 'webp') return 'image/webp';
+  if (format === 'avif') return 'image/avif';
+  if (format === 'svg') return 'image/svg+xml';
+  if (format === 'jxl') return 'image/jxl';
+  return 'application/octet-stream';
+}
+
 // --- Valid upload extensions ---
 export const VALID_IMAGE_EXTENSIONS = [
   'svg', 'png', 'webp', 'avif', 'jpg', 'jpeg',
