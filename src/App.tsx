@@ -89,23 +89,16 @@ export default function App() {
           <FileDropOverlay />
 
           <Show if={() => preview$.get() != null}>
-            {() => {
-              const p = preview$.get();
-              if (!p) return null;
-              return (
-                <Suspense fallback={null}>
-                  <ImagePreviewLazy
-                    itemId={p.itemId}
-                    selectedResultId={p.selectedResultId}
-                    onResultChange={(resultId) => {
-                      const cur = preview$.peek();
-                      if (cur) preview$.set({ ...cur, selectedResultId: resultId });
-                    }}
-                    onClose={() => preview$.set(null)}
-                  />
-                </Suspense>
-              );
-            }}
+            <Suspense fallback={null}>
+              <ImagePreviewLazy
+                itemId={preview$.itemId.get() ?? ''}
+                selectedResultId={preview$.selectedResultId.get() ?? ''}
+                onResultChange={(resultId) => {
+                  preview$.selectedResultId.set(resultId);
+                }}
+                onClose={() => preview$.set(null)}
+              />
+            </Suspense>
           </Show>
         </ErrorBoundary>
       </div>
