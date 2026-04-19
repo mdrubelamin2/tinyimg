@@ -44,6 +44,20 @@ async function decodeSourceToBitmap(file: File): Promise<ImageBitmap> {
   return createImageBitmap(file);
 }
 
+let sharedCanvas: OffscreenCanvas | null = null;
+let sharedCtx: OffscreenCanvasRenderingContext2D | null = null;
+
+function getCanvasForSize(w: number, h: number): { canvas: OffscreenCanvas; ctx: OffscreenCanvasRenderingContext2D } {
+  if (!sharedCanvas) {
+    sharedCanvas = new OffscreenCanvas(w, h);
+    sharedCtx = sharedCanvas.getContext('2d', { willReadFrequently: true })!;
+  } else {
+    sharedCanvas.width = w;
+    sharedCanvas.height = h;
+  }
+  return { canvas: sharedCanvas, ctx: sharedCtx! };
+}
+
 self.onmessage = async (e: MessageEvent<ThumbnailWorkerInbound>) => {
   const msg = e.data;
   if (msg.type === 'PING') {
@@ -60,18 +74,12 @@ self.onmessage = async (e: MessageEvent<ThumbnailWorkerInbound>) => {
     const scale = Math.min(MAX_EDGE_PX / w, MAX_EDGE_PX / h, 1);
     const tw = Math.max(1, Math.round(w * scale));
     const th = Math.max(1, Math.round(h * scale));
-    const canvas = new OffscreenCanvas(tw, th);
-    try {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Could not acquire 2d context');
-      ctx.drawImage(bmp, 0, 0, tw, th);
-      bmp.close();
-      const blob = await canvas.convertToBlob({ type: 'image/webp', quality: WEBP_QUALITY });
-      postOutbound({ type: 'THUMB_OK', id, blob });
-    } finally {
-      canvas.width = 0;
-      canvas.height = 0;
-    }
+
+    const { canvas, ctx } = getCanvasForSize(tw, th);
+    ctx.drawImage(bmp, 0, 0, tw, th);
+    bmp.close();
+    const blob = await canvas.convertToBlob({ type: 'image/webp', quality: WEBP_QUALITY });
+    postOutbound({ type: 'THUMB_OK', id, blob });
   } catch (err) {
     postOutbound({
       type: 'THUMB_ERR',
