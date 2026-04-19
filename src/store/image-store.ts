@@ -426,11 +426,18 @@ export async function addFiles(
       batch(() => {
         const order = [...imageStore$.itemOrder.peek()];
         const pending = [...imageStore$.pendingIds.peek()];
+        const orderSet = new Set(order);
+        const pendingSet = new Set(pending);
+
         for (const ent of chunk) {
           imageStore$.items[ent.item.id]!.set(ent.item);
-          if (!order.includes(ent.item.id)) order.push(ent.item.id);
-          if (ent.item.status === STATUS_PENDING && !pending.includes(ent.item.id)) {
+          if (!orderSet.has(ent.item.id)) {
+            order.push(ent.item.id);
+            orderSet.add(ent.item.id);
+          }
+          if (ent.item.status === STATUS_PENDING && !pendingSet.has(ent.item.id)) {
             pending.push(ent.item.id);
+            pendingSet.add(ent.item.id);
           }
         }
         imageStore$.itemOrder.set(order);
@@ -827,12 +834,14 @@ async function _processNextAsyncImpl(
 
   if (pendingIds.length === 0) return;
 
-  const currentPendingArray = itemOrder.filter(id => pendingIds.includes(id));
+  const pendingSet = new Set(pendingIds);
+  const currentPendingArray = itemOrder.filter(id => pendingSet.has(id));
   if (currentPendingArray.length === 0) return;
 
+  const visibleSet = new Set(visibleItemIds);
   const sortedIds = [...currentPendingArray].sort((a, b) => {
-    const aVisible = visibleItemIds.includes(a);
-    const bVisible = visibleItemIds.includes(b);
+    const aVisible = visibleSet.has(a);
+    const bVisible = visibleSet.has(b);
 
     if (aVisible && !bVisible) return -1;
     if (!aVisible && bVisible) return 1;
@@ -893,7 +902,8 @@ async function _processNextAsyncImpl(
   }
 
   if (idsToRemoveFromPending.length > 0) {
-    imageStore$.pendingIds.set(pendingIds.filter(id => !idsToRemoveFromPending.includes(id)));
+    const removeSet = new Set(idsToRemoveFromPending);
+    imageStore$.pendingIds.set(pendingIds.filter(id => !removeSet.has(id)));
   }
 }
 
