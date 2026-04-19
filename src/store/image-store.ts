@@ -329,13 +329,23 @@ function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem
   return cachedOrderedItems;
 }
 
+let memoKey: { orderRef: string[]; itemsRef: Record<string, ImageItem | undefined> } | null = null;
+let memoMap: Map<string, ImageItem> | null = null;
+
 function snapshotItemsMap(): Map<string, ImageItem> {
-  const m = new Map<string, ImageItem>();
-  for (const id of imageStore$.itemOrder.peek()) {
-    const it = imageStore$.items[id]?.peek();
-    if (it) m.set(id, it);
+  const order = imageStore$.itemOrder.peek();
+  const items = imageStore$.items.peek();
+  if (memoKey && memoKey.orderRef === order && memoKey.itemsRef === items) {
+    return memoMap!;
   }
-  return m;
+  const map = new Map<string, ImageItem>();
+  for (const id of order) {
+    const it = items[id];
+    if (it) map.set(id, it);
+  }
+  memoKey = { orderRef: order, itemsRef: items };
+  memoMap = map;
+  return map;
 }
 
 function replaceItemsMap(next: Map<string, ImageItem>): void {
