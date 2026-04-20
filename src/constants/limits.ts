@@ -36,7 +36,7 @@ export const CONCURRENCY_MAX_DESKTOP = hardwareConcurrencyOrFallback();
 export const CONCURRENCY_MAX_NO_DEVICE_MEMORY = 4;
 export const MOBILE_MAX_WORKERS = 4;
 /** Rough WASM footprint per worker for memory-based caps (MB). */
-export const MB_PER_WORKER_ESTIMATE = 500;
+export const MB_PER_WORKER_ESTIMATE = 1024;
 /** Reserve this many GB of reported deviceMemory before sizing workers. */
 export const DEVICE_MEMORY_RESERVE_GB = 2;
 
