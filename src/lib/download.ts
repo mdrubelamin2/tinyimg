@@ -7,22 +7,10 @@ import {
 } from '@/constants';
 import type { ImageItem, ImageResult } from './queue/types';
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
-import {
-  saveFileWithNfsa,
-  SAVE_PICKER_TYPES_ZIP,
-  savePickerTypesForImageOutput,
-} from '@/lib/fs-access';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
-import { zipKey } from '@/storage/keys';
 import { createTransientObjectUrlForPayloadKey, deleteOutputPayloadKey } from '@/storage/queue-binary';
-import { BlobReader, ZipWriter } from '@zip.js/zip.js';
+import { BlobReader, BlobWriter, ZipWriter } from '@zip.js/zip.js';
 import { ensureZipJsConfigured } from '@/lib/zip-js-config';
-
-function isAbortError(e: unknown): boolean {
-  if (e instanceof DOMException && e.name === 'AbortError') return true;
-  if (e instanceof Error && e.name === 'AbortError') return true;
-  return false;
-}
 
 export function revokeResultUrls(item: ImageItem): void {
   Object.values(item.results).forEach((r: ImageResult) => {
@@ -50,23 +38,6 @@ export async function downloadStoredOutput(
   const raw = backed ? null : await storage.get(payloadKey);
   if (!backed && !raw) return;
 
-  try {
-    const handle = await saveFileWithNfsa({
-      suggestedName: downloadFilename,
-      types: savePickerTypesForImageOutput(format),
-    });
-    const writable = await handle.createWritable();
-    if (backed) {
-      await writable.write(backed);
-    } else {
-      await writable.write(raw!);
-    }
-    await writable.close();
-    return;
-  } catch (e) {
-    if (isAbortError(e)) return;
-  }
-
   const url = await createTransientObjectUrlForPayloadKey(payloadKey, mime);
   const a = document.createElement('a');
   a.href = url;
@@ -83,8 +54,6 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
   ensureZipJsConfigured();
   const storage = await getSessionBinaryStorage();
   const ts = Date.now();
-  const batchId = `batch-${ts}`;
-  const zipStorageKey = zipKey(batchId);
   const zipDisplayName = `tinyimg-batch-${ts}.zip`;
 
   let fileCount = 0;
@@ -102,18 +71,16 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
     return candidate;
   }
 
-  const fileHandle = await storage.getWritableHandle(zipStorageKey);
-  const writable = await fileHandle.createWritable();
-  const zipWriter = new ZipWriter(writable);
-
-  async function removeZipTemp(): Promise<void> {
-    await storage.delete(zipStorageKey);
-  }
+  const zipWriter = new ZipWriter(new BlobWriter('application/zip'), {
+    bufferedWrite: true,
+    useWebWorkers: false
+  });
 
   try {
     for (const item of items) {
       if (fileCount >= MAX_DOWNLOAD_FILES) break;
-      for (const result of Object.values(item.results)) {
+      const results = Object.values(item.results);
+      for (const result of results) {
         if (fileCount >= MAX_DOWNLOAD_FILES || totalBytes >= MAX_DOWNLOAD_BYTES) break;
         if (result.status === STATUS_SUCCESS && result.payloadKey) {
           const dot = item.fileName.lastIndexOf('.');
@@ -148,49 +115,27 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
     }
 
     if (fileCount > 0) {
-      await zipWriter.close();
-      const finalFile = await fileHandle.getFile();
-
-      try {
-        const saveHandle = await saveFileWithNfsa({
-          suggestedName: zipDisplayName,
-          types: SAVE_PICKER_TYPES_ZIP,
-        });
-        const w = await saveHandle.createWritable();
-        await w.write(finalFile);
-        await w.close();
-        setTimeout(() => {
-          void removeZipTemp();
-        }, DOWNLOAD_URL_REVOKE_DELAY_MS);
-        return;
-      } catch (e) {
-        if (isAbortError(e)) {
-          await removeZipTemp();
-          return;
-        }
+      const finalBlob = await zipWriter.close();
+      if (!finalBlob || finalBlob.size === 0) {
+        throw new Error('Generated ZIP is empty');
       }
 
-      const url = URL.createObjectURL(finalFile);
+      const url = URL.createObjectURL(finalBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = zipDisplayName;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
 
       setTimeout(() => {
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        void removeZipTemp();
       }, DOWNLOAD_URL_REVOKE_DELAY_MS);
     } else {
       await zipWriter.close().catch(() => {});
-      await writable.close().catch(() => {});
-      await removeZipTemp();
     }
   } catch (e) {
     await zipWriter.close().catch(() => {});
-    await writable.close().catch(() => {});
-    await removeZipTemp();
     throw e;
   }
 }
