@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { queueStats$ } from '@/state/queue-stats';
 import { Show, useValue } from '@legendapp/state/react';
-import { getImageStore, imageStore$ } from '@/store/image-store';
+import { getImageStore } from '@/store/image-store';
 
 export function QueueResultsToolbar() {
   const clearFinished = getImageStore().clearFinished;
@@ -12,7 +12,8 @@ export function QueueResultsToolbar() {
   const savingsPercent = useValue(() => queueStats$.savingsPercent.get());
   const savingsValue = Number(savingsPercent);
   const isPositiveSavings = savingsValue > 0;
-  const itemCount = useValue(() => imageStore$.itemOrder.get().length);
+  const itemCount = useValue(() => queueStats$.itemCount.get());
+  const doneCount = useValue(() => queueStats$.doneCount.get());
 
   return (
     <div className="px-4 py-4 bg-surface/50 border-b border-border md:px-8 md:py-6">
@@ -26,13 +27,13 @@ export function QueueResultsToolbar() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 sm:justify-end">
-            <Show ifReady={itemCount}>
+            <Show ifReady={queueStats$.itemCount}>
               <div className="text-center sm:text-right">
                 <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">
                   Optimized
                 </p>
                 <p className="font-black text-lg sm:text-xl leading-none mt-1 text-foreground tabular-nums">
-                  {queueStats$.doneCount.get()}/{itemCount}
+                  {doneCount}/{itemCount}
                 </p>
               </div>
             </Show>

@@ -4,7 +4,6 @@ import { BYTES_PER_KB } from '@/constants';
 
 export function OriginalSizeCellTable({ id }: { id: string }) {
   const node = imageStore$.items[id];
-
   const formattedOriginalSize = useValue(() => node?.formattedOriginalSize.get());
   const originalSize = useValue(() => node?.originalSize.get());
 

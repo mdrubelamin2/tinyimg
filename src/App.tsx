@@ -10,7 +10,6 @@ import { queueStats$ } from '@/state/queue-stats';
 import { getImageStore, imageStore$, intake$ } from '@/store/image-store';
 import { Show, useObserveEffect, useValue } from '@legendapp/state/react';
 import { lazy, Suspense } from 'react';
-import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { Toaster } from 'sonner';
 import { preview$ } from './store/preview-store';
 
@@ -36,67 +35,48 @@ export default function App() {
     );
   });
 
-  useObserveEffect(() => {
-    const n = imageStore$.itemOrder.get().length;
-    const hasFinishedItems = queueStats$.hasFinishedItems.get();
-    const savingsPercent = queueStats$.savingsPercent.get();
-    const helmetTitle =
-      n > 0 ? (hasFinishedItems ? `${n} images · ${savingsPercent}% saved` : `${n} images processing`) : 'Industrial Image Optimization';
-    document.title = `TinyIMG — ${helmetTitle}`;
-  });
-
   useKeyboardShortcuts({
     onDownload: hasFinishedItems ? downloadAll : undefined,
     onEscape: preview ? () => preview$.set(null) : undefined,
   });
 
   return (
-    <HelmetProvider>
-      <div className="min-h-screen bg-background text-foreground">
-        <Toaster richColors closeButton position="bottom-right" />
-        <Helmet>
-          <meta
-            name="description"
-            content='Professional-grade image optimization in your browser'
-          />
-          <meta name="robots" content="noindex, nofollow" />
-        </Helmet>
+    <div className="min-h-screen bg-background text-foreground">
+      <Toaster richColors closeButton position="bottom-right" />
+      <ErrorBoundary>
+        <AppHeader />
 
-        <ErrorBoundary>
-          <AppHeader />
+        <main className="pt-28 md:pt-36 pb-12 px-4 md:px-8 max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-8 md:gap-10">
+          <div className="flex-1 space-y-8 md:space-y-10">
+            <Dropzone />
 
-          <main className="pt-28 md:pt-36 pb-12 px-4 md:px-8 max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-8 md:gap-10">
-            <div className="flex-1 space-y-8 md:space-y-10">
-              <Dropzone />
+            <Show ifReady={imageStore$.itemOrder}>
+              <ResultsTable />
+            </Show>
+          </div>
 
-              <Show ifReady={imageStore$.itemOrder}>
-                <ResultsTable />
-              </Show>
-            </div>
+          <div className="lg:w-80 w-full shrink-0">
+            <ConfigPanel />
+          </div>
+        </main>
 
-            <div className="lg:w-80 w-full shrink-0">
-              <ConfigPanel />
-            </div>
-          </main>
+        <AppFooterFaq />
 
-          <AppFooterFaq />
+        <FileDropOverlay />
 
-          <FileDropOverlay />
-
-          <Show ifReady={preview$}>
-            <Suspense>
-              <ImagePreviewLazy
-                itemId={preview$.itemId.get() ?? ''}
-                selectedResultId={preview$.selectedResultId.get() ?? ''}
-                onResultChange={(resultId) => {
-                  preview$.selectedResultId.set(resultId);
-                }}
-                onClose={() => preview$.set(null)}
-              />
-            </Suspense>
-          </Show>
-        </ErrorBoundary>
-      </div>
-    </HelmetProvider>
+        <Show ifReady={preview$}>
+          <Suspense>
+            <ImagePreviewLazy
+              itemId={preview$.itemId.get() ?? ''}
+              selectedResultId={preview$.selectedResultId.get() ?? ''}
+              onResultChange={(resultId) => {
+                preview$.selectedResultId.set(resultId);
+              }}
+              onClose={() => preview$.set(null)}
+            />
+          </Suspense>
+        </Show>
+      </ErrorBoundary>
+    </div>
   );
 }

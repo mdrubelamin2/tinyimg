@@ -38,6 +38,7 @@ export interface QueueStats {
   hasFinishedItems: boolean;
   processingCount: number;
   doneCount: number;
+  itemCount: number;
   /** Typical savings % × bytes for pending/processing rows (UI hint only). */
   estimatedOptimizedBytes: number;
   estimatedSavingsLabel: string;
@@ -47,6 +48,7 @@ export interface QueueStats {
 
 function computeQueueStats(): QueueStats {
   const order = imageStore$.itemOrder.peek();
+  const itemCount = order.length;
   let totalOriginal = 0;
   let totalOptimized = 0;
   let estimatedOptimizedBytes = 0;
@@ -88,21 +90,21 @@ function computeQueueStats(): QueueStats {
       : '0';
 
   const allDone =
-    order.length > 0 &&
+    itemCount > 0 &&
     order.every((id) => {
       const item = imageStore$.items[id]?.peek() as ImageItem | undefined;
       return item?.status === STATUS_SUCCESS || item?.status === STATUS_ERROR;
     });
 
   const allSuccessful =
-    order.length > 0 &&
+    itemCount > 0 &&
     order.every((id) => {
       const item = imageStore$.items[id]?.peek() as ImageItem | undefined;
       return item?.status === STATUS_SUCCESS;
     });
 
   const estLabel =
-    order.length > 0 && totalOriginal > 0
+    itemCount > 0 && totalOriginal > 0
       ? `~${((1 - estimatedOptimizedBytes / totalOriginal) * 100).toFixed(0)}% est. while processing`
       : '';
 
@@ -113,6 +115,7 @@ function computeQueueStats(): QueueStats {
     hasFinishedItems,
     processingCount,
     doneCount: successfulCount,
+    itemCount,
     estimatedOptimizedBytes,
     estimatedSavingsLabel: estLabel,
     allSuccessful,
@@ -127,6 +130,7 @@ function statsEqual(a: QueueStats, b: QueueStats): boolean {
     a.hasFinishedItems === b.hasFinishedItems &&
     a.processingCount === b.processingCount &&
     a.doneCount === b.doneCount &&
+    a.itemCount === b.itemCount &&
     a.estimatedOptimizedBytes === b.estimatedOptimizedBytes &&
     a.estimatedSavingsLabel === b.estimatedSavingsLabel &&
     a.allSuccessful === b.allSuccessful
