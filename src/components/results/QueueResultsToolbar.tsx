@@ -12,6 +12,7 @@ export function QueueResultsToolbar() {
   const savingsPercent = useValue(() => queueStats$.savingsPercent.get());
   const savingsValue = Number(savingsPercent);
   const isPositiveSavings = savingsValue > 0;
+  const itemCount = useValue(() => imageStore$.itemOrder.get().length);
 
   return (
     <div className="px-4 py-4 bg-surface/50 border-b border-border md:px-8 md:py-6">
@@ -25,13 +26,13 @@ export function QueueResultsToolbar() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 sm:justify-end">
-            <Show if={() => queueStats$.doneCount.get() || imageStore$.itemOrder.get().length}>
+            <Show ifReady={itemCount}>
               <div className="text-center sm:text-right">
                 <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">
                   Optimized
                 </p>
                 <p className="font-black text-lg sm:text-xl leading-none mt-1 text-foreground tabular-nums">
-                  {queueStats$.doneCount.get()}/{imageStore$.itemOrder.get().length}
+                  {queueStats$.doneCount.get()}/{itemCount}
                 </p>
               </div>
             </Show>
@@ -52,7 +53,7 @@ export function QueueResultsToolbar() {
           </div>
 
           <div className="flex items-center justify-center gap-2 flex-wrap sm:justify-end">
-            <Show if={() => queueStats$.hasFinishedItems.get()}>
+            <Show ifReady={queueStats$.hasFinishedItems}>
               <Button
                 variant="secondary"
                 size="sm"

@@ -69,7 +69,7 @@ export default function App() {
             <div className="flex-1 space-y-8 md:space-y-10">
               <Dropzone />
 
-              <Show if={() => imageStore$.itemOrder.get().length > 0}>
+              <Show ifReady={imageStore$.itemOrder}>
                 <ResultsTable />
               </Show>
             </div>
@@ -83,8 +83,8 @@ export default function App() {
 
           <FileDropOverlay />
 
-          <Show if={() => preview$.get() != null}>
-            <Suspense fallback={null}>
+          <Show ifReady={preview$}>
+            <Suspense>
               <ImagePreviewLazy
                 itemId={preview$.itemId.get() ?? ''}
                 selectedResultId={preview$.selectedResultId.get() ?? ''}
