@@ -12,7 +12,6 @@ import {
   DEVICE_MEMORY_RESERVE_GB,
   BYTES_PER_KB,
 } from '@/constants/limits';
-import { availableParallelism } from 'poolifier-web-worker';
 
 function isLikelyMobile(): boolean {
   const { userAgent, platform, maxTouchPoints } = window.navigator;
@@ -56,7 +55,7 @@ function memoryBoundedWorkerCap(maxByCores: number): number {
  * Returns the number of optimizer workers to spawn (main thread stays reserved).
  */
 export function computeOptimalWorkerCount(): number {
-  const cores = availableParallelism();
+  const cores = CONCURRENCY_MAX_DESKTOP;
   if (cores <= 2) return 1;
 
   if (isLikelyMobile()) {

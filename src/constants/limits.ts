@@ -3,17 +3,6 @@
  * All numeric boundaries that gate what the app accepts and how it behaves.
  */
 
-function hardwareConcurrencyOrFallback(): number {
-  if (
-    typeof navigator !== 'undefined' &&
-    typeof navigator.hardwareConcurrency === 'number' &&
-    navigator.hardwareConcurrency >= 1
-  ) {
-    return navigator.hardwareConcurrency;
-  }
-  return 1;
-}
-
 export const BYTES_PER_KB = 1024;
 
 // --- File intake limits ---
@@ -29,14 +18,14 @@ export const MAX_DOWNLOAD_BYTES = 80 * BYTES_PER_KB * BYTES_PER_KB;
 export const MAX_DOWNLOAD_FILES = 200;
 
 // --- Concurrency ---
-export const CONCURRENCY_MIN = Math.max(1, Math.floor(hardwareConcurrencyOrFallback() / 4));
+export const CONCURRENCY_MIN = Math.max(1, Math.floor(navigator.hardwareConcurrency / 4));
 /** Desktop / laptop worker ceiling after cores + memory heuristics. */
-export const CONCURRENCY_MAX_DESKTOP = hardwareConcurrencyOrFallback();
+export const CONCURRENCY_MAX_DESKTOP = Math.max(1, Math.floor(navigator.hardwareConcurrency / 2));
 /** When `navigator.deviceMemory` is missing (Safari / Firefox), cap optimizer workers to limit decode+WASM RSS. */
 export const CONCURRENCY_MAX_NO_DEVICE_MEMORY = 4;
 export const MOBILE_MAX_WORKERS = 4;
 /** Rough WASM footprint per worker for memory-based caps (MB). */
-export const MB_PER_WORKER_ESTIMATE = 1024;
+export const MB_PER_WORKER_ESTIMATE = 2048;
 /** Reserve this many GB of reported deviceMemory before sizing workers. */
 export const DEVICE_MEMORY_RESERVE_GB = 2;
 
