@@ -22,7 +22,6 @@ const AppFooterFaq = lazy(() =>
 );
 
 export default function App() {
-  const itemCount = useValue(() => imageStore$.itemOrder.get().length);
   const preview = useValue(preview$);
   const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get());
 
@@ -58,11 +57,7 @@ export default function App() {
         <Helmet>
           <meta
             name="description"
-            content={
-              itemCount > 0
-                ? `Processing ${itemCount} images with WASM optimization`
-                : 'Professional-grade image optimization in your browser'
-            }
+            content='Professional-grade image optimization in your browser'
           />
           <meta name="robots" content="noindex, nofollow" />
         </Helmet>

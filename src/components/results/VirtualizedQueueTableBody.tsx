@@ -1,8 +1,8 @@
 import { cn } from '@/lib/utils';
-import { getImageStore, imageStore$ } from '@/store/image-store';
+import { imageStore$ } from '@/store/image-store';
 import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator';
 import { useValue } from '@legendapp/state/react';
-import { useCallback, type HTMLAttributes } from 'react';
+import { startTransition, useCallback, type HTMLAttributes } from 'react';
 import type { ListRange } from 'react-virtuoso';
 import { TableVirtuoso } from 'react-virtuoso';
 import {
@@ -25,9 +25,11 @@ export function VirtualizedQueueTableBody({
   const itemIds = useValue(() => imageStore$.itemOrder.get());
 
   const onRangeChanged = (range: ListRange) => {
-    const visibleIds = itemIds.slice(range.startIndex, range.endIndex + 1);
-    prioritizeThumbnails(visibleIds);
-    getImageStore().setVisibleItems(visibleIds);
+    startTransition(() => {
+      const visibleIds = itemIds.slice(range.startIndex, range.endIndex + 1);
+      prioritizeThumbnails(visibleIds);
+      imageStore$.visibleItemIds.set(visibleIds);
+    })
   }
 
   const itemContent = useCallback((_index: number, rowId: string) => (
