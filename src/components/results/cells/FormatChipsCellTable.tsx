@@ -44,6 +44,7 @@ export function FormatChipsCellTable({
 
 function ResultChip({ res$, fileName }: { res$: Observable<ImageResult>; fileName: string }) {
   const res = useValue(() => res$.get());
+  if (!res) return null;
 
   const chipClassName = cn(
     'flex shrink-0 items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200 min-w-0',
