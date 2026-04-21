@@ -19,11 +19,6 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       svgo: 'svgo/browser',
-      /** Prefer browser build; avoids Node-only branches in esm/mod.js (Rolldown externalization noise). */
-      'poolifier-web-worker': path.resolve(
-        __dirname,
-        'node_modules/poolifier-web-worker/browser/mod.js'
-      ),
     },
   },
   plugins: [
@@ -67,9 +62,6 @@ export default defineConfig({
     exclude: ['@resvg/resvg-wasm'],
   },
   build: {
-    modulePreload: false,
-    reportCompressedSize: true,
-    chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
         manualChunks(id) {
