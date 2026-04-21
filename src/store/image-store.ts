@@ -863,14 +863,6 @@ async function _processNextAsyncImpl(
 
     if (aVisible && !bVisible) return -1;
     if (!aVisible && bVisible) return 1;
-
-    if (options.smallFilesFirst) {
-      const itemA = items.get(a);
-      const itemB = items.get(b);
-      if (!itemA || !itemB) return 0;
-      return itemA.originalSize - itemB.originalSize;
-    }
-
     return 0;
   });
 

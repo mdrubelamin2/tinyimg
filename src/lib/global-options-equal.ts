@@ -7,7 +7,6 @@ export function globalOptionsEqual(a: GlobalOptions, b: GlobalOptions): boolean 
     a.includeOriginalInCustom === b.includeOriginalInCustom &&
     a.useOriginalSizes === b.useOriginalSizes &&
     a.includeNativeSizeInCustom === b.includeNativeSizeInCustom &&
-    a.smallFilesFirst === b.smallFilesFirst &&
     a.stripMetadata === b.stripMetadata &&
     a.svgInternalFormat === b.svgInternalFormat &&
     arraysEqual(a.formats, b.formats) &&

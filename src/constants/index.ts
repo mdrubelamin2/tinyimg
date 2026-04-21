@@ -32,7 +32,6 @@ export interface GlobalOptions {
   /** In custom sizes mode, add one output at native decoded dimensions per format. */
   includeNativeSizeInCustom: boolean;
   customSizePresets: OutputSizePreset[];
-  smallFilesFirst: boolean;
   stripMetadata: boolean;
   svgInternalFormat: SvgInternalFormat;
 }
@@ -49,7 +48,6 @@ export const DEFAULT_GLOBAL_OPTIONS: GlobalOptions = {
   customSizePresets: [
     { id: 'default-800w', width: 800, height: 0, maintainAspect: true },
   ],
-  smallFilesFirst: true,
   stripMetadata: true,
   svgInternalFormat: 'webp',
 };
