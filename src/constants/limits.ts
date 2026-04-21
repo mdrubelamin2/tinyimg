@@ -11,7 +11,7 @@ export const LARGE_FILE_SERIAL_THRESHOLD_BYTES = 10 * BYTES_PER_KB * BYTES_PER_K
 /** Compressed archive (.zip) max size before intake refuses the file (toast only, no queue row). */
 export const MAX_ZIP_FILE_SIZE_BYTES = 2 * BYTES_PER_KB * BYTES_PER_KB * BYTES_PER_KB;
 export const MAX_ZIP_EXTRACTED_FILES = 1000;
-export const MAX_ZIP_EXTRACTED_TOTAL_BYTES = MAX_ZIP_FILE_SIZE_BYTES;
+export const MAX_ZIP_EXTRACTED_TOTAL_BYTES = 2 * BYTES_PER_KB * BYTES_PER_KB * BYTES_PER_KB;
 
 // --- Download / export limits ---
 export const MAX_DOWNLOAD_BYTES = 80 * BYTES_PER_KB * BYTES_PER_KB;
