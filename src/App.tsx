@@ -23,7 +23,7 @@ const AppFooterFaq = lazy(() =>
 
 export default function App() {
   const preview = useValue(preview$);
-  const { resolved: theme } = useTheme();
+  const { theme } = useTheme();
   const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get());
 
   const downloadAll = getImageStore().downloadAll;

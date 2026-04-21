@@ -18,7 +18,7 @@ const cloudImageLayoutClassName = cn(
 );
 
 export const ImageCompareViewer = ({ originalUrl, optimizedUrl, initialPositionPercent = 90, className }: ImageCompareViewerProps) => {
-  const { resolved: theme } = useTheme();
+  const { theme } = useTheme();
 
   return (
     <CIBeforeAfterViewer

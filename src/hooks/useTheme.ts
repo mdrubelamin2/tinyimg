@@ -2,42 +2,34 @@
  * useTheme: dark mode hook with system preference detection and localStorage persistence.
  * DOM class + matchMedia are handled from `main` (`initSystemThemeMediaListener`) and `syncThemeToDom` on updates.
  */
-
-import { useState } from 'react';
 import {
   THEME_STORAGE_KEY,
-  readStoredTheme,
   resolveTheme as resolveStoredTheme,
+  resolveTheme,
   syncThemeToDom,
   type StoredTheme,
 } from '@/bootstrap/theme-dom';
 import { safeSetItem } from '@/lib/safe-local-storage';
-
-type Theme = StoredTheme;
-
-function resolveTheme(theme: Theme): 'light' | 'dark' {
-  return resolveStoredTheme(theme);
-}
+import { theme$ } from '@/store/theme-store';
+import { useValue } from '@legendapp/state/react';
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme());
+  const theme = useValue(() => resolveTheme(theme$.get()));
 
-  const resolved = resolveTheme(theme);
-
-  const setTheme = (next: Theme) => {
+  const setTheme = (next: StoredTheme) => {
     safeSetItem(THEME_STORAGE_KEY, next);
-    syncThemeToDom(resolveTheme(next));
-    setThemeState(next);
+    syncThemeToDom(resolveStoredTheme(next));
+    theme$.set(next);
   };
 
   const toggleTheme = () => {
-    setThemeState((prev) => {
-      const next = resolveTheme(prev) === 'dark' ? ('light' as const) : ('dark' as const);
+    theme$.set((prev) => {
+      const next = resolveStoredTheme(prev) === 'dark' ? ('light' as const) : ('dark' as const);
       safeSetItem(THEME_STORAGE_KEY, next);
-      syncThemeToDom(resolveTheme(next));
+      syncThemeToDom(resolveStoredTheme(next));
       return next;
     });
   };
 
-  return { theme, resolved, setTheme, toggleTheme } as const;
+  return { theme, setTheme, toggleTheme } as const;
 }
