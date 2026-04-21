@@ -1,6 +1,7 @@
-import { toastWarning } from '@/notifications/toast-emitter';
+import { useImageStore } from '@/store/image-store';
+import { computeConcurrency } from '@/workers/worker-pool-v2';
 
-const PRESSURE_SAMPLE_MS = 1_500;
+const PRESSURE_SAMPLE_MS = 5_000;
 
 type PressureRecord = { state?: string };
 type PressureObserverInstance = { observe: (source: string) => void; disconnect: () => void };
@@ -10,7 +11,7 @@ type PressureObserverCtor = new (
 ) => PressureObserverInstance;
 
 /**
- * Surfaces CPU pressure (Chrome 125+) as a user-visible hint; does not pause the queue.
+ * Surfaces CPU pressure (Chrome 125+) to dynamically reduce the worker pool concurrency.
  */
 export function subscribeCpuPressureToast(): () => void {
   const PO = (globalThis as unknown as { PressureObserver?: PressureObserverCtor }).PressureObserver;
@@ -23,8 +24,12 @@ export function subscribeCpuPressureToast(): () => void {
       const state = records[0]?.state;
       if (!state || state === last) return;
       last = state;
-      if (state === 'serious' || state === 'critical') {
-        toastWarning('Device is under heavy CPU load. Optimization may slow down until the system recovers.');
+      const imageStore = useImageStore.getState();
+      const pool = imageStore._getPool();
+      if ((state === 'serious' || state === 'critical') && pool.activeCount > 0) {
+        pool.setConcurrencyLimit(1);
+      } else {
+        pool.setConcurrencyLimit(computeConcurrency());
       }
     },
     { sampleInterval: PRESSURE_SAMPLE_MS }

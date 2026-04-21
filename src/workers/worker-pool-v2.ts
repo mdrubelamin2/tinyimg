@@ -44,8 +44,8 @@ interface WorkerEntry {
 
 export class WorkerPool {
   private readonly callbacks: WorkerPoolCallbacks;
-  private readonly minConcurrent: number;
-  private readonly maxConcurrent: number;
+  private minConcurrent: number;
+  private maxConcurrent: number;
   private pending: Task[] = [];
   private readonly active = new Map<TaskKey, { task: Task; controller: AbortController }>();
 
@@ -70,6 +70,12 @@ export class WorkerPool {
 
   get concurrencyLimit(): number {
     return this.maxConcurrent;
+  }
+
+  setConcurrencyLimit(limit: number): void {
+    const { min, max } = dynamicPoolBounds(limit);
+    this.minConcurrent = min;
+    this.maxConcurrent = max;
   }
 
   addTask(task: Task): void {
