@@ -44,6 +44,8 @@ export interface QueueStats {
   estimatedSavingsLabel: string;
   /** Every row finished with success (e.g. confetti, no errors). */
   allSuccessful: boolean;
+  totalOutputCount: number;
+  successfulOutputCount: number;
 }
 
 function computeQueueStats(): QueueStats {
@@ -56,6 +58,9 @@ function computeQueueStats(): QueueStats {
   let successfulCount = 0;
   let hasFinishedItems = false;
   let processingCount = 0;
+
+  let totalOutputCount = 0;
+  let successfulOutputCount = 0;
 
   for (const id of order) {
     const item = imageStore$.items[id]?.peek() as ImageItem | undefined;
@@ -76,8 +81,10 @@ function computeQueueStats(): QueueStats {
     }
 
     for (const res of Object.values(item.results)) {
+      totalOutputCount += 1;
       if (res.status === STATUS_SUCCESS && res.size) {
         totalOptimized += res.size;
+        successfulOutputCount += 1;
       }
     }
   }
@@ -119,6 +126,8 @@ function computeQueueStats(): QueueStats {
     estimatedOptimizedBytes,
     estimatedSavingsLabel: estLabel,
     allSuccessful,
+    totalOutputCount,
+    successfulOutputCount,
   };
 }
 
@@ -133,7 +142,9 @@ function statsEqual(a: QueueStats, b: QueueStats): boolean {
     a.itemCount === b.itemCount &&
     a.estimatedOptimizedBytes === b.estimatedOptimizedBytes &&
     a.estimatedSavingsLabel === b.estimatedSavingsLabel &&
-    a.allSuccessful === b.allSuccessful
+    a.allSuccessful === b.allSuccessful &&
+    a.totalOutputCount === b.totalOutputCount &&
+    a.successfulOutputCount === b.successfulOutputCount
   );
 }
 

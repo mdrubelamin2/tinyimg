@@ -12,8 +12,8 @@ export function QueueResultsToolbar() {
   const savingsPercent = useValue(() => queueStats$.savingsPercent.get());
   const savingsValue = Number(savingsPercent);
   const isPositiveSavings = savingsValue > 0;
-  const itemCount = useValue(() => queueStats$.itemCount.get());
-  const doneCount = useValue(() => queueStats$.doneCount.get());
+  const totalOutputCount = useValue(() => queueStats$.totalOutputCount.get());
+  const successfulOutputCount = useValue(() => queueStats$.successfulOutputCount.get());
 
   return (
     <div className="px-4 py-4 bg-surface/50 border-b border-border md:px-8 md:py-6">
@@ -33,7 +33,7 @@ export function QueueResultsToolbar() {
                   Optimized
                 </p>
                 <p className="font-black text-lg sm:text-xl leading-none mt-1 text-foreground tabular-nums">
-                  {doneCount}/{itemCount}
+                  {successfulOutputCount}/{totalOutputCount}
                 </p>
               </div>
             </Show>
