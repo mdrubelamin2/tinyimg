@@ -19,8 +19,9 @@ const queue: QueueEntry[] = [];
 const queuedId = new Set<string>();
 let busy = false;
 
-function ensureWorker(): Worker {
+async function ensureWorker(): Promise<Worker> {
   if (worker) return worker;
+  await new Promise(r => setTimeout(r, 100));
   const url = new URL(ThumbnailWorkerUrl, import.meta.url);
   worker = new Worker(url, { type: 'module' });
   worker.onmessage = (ev: MessageEvent<ThumbnailWorkerOutbound>) => {
@@ -57,13 +58,13 @@ function ensureWorker(): Worker {
   return worker;
 }
 
-function pump(): void {
+async function pump(): Promise<void> {
   if (busy) return;
   const next = queue.shift();
   if (!next) return;
   busy = true;
   queuedId.delete(next.id);
-  const w = ensureWorker();
+  const w = await ensureWorker();
   w.postMessage({ type: 'THUMB', id: next.id, file: next.file } satisfies ThumbnailWorkerInbound);
 }
 
