@@ -14,24 +14,33 @@ import {
 } from '@/constants/limits';
 
 function isLikelyMobile(): boolean {
+  // 1. Prioritize Explicit "Desktop Mode" / Chrome Signal
+  // This is the only way to catch mobile devices asking to look like desktops
+  // @ts-expect-error: userAgentData is a modern API not yet in all TS lib definitions
+  if (navigator.userAgentData?.mobile) return true;
+
+  // 2. Identify "Coarse" Input (Finger/Stylus)
+  // This captures touch laptops, iPads, and phones
+  const hasTouchScreen = window.matchMedia("(any-pointer: coarse)").matches;
+  
+  // 3. Size Heuristic
+  const isSmallScreen = window.innerWidth <= 1024;
+
+  // We return true if they HAVE touch capability AND (small screen OR mobile OS)
+  // This correctly excludes Touch Laptops with large screens and no mobile UA.
+  return hasTouchScreen && (isSmallScreen || checkIsMobileByUA());
+}
+
+function checkIsMobileByUA(): boolean {
   const { userAgent, platform, maxTouchPoints } = window.navigator;
 
-  const isIOS = /(iphone|ipod|ipad)/i.test(userAgent);
+  // Standard regex for Android/iOS
+  const isHandheld = /android|iphone|ipod|ipad/i.test(userAgent.toLowerCase());
 
-  // Workaround for ipadOS, force detection as tablet. `platform` is
-  // deprecated but remains the only reliable way to distinguish iPadOS
-  // desktop-mode (MacIntel + touch) from a real Mac on Safari/Firefox.
-  // Known limitation: if Apple ever ships a touch-screen Mac, it will
-  // also match `MacIntel + maxTouchPoints > 0` and be misclassified as
-  // iPad here. No such device exists today; revisit when/if it ships.
-  // SEE: https://github.com/lancedikson/bowser/issues/329
-  // SEE: https://stackoverflow.com/questions/58019463/how-to-detect-device-name-in-safari-on-ios-13-while-it-doesnt-show-the-correct
-  const isIpad =
-    platform === 'iPad' || (platform === 'MacIntel' && maxTouchPoints > 0);
+  // The "iPadOS" desktop-mode workaround
+  const isIpadOS = platform === 'iPad' || (platform === 'MacIntel' && maxTouchPoints > 0);
 
-  const isAndroid = /android/i.test(userAgent);
-
-  return isIOS || isIpad || isAndroid;
+  return isHandheld || isIpadOS;
 }
 
 /**
