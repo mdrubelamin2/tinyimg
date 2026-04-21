@@ -176,6 +176,7 @@ describe('queue worker results via image-store', () => {
         qualityPercent: 100,
         resizePreset: { kind: 'native' },
         stripMetadata: true,
+        losslessEncoding: 'none',
       },
     });
     useImageStore.getState()._batchApplyResults();

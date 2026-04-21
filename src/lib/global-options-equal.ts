@@ -9,6 +9,7 @@ export function globalOptionsEqual(a: GlobalOptions, b: GlobalOptions): boolean 
     a.includeNativeSizeInCustom === b.includeNativeSizeInCustom &&
     a.stripMetadata === b.stripMetadata &&
     a.svgInternalFormat === b.svgInternalFormat &&
+    a.losslessEncoding === b.losslessEncoding &&
     arraysEqual(a.formats, b.formats) &&
     sizePresetsEqual(a.customSizePresets, b.customSizePresets)
   );

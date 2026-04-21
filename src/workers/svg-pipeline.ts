@@ -2,40 +2,31 @@
  * SVG pipeline: SVGO optimize, rasterize (browser-first or resvg), display-density or legacy pixel-lock, encode/wrap.
  */
 
-import { Resvg } from '@resvg/resvg-wasm';
+import type { LosslessEncoding, SvgInternalFormat } from '@/constants';
 import {
   MAX_PIXELS,
   SVG_INTERNAL_SSAA_SCALE,
-  SVG_NODES_MAX,
-  SVG_SEGMENTS_MAX,
-  SVG_RASTER_BYTES_MAX,
-  SVG_TINY_FILE_BYTES_MAX,
   SVG_NODES_ANCHOR_MAX,
+  SVG_NODES_MAX,
+  SVG_RASTER_BYTES_MAX,
   SVG_RASTER_BYTES_MIN_FOR_HYBRID,
   SVG_RASTER_DOMINANCE_RATIO,
+  SVG_SEGMENTS_MAX,
+  SVG_TINY_FILE_BYTES_MAX,
 } from '@/constants';
-import type { SvgInternalFormat } from '@/constants';
+import { encodeLossless } from '@/lib/codecs/raster/lossless';
+import { encodeSvgRasterForOutput } from '@/lib/codecs/raster/output-encode';
 import { optimizeSvg } from '@/lib/optimizer/svg-optimizer';
+import type { TaskResizePreset } from '@/lib/queue/types';
+import { Resvg } from '@resvg/resvg-wasm';
 import { ensureResvg } from './optimizer-wasm';
-import {
-  checkPixelLimit,
-  encodeRaster,
-  encodeRasterVectorSafeWithSizeSafeguard,
-  toBase64,
-} from './raster-encode';
-import { BrowserSvgRasterError, rasterizeSvgWithBrowser } from './svg-browser-raster';
+import { checkPixelLimit, toBase64 } from './raster-encode';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SVG_DISPLAY_DPR_MIN = 1;
 const SVG_DISPLAY_DPR_MAX = 3;
-
-type SvgRasterizer = 'auto' | 'browser' | 'resvg';
-type SvgExportDensity = 'legacy' | 'display';
-
 export interface SvgPipelineOptions {
   svgInternalFormat: SvgInternalFormat;
-  svgRasterizer: SvgRasterizer;
-  svgExportDensity: SvgExportDensity;
   svgDisplayDpr: number;
 }
 
@@ -54,8 +45,6 @@ export interface SvgStageTiming {
 
 interface SvgRasterizeResult {
   imageData: ImageData;
-  timing: Pick<SvgStageTiming, 'renderMs' | 'downscaleMs'>;
-  rasterizerPath: 'browser' | 'resvg';
   bitmapWidth: number;
   bitmapHeight: number;
   effectiveDpr?: number;
@@ -119,8 +108,7 @@ export function computeEffectiveDisplayDpr(
 export async function processSvg(
   file: File,
   options: SvgPipelineOptions
-): Promise<{ blob: Blob; label: string; timing?: SvgStageTiming }> {
-  const totalStart = nowMs();
+): Promise<{ blob: Blob; label: string; }> {
   const text = await file.text();
 
   const { data: optimizedSvg, metadata } = await optimizeSvg(text);
@@ -149,19 +137,12 @@ export async function processSvg(
 
   assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
 
-  const { svgInternalFormat, svgExportDensity } = options;
+  const { svgInternalFormat } = options;
   const internalFormat = svgInternalFormat ?? 'webp';
   const mimeType = mimeByFormat(internalFormat);
   // JXL is not yet supported in SVG internal encode — fall back to webp
   const encodeFormat = isSvgRasterFormat(internalFormat) ? internalFormat : 'webp' as const;
-  const encodeStart = nowMs();
-  const internalBytes =
-    svgExportDensity === 'display'
-      ? await encodeRasterVectorSafeWithSizeSafeguard(raster.imageData, encodeFormat, {
-        displayQuality: true,
-      })
-      : await encodeRaster(raster.imageData, encodeFormat, 'photo'); // Default to photo for hybrid
-  const encodeMs = nowMs() - encodeStart;
+  const internalBytes = await encodeLossless(raster.imageData, encodeFormat);
   await assertEncodedDimensions(internalBytes, mimeType, raster.bitmapWidth, raster.bitmapHeight);
 
   const internalBase64 = await toBase64(internalBytes);
@@ -169,22 +150,9 @@ export async function processSvg(
   <image href="data:${mimeType};base64,${internalBase64}" width="${width}" height="${height}" />
 </svg>`;
 
-  const timing: SvgStageTiming = {
-    svgoMs: 0, // Metadata and optimization are now unified
-    naturalSizeMs: 0,
-    renderMs: raster.timing.renderMs,
-    downscaleMs: raster.timing.downscaleMs,
-    classifyMs: 0,
-    encodeMs: Math.round(encodeMs),
-    totalMs: Math.round(nowMs() - totalStart),
-    svgRasterizerPath: raster.rasterizerPath,
-    ...(raster.effectiveDpr != null ? { svgEffectiveDpr: raster.effectiveDpr } : {}),
-  };
-
   return {
     blob: new Blob([svgWrapper], { type: 'image/svg+xml' }),
     label: `svg (${internalFormat})`,
-    timing,
   };
 }
 
@@ -196,29 +164,16 @@ export async function rasterizeSvgFileToImageData(
   options: SvgPipelineOptions
 ): Promise<{
   imageData: ImageData;
-  timing: SvgStageTiming;
   bitmapWidth: number;
   bitmapHeight: number;
 }> {
-  const totalStart = nowMs();
   const text = await file.text();
 
   const raster = await buildSvgRaster(text, 0, 0, options);
   assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
 
-  const timing: SvgStageTiming = {
-    naturalSizeMs: 0,
-    renderMs: raster.timing.renderMs,
-    downscaleMs: raster.timing.downscaleMs,
-    encodeMs: 0,
-    totalMs: Math.round(nowMs() - totalStart),
-    svgRasterizerPath: raster.rasterizerPath,
-    ...(raster.effectiveDpr != null ? { svgEffectiveDpr: raster.effectiveDpr } : {}),
-  };
-
   return {
     imageData: raster.imageData,
-    timing,
     bitmapWidth: raster.bitmapWidth,
     bitmapHeight: raster.bitmapHeight,
   };
@@ -229,35 +184,28 @@ export async function rasterizeSvgFileToImageData(
  */
 export async function rasterizeSvgToFormat(
   file: File,
-  options: { format: SvgRasterFormat } & SvgPipelineOptions
-): Promise<{ blob: Blob; label: string; timing?: SvgStageTiming }> {
-  const totalStart = nowMs();
-  const { imageData, timing: rasterTiming, bitmapWidth, bitmapHeight } = await rasterizeSvgFileToImageData(file, options);
+  options: { format: SvgRasterFormat } & SvgPipelineOptions & {
+    losslessEncoding?: LosslessEncoding;
+    resizePreset?: TaskResizePreset;
+  }
+): Promise<{ blob: Blob; label: string; }> {
+  const { imageData, bitmapWidth, bitmapHeight } = await rasterizeSvgFileToImageData(file, options);
 
   const format = options.format;
-  const encodeStart = nowMs();
-  const bytes =
-    options.svgExportDensity === 'display'
-      ? await encodeRasterVectorSafeWithSizeSafeguard(imageData, format, {
-          displayQuality: true,
-        })
-      : await encodeRasterVectorSafeWithSizeSafeguard(imageData, format);
-  const encodeMs = nowMs() - encodeStart;
+  const losslessEncoding = options.losslessEncoding ?? 'none';
+  const resizePreset = options.resizePreset ?? ({ kind: 'native' } satisfies TaskResizePreset);
+  const bytes = await encodeSvgRasterForOutput(imageData, format, {
+    losslessEncoding,
+    resizePreset,
+    srcW: imageData.width,
+    srcH: imageData.height,
+  });
   const mimeType = format === 'jpeg' ? 'image/jpeg' : `image/${format}`;
   await assertEncodedDimensions(bytes, mimeType, bitmapWidth, bitmapHeight);
 
-  const pathSuffix = options.svgExportDensity === 'display' ? ` (${rasterTiming.svgRasterizerPath})` : '';
-
-  const timing: SvgStageTiming = {
-    ...rasterTiming,
-    encodeMs: Math.round(encodeMs),
-    totalMs: Math.round(nowMs() - totalStart),
-  };
-
   return {
     blob: new Blob([bytes], { type: mimeType }),
-    label: `${format}${pathSuffix}`,
-    timing,
+    label: `${format}`,
   };
 }
 
@@ -267,9 +215,6 @@ async function buildSvgRaster(
   logicalH: number,
   pipeline: SvgPipelineOptions
 ): Promise<SvgRasterizeResult> {
-  const mode = pipeline.svgRasterizer;
-  const tryBrowser = mode === 'auto' || mode === 'browser';
-
   let naturalWidth = logicalW;
   let naturalHeight = logicalH;
 
@@ -286,41 +231,12 @@ async function buildSvgRaster(
     throw new Error('SVG rasterization failed: could not resolve intrinsic dimensions');
   }
 
-  if (pipeline.svgExportDensity === 'legacy') {
-    return rasterizeLegacyPipeline(svgText, naturalWidth, naturalHeight);
-  }
-
   const effectiveDpr = computeEffectiveDisplayDpr(naturalWidth, naturalHeight, pipeline.svgDisplayDpr);
   const physW = Math.max(1, Math.round(naturalWidth * effectiveDpr));
   const physH = Math.max(1, Math.round(naturalHeight * effectiveDpr));
   checkPixelLimit(physW, physH);
 
-  if (tryBrowser) {
-    try {
-      const renderStart = nowMs();
-      const imageData = await rasterizeSvgWithBrowser(svgText, naturalWidth, naturalHeight, physW, physH);
-      const renderMs = Math.round(nowMs() - renderStart);
-      return {
-        imageData,
-        timing: { renderMs, downscaleMs: 0 },
-        rasterizerPath: 'browser',
-        bitmapWidth: physW,
-        bitmapHeight: physH,
-        effectiveDpr,
-        naturalWidth,
-        naturalHeight,
-      };
-    } catch (e) {
-      if (mode === 'browser') {
-        const msg = e instanceof BrowserSvgRasterError ? e.message : String(e);
-        throw new Error(`SVG browser rasterization failed: ${msg}`);
-      }
-    }
-  }
-
-  const renderStart = nowMs();
   const { imageData } = await rasterizeWithResvg(svgText, physW);
-  const renderMs = Math.round(nowMs() - renderStart);
   if (imageData.width !== physW) {
     throw new Error(
       `SVG dimension invariant failed at internal-render-display: expected width ${physW}, got ${imageData.width}`
@@ -329,38 +245,9 @@ async function buildSvgRaster(
 
   return {
     imageData,
-    timing: { renderMs, downscaleMs: 0 },
-    rasterizerPath: 'resvg',
     bitmapWidth: imageData.width,
     bitmapHeight: imageData.height,
     effectiveDpr,
-    naturalWidth,
-    naturalHeight,
-  };
-}
-
-async function rasterizeLegacyPipeline(
-  svgText: string,
-  width: number,
-  height: number
-): Promise<SvgRasterizeResult> {
-  const { renderWidth, renderHeight } = computeInternalRenderSize(width, height);
-
-  const renderStart = nowMs();
-  const { imageData, naturalWidth, naturalHeight } = await rasterizeWithResvg(svgText, renderWidth);
-  const renderMs = Math.round(nowMs() - renderStart);
-  assertDimensions(imageData.width, imageData.height, renderWidth, renderHeight, 'internal-render');
-
-  const downscaleStart = nowMs();
-  const finalImage = await downscaleImageData(imageData, width, height);
-  const downscaleMs = Math.round(nowMs() - downscaleStart);
-
-  return {
-    imageData: finalImage,
-    timing: { renderMs, downscaleMs },
-    rasterizerPath: 'resvg',
-    bitmapWidth: width,
-    bitmapHeight: height,
     naturalWidth,
     naturalHeight,
   };
@@ -411,41 +298,6 @@ export function computeInternalRenderSize(
   return { renderWidth, renderHeight };
 }
 
-/** 
- * Phase 4: Native GPU-accelerated image downscaling replacing pica
- */
-async function downscaleImageData(
-  imageData: ImageData,
-  targetWidth: number,
-  targetHeight: number
-): Promise<ImageData> {
-  if (imageData.width === targetWidth && imageData.height === targetHeight) {
-    return imageData;
-  }
-  checkPixelLimit(targetWidth, targetHeight);
-
-  // Use hardware-accelerated createImageBitmap to resize instantly on GPU
-  const bitmap = await createImageBitmap(imageData, {
-    resizeWidth: targetWidth,
-    resizeHeight: targetHeight,
-    resizeQuality: 'high'
-  });
-
-  const targetCanvas = new OffscreenCanvas(targetWidth, targetHeight);
-  try {
-    const targetCtx = targetCanvas.getContext('2d', { willReadFrequently: true });
-    if (!targetCtx) throw new Error('Could not get target 2d context');
-
-    targetCtx.drawImage(bitmap, 0, 0);
-    bitmap.close();
-
-    return targetCtx.getImageData(0, 0, targetWidth, targetHeight);
-  } finally {
-    targetCanvas.width = 0;
-    targetCanvas.height = 0;
-  }
-}
-
 function assertDimensions(
   actualWidth: number,
   actualHeight: number,
@@ -476,11 +328,4 @@ export async function assertEncodedDimensions(
 
 function mimeByFormat(format: SvgInternalFormat): string {
   return `image/${format === 'jpeg' ? 'jpeg' : format}`;
-}
-
-function nowMs(): number {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return performance.now();
-  }
-  return Date.now();
 }

@@ -23,6 +23,9 @@ export function newOutputSizePresetId(): string {
   return `sz_${nanoid(ID_RANDOM_LENGTH)}`;
 }
 
+/** Raster output encoding: lossy adaptive vs lossless (`encodeLossless`). SVG→SVG hybrid is unaffected. */
+export type LosslessEncoding = 'none' | 'all' | 'custom_sizes_only';
+
 export interface GlobalOptions {
   formats: string[];
   useOriginalFormats: boolean;
@@ -34,6 +37,7 @@ export interface GlobalOptions {
   customSizePresets: OutputSizePreset[];
   stripMetadata: boolean;
   svgInternalFormat: SvgInternalFormat;
+  losslessEncoding: LosslessEncoding;
 }
 
 /** Warn in UI when formats × sizes exceeds this (per image). */
@@ -46,8 +50,9 @@ export const DEFAULT_GLOBAL_OPTIONS: GlobalOptions = {
   useOriginalSizes: true,
   includeNativeSizeInCustom: false,
   customSizePresets: [
-    { id: 'default-800w', width: 800, height: 0, maintainAspect: true },
+    { id: 'default-800w', width: 768, height: 0, maintainAspect: true },
   ],
   stripMetadata: true,
   svgInternalFormat: 'webp',
+  losslessEncoding: 'none',
 };

@@ -21,7 +21,4 @@ export {
   encodeRasterWithFallback,
 } from '@/lib/codecs/raster/encode-fallback';
 
-export {
-  encodeRasterVectorSafe,
-  encodeRasterVectorSafeWithSizeSafeguard,
-} from '@/lib/codecs/raster/vector-safe';
+export { encodeRasterVectorSafe } from '@/lib/codecs/raster/vector-safe';

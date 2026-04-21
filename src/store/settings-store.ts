@@ -29,6 +29,12 @@ function mergePersistedOptions(stored: unknown): GlobalOptions {
       typeof o.includeNativeSizeInCustom === 'boolean'
         ? o.includeNativeSizeInCustom
         : DEFAULT_GLOBAL_OPTIONS.includeNativeSizeInCustom,
+    losslessEncoding:
+      o.losslessEncoding === 'none' ||
+      o.losslessEncoding === 'all' ||
+      o.losslessEncoding === 'custom_sizes_only'
+        ? o.losslessEncoding
+        : DEFAULT_GLOBAL_OPTIONS.losslessEncoding,
   };
 }
 

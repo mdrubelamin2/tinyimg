@@ -42,7 +42,6 @@ import {
   destroyThumbnailWorker,
   enqueueThumbnails,
 } from '@/thumbnails/thumbnail-generator';
-import { toastError } from '@/notifications/toast-emitter';
 import { ERR_ZIP_EXCEEDS_LIMIT, ERR_INTAKE_STORAGE_FULL } from '@/constants';
 import { isQuotaExceededError } from '@/storage/quota';
 import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache';
@@ -50,6 +49,7 @@ import { createQueueItem, resetItemResultsForOptions } from '@/lib/queue/queue-i
 import { buildOutputSlots } from '@/lib/queue/output-slots';
 import { revokeResultUrls, buildAndDownloadZip } from '@/lib/download';
 import { useSettingsStore } from './settings-store';
+import { toast } from 'sonner';
 
 // --- Observable session state (Map-like item bag + order + scheduling sets) ---
 export const imageStore$ = observable({
@@ -130,7 +130,7 @@ function maybeToastPersistError(message: string): void {
   const now = Date.now();
   if (now - lastPersistErrorToastAt < PERSIST_ERROR_TOAST_COOLDOWN_MS) return;
   lastPersistErrorToastAt = now;
-  toastError(message);
+  toast.error(message, { id: 'persist-error' });
 }
 
 /** Split RESULT batches so the main thread does not retain multiple huge `ArrayBuffer`s at once. */
@@ -248,7 +248,6 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
                     payloadKey,
                     label: response!.label,
                     downloadUrl: undefined,
-                    timing: response!.timing,
                   },
                 };
 
@@ -425,7 +424,7 @@ export async function addFiles(
         }
       },
       onZipArchiveOversized: (fileName: string) => {
-        toastError(`${fileName}: ${ERR_ZIP_EXCEEDS_LIMIT}`);
+        toast.error(`${fileName}: ${ERR_ZIP_EXCEEDS_LIMIT}`, { id: 'zip-archive-oversized' });
       },
     };
 
@@ -489,7 +488,7 @@ export async function addFiles(
       await flushBuffer();
     } catch (err) {
       if (isQuotaExceededError(err)) {
-        toastError(ERR_INTAKE_STORAGE_FULL);
+        toast.error(ERR_INTAKE_STORAGE_FULL, { id: 'intake-storage-full' });
         buffer.length = 0;
       } else {
         throw err;
@@ -786,14 +785,24 @@ function _batchApplyResultsImpl(): void {
           if (!item) continue;
 
           const rid = response.resultId;
-          const result = item.results[rid];
+          const prev = item.results[rid];
           const nextItem = { ...item };
-          if (result) {
-            nextItem.results = {
-              ...item.results,
-              [rid]: { ...result, status: STATUS_ERROR, error: response.error },
-            };
-          }
+          const merged: ImageResult = {
+            ...(prev ?? {
+              resultId: rid,
+              format: response.format,
+              variantLabel: '',
+              status: STATUS_PROCESSING,
+            }),
+            resultId: rid,
+            format: response.format,
+            status: STATUS_ERROR,
+            error: response.error,
+          };
+          nextItem.results = {
+            ...item.results,
+            [rid]: merged,
+          };
 
           if (isTerminal(nextItem)) {
             nextItem.status = STATUS_ERROR;
@@ -813,14 +822,25 @@ function _batchApplyResultsImpl(): void {
         const item = itemsMap.get(task.id);
         if (!item) continue;
 
-        const result = item.results[task.resultId];
+        const rid = task.resultId;
+        const prev = item.results[rid];
         const nextItem = { ...item };
-        if (result) {
-          nextItem.results = {
-            ...item.results,
-            [task.resultId]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
-          };
-        }
+        const merged: ImageResult = {
+          ...(prev ?? {
+            resultId: rid,
+            format: task.format,
+            variantLabel: '',
+            status: STATUS_PROCESSING,
+          }),
+          resultId: rid,
+          format: task.format,
+          status: STATUS_ERROR,
+          error: ERR_WORKER,
+        };
+        nextItem.results = {
+          ...item.results,
+          [rid]: merged,
+        };
 
         if (isTerminal(nextItem)) {
           nextItem.status = STATUS_ERROR;
@@ -964,6 +984,7 @@ function _dispatchRowToPool(
         qualityPercent: processingItem.qualityPercentOverride ?? 100,
         resizePreset: slot.resizePreset,
         stripMetadata: options.stripMetadata,
+        losslessEncoding: options.losslessEncoding,
       },
     });
   }

@@ -6,6 +6,7 @@
 import type {
   ItemStatus,
   SvgInternalFormat,
+  LosslessEncoding,
   GlobalOptions,
 } from '@/constants';
 
@@ -22,22 +23,6 @@ export type PipelineStage =
   | 'svg-optimize'
   | 'svg-rasterize';
 
-// ---------------------------------------------------------------------------
-// Stage timing (shared between raster and SVG paths)
-// ---------------------------------------------------------------------------
-export interface StageTiming {
-  decodeMs?: number | undefined;
-  classifyMs?: number | undefined;
-  encodeMs?: number | undefined;
-  resizeMs?: number | undefined;
-  svgoMs?: number | undefined;
-  naturalSizeMs?: number | undefined;
-  renderMs?: number | undefined;
-  downscaleMs?: number | undefined;
-  totalMs?: number | undefined;
-  svgRasterizerPath?: 'browser' | 'resvg' | undefined;
-  svgEffectiveDpr?: number | undefined;
-}
 
 // ---------------------------------------------------------------------------
 // Resize intent (worker resolves target pixels from source + preset)
@@ -65,7 +50,6 @@ export interface ImageResult {
   downloadUrl?: string | undefined;
   status: ItemStatus;
   error?: string | undefined;
-  timing?: StageTiming | undefined;
 }
 
 /** Where the original lives: in-memory drop map vs hybrid `src:${id}` (ZIP / folder-expanded). */
@@ -109,6 +93,7 @@ export interface TaskOptions {
   qualityPercent: number;
   resizePreset: TaskResizePreset;
   stripMetadata: boolean;
+  losslessEncoding: LosslessEncoding;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +143,6 @@ export interface WorkerOutboundResult {
   label: string;
   formattedSize: string;
   savingsPercent: number;
-  timing?: StageTiming | undefined;
 }
 
 export interface WorkerOutboundError {

@@ -149,6 +149,7 @@ describe('image-store queue progression', () => {
         qualityPercent: 100,
         resizePreset: { kind: 'native' },
         stripMetadata: DEFAULT_GLOBAL_OPTIONS.stripMetadata,
+        losslessEncoding: DEFAULT_GLOBAL_OPTIONS.losslessEncoding,
       },
     });
 

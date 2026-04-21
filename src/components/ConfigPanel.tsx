@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { getImageStore } from '@/store/image-store';
 import { useSettingsStore } from '@/store/settings-store';
-import type { GlobalOptions, OutputSizePreset } from '@/constants';
+import type { GlobalOptions, LosslessEncoding, OutputSizePreset } from '@/constants';
 import {
   DEFAULT_GLOBAL_OPTIONS,
   SVG_INTERNAL_FORMATS,
@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
+import { nanoid } from 'nanoid';
 
 export function ConfigPanel() {
   const options = useSettingsStore(state => state.options);
@@ -52,6 +53,7 @@ export function ConfigPanel() {
     includeNativeSizeInCustom,
     customSizePresets,
     svgInternalFormat,
+    losslessEncoding,
   } = draft;
 
   const formatCountEstimate = useOriginalFormats
@@ -199,7 +201,7 @@ export function ConfigPanel() {
           </div>
 
           {!useOriginalFormats && (
-            <div className="flex flex-wrap items-center gap-4 min-h-[44px]">
+            <div className="flex flex-wrap items-center gap-4 min-h-[40px]">
               <label className="flex items-center gap-2 cursor-pointer select-none min-h-[44px] group">
                 <Checkbox
                   checked={allFormatsSelected ? true : someFormatsSelected ? 'indeterminate' : false}
@@ -245,7 +247,7 @@ export function ConfigPanel() {
         </div>
 
         {/* Output sizes */}
-        <div className="space-y-4">
+        <div className="">
           <div className="flex justify-between items-center mb-3">
             <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
               Output sizes
@@ -255,7 +257,11 @@ export function ConfigPanel() {
                 type="button"
                 onClick={() => {
                   if (!useOriginalSizes) {
-                    setDraft({ ...draft, useOriginalSizes: true });
+                    setDraft({ ...draft, 
+                      useOriginalSizes: true, 
+                      includeNativeSizeInCustom: false,
+                      customSizePresets: [{ id: nanoid(), width: 0, height: 0, maintainAspect: true }] 
+                    });
                   }
                 }}
                 className={cn(
@@ -272,7 +278,11 @@ export function ConfigPanel() {
                 type="button"
                 onClick={() => {
                   if (useOriginalSizes) {
-                    setDraft({ ...draft, useOriginalSizes: false });
+                    setDraft({ 
+                      ...draft, 
+                      useOriginalSizes: false,
+                      customSizePresets: [...DEFAULT_GLOBAL_OPTIONS.customSizePresets],
+                    });
                   }
                 }}
                 className={cn(
@@ -290,7 +300,7 @@ export function ConfigPanel() {
 
           {!useOriginalSizes && (
             <>
-              <label className="flex items-center gap-2 cursor-pointer select-none min-h-[44px] group m-0">
+              <label className="flex items-center gap-2 cursor-pointer select-none min-h-[40px] group m-0">
                 <Checkbox
                   checked={includeNativeSizeInCustom}
                   onCheckedChange={() =>
@@ -303,7 +313,7 @@ export function ConfigPanel() {
                 </span>
               </label>
 
-              <p className="text-[10px] text-muted-foreground leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed mb-3">
                 Vector SVG output ignores custom sizes (one optimized SVG). Raster formats from SVGs use
                 your size list.
               </p>
@@ -314,141 +324,168 @@ export function ConfigPanel() {
                   {sizeCountEstimate} sizes). Large batches use more memory and time.
                 </p>
               )}
-
-              <div className="space-y-2">
-                {customSizePresets.map((row) => (
-                  <div
-                    key={row.id}
-                    className="flex items-end gap-2 rounded-xl border border-border bg-surface/40 p-3"
+            </>
+          )}
+        <div className={cn("space-y-2 mb-3", useOriginalSizes ? "opacity-30 pointer-events-none grayscale" : "opacity-100")}>
+            {customSizePresets.map((row) => (
+              <div
+                key={row.id}
+                className="flex items-end gap-2 rounded-xl border border-border bg-surface/40 p-3"
+              >
+                <div className="min-w-[4.5rem] flex-1">
+                  <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-muted-foreground">
+                    Width
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={RESIZE_MAX_EDGE_MAX}
+                    value={row.width || ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        updatePreset(row.id, { width: 0 });
+                        return;
+                      }
+                      const v = parseInt(raw, 10);
+                      const width = Number.isFinite(v)
+                        ? Math.min(RESIZE_MAX_EDGE_MAX, Math.max(0, v))
+                        : 0;
+                      if (row.maintainAspect) {
+                        updatePreset(row.id, { width, height: width > 0 ? 0 : row.height });
+                      } else {
+                        updatePreset(row.id, { width });
+                      }
+                    }}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-2 py-2 text-xs font-bold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    aria-label="Output width in pixels"
+                    placeholder={row.maintainAspect ? "Auto" : "Input width"}
+                  />
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-muted-foreground">
+                    Link
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !row.maintainAspect;
+                      if (next) {
+                        updatePreset(row.id, { maintainAspect: true, height: 0 });
+                      } else {
+                        updatePreset(row.id, { maintainAspect: false });
+                      }
+                    }}
+                    className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-lg border transition-colors',
+                      row.maintainAspect
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-muted text-muted-foreground hover:text-foreground'
+                    )}
+                    title={
+                      row.maintainAspect
+                        ? 'Aspect ratio locked: enter width or height (the other clears)'
+                        : 'Independent width and height'
+                    }
+                    aria-pressed={row.maintainAspect}
+                    aria-label="Toggle aspect ratio lock"
                   >
-                    <div className="min-w-[4.5rem] flex-1">
-                      <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-muted-foreground">
-                        Width
-                      </span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={RESIZE_MAX_EDGE_MAX}
-                        value={row.width || ''}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === '') {
-                            updatePreset(row.id, { width: 0 });
-                            return;
-                          }
-                          const v = parseInt(raw, 10);
-                          const width = Number.isFinite(v)
-                            ? Math.min(RESIZE_MAX_EDGE_MAX, Math.max(0, v))
-                            : 0;
-                          if (row.maintainAspect) {
-                            updatePreset(row.id, { width, height: width > 0 ? 0 : row.height });
-                          } else {
-                            updatePreset(row.id, { width });
-                          }
-                        }}
-                        className="w-full h-9 rounded-lg border border-border bg-background px-2 py-2 text-xs font-bold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                        aria-label="Output width in pixels"
-                        placeholder={row.maintainAspect ? "Auto" : "Input width"}
-                      />
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-muted-foreground">
-                        Link
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = !row.maintainAspect;
-                          if (next) {
-                            updatePreset(row.id, { maintainAspect: true, height: 0 });
-                          } else {
-                            updatePreset(row.id, { maintainAspect: false });
-                          }
-                        }}
-                        className={cn(
-                          'flex h-9 w-9 items-center justify-center rounded-lg border transition-colors',
-                          row.maintainAspect
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-muted text-muted-foreground hover:text-foreground'
-                        )}
-                        title={
-                          row.maintainAspect
-                            ? 'Aspect ratio locked: enter width or height (the other clears)'
-                            : 'Independent width and height'
-                        }
-                        aria-pressed={row.maintainAspect}
-                        aria-label="Toggle aspect ratio lock"
-                      >
-                        {row.maintainAspect ? <Link2 size={16} /> : <Link2Off size={16} />}
-                      </button>
-                    </div>
-                    <div className="min-w-[4.5rem] flex-1">
-                      <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-muted-foreground">
-                        Height
-                      </span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={RESIZE_MAX_EDGE_MAX}
-                        value={row.height || ''}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === '') {
-                            updatePreset(row.id, { height: 0 });
-                            return;
-                          }
-                          const v = parseInt(raw, 10);
-                          const height = Number.isFinite(v)
-                            ? Math.min(RESIZE_MAX_EDGE_MAX, Math.max(0, v))
-                            : 0;
-                          if (row.maintainAspect) {
-                            updatePreset(row.id, { height, width: height > 0 ? 0 : row.width });
-                          } else {
-                            updatePreset(row.id, { height });
-                          }
-                        }}
-                        className="w-full h-9 rounded-lg border border-border bg-background px-2 py-2 text-xs font-bold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                        aria-label="Output height in pixels"
-                        placeholder={row.maintainAspect ? "Auto" : "Input height"}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removePreset(row.id)}
-                      className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
-                      aria-label="Remove size preset"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
+                    {row.maintainAspect ? <Link2 size={16} /> : <Link2Off size={16} />}
+                  </button>
+                </div>
+                <div className="min-w-[4.5rem] flex-1">
+                  <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-muted-foreground">
+                    Height
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={RESIZE_MAX_EDGE_MAX}
+                    value={row.height || ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        updatePreset(row.id, { height: 0 });
+                        return;
+                      }
+                      const v = parseInt(raw, 10);
+                      const height = Number.isFinite(v)
+                        ? Math.min(RESIZE_MAX_EDGE_MAX, Math.max(0, v))
+                        : 0;
+                      if (row.maintainAspect) {
+                        updatePreset(row.id, { height, width: height > 0 ? 0 : row.width });
+                      } else {
+                        updatePreset(row.id, { height });
+                      }
+                    }}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-2 py-2 text-xs font-bold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    aria-label="Output height in pixels"
+                    placeholder={row.maintainAspect ? "Auto" : "Input height"}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removePreset(row.id)}
+                  className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+                  aria-label="Remove size preset"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
+            ))}
+          </div>
 
-              <div className="flex flex-wrap gap-2">
+          {!useOriginalSizes && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="text-[10px] uppercase tracking-wider"
+                onClick={() => addPreset()}
+              >
+                <Plus size={14} className="mr-1" /> Add size
+              </Button>
+              {[640, 768, 1024, 1920].map((w) => (
                 <Button
+                  key={w}
                   type="button"
                   variant="secondary"
                   size="sm"
-                  className="text-[10px] uppercase tracking-wider"
-                  onClick={() => addPreset()}
+                  className="text-[10px] font-bold"
+                  onClick={() => addPreset(w, 0, true)}
                 >
-                  <Plus size={14} className="mr-1" /> Add size
+                  {w}w
                 </Button>
-                {[640, 768, 1024, 1920].map((w) => (
-                  <Button
-                    key={w}
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="text-[10px] font-bold"
-                    onClick={() => addPreset(w, 0, true)}
-                  >
-                    {w}w
-                  </Button>
-                ))}
-              </div>
-            </>
+              ))}
+            </div>
           )}
+        </div>
+
+        {/* Lossless encoding (raster outputs) */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <FileType size={14} className="text-muted-foreground" />
+            <label htmlFor="lossless-encoding" className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
+              Lossless encoding
+            </label>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-relaxed mb-3">
+            Often increases file size but offers zero compression overhead. None (lossy, default) is recommended for most use cases.
+          </p>
+          <Select
+            value={losslessEncoding}
+            onValueChange={(value) => updateDraft('losslessEncoding', value as LosslessEncoding)}
+          >
+            <SelectTrigger id="lossless-encoding" aria-label="Lossless encoding mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None (lossy, default)</SelectItem>
+              <SelectItem value="all">All outputs</SelectItem>
+              <SelectItem value="custom_sizes_only">Custom sizes only</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* SVG Internal Data Section */}

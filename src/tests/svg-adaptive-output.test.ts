@@ -144,10 +144,12 @@ vi.mock('@/workers/svg-browser-raster', () => ({
   rasterizeSvgWithBrowser: vi.fn(),
 }));
 
+vi.mock('@/lib/codecs/raster/lossless', () => ({
+  encodeLossless: vi.fn(async () => new Uint8Array([4, 5, 6])),
+}));
+
 vi.mock('@/workers/raster-encode', () => ({
   checkPixelLimit: vi.fn(),
-  encodeRaster: vi.fn(async () => new Uint8Array([1, 2, 3])),
-  encodeRasterVectorSafeWithSizeSafeguard: vi.fn(async () => new Uint8Array([4, 5, 6])),
   toBase64: vi.fn(async () => 'mock-base64'),
 }));
 
