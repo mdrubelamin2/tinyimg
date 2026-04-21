@@ -11,6 +11,7 @@ import {
   CONFETTI_COLORS,
 } from '@/constants';
 import type { ImageItem } from '@/lib/queue/types';
+import { toast } from 'sonner';
 
 /** Heuristic typical savings % by MIME for pre-result estimate (instant feedback). */
 const SAVINGS_TYPICAL_BY_MIME: Record<string, number> = {
@@ -189,6 +190,22 @@ function scheduleStatsFlush(): void {
   });
 }
 
+function showStatToast(): void {
+  const stats = computeQueueStats();
+  if(stats.processingCount > 0) {
+    toast.loading(
+      `Optimized ${stats.successfulOutputCount} of ${stats.totalOutputCount} image${stats.processingCount > 1 ? 's' : ''}... Saved ${stats.savingsPercent}% so far!`,
+       { id: 'progress-toast' }
+    );
+  }
+  if(stats.allSuccessful) {
+    toast.success(
+      `Optimized ${stats.successfulOutputCount} image${stats.successfulCount > 1 ? 's' : ''}! Total savings: ${stats.savingsPercent}%`,
+       { id: 'progress-toast' }
+    );
+  }
+}
+
 observe(() => {
   imageStore$.itemOrder.get();
   for (const id of imageStore$.itemOrder.peek()) {
@@ -196,4 +213,5 @@ observe(() => {
     imageStore$.items[id]?.results.get();
   }
   scheduleStatsFlush();
+  showStatToast();
 });
