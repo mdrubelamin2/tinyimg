@@ -14,7 +14,7 @@ let peakResultBatchCount = 0;
 let peakResultBatchBytes = 0;
 
 function log(...args: unknown[]): void {
-  if (enabled) console.debug('[heap-metrics]', ...args);
+  if (enabled) console.info('[heap-metrics]', ...args);
 }
 
 export const heapMetrics = {
