@@ -61,7 +61,37 @@ export async function toBase64(buffer: ArrayBuffer): Promise<string> {
   });
 }
 
+/** Normalize thrown values from WASM / codecs (often not `instanceof Error`). */
 export function toErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  return String(error ?? fallback);
+  if (error == null) return fallback;
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) {
+    const m = error.message?.trim();
+    if (m) return m;
+    return error.name || fallback;
+  }
+  if (typeof error === 'number' || typeof error === 'boolean' || typeof error === 'bigint') {
+    return String(error);
+  }
+  if (typeof error === 'object') {
+    const o = error as Record<string, unknown>;
+    const msg = o['message'];
+    const detail = o['detail'];
+    const reason = o['reason'];
+    if (typeof msg === 'string' && msg.trim()) return msg.trim();
+    if (typeof detail === 'string' && detail.trim()) return detail.trim();
+    if (typeof reason === 'string' && reason.trim()) return reason.trim();
+    try {
+      const j = JSON.stringify(error);
+      if (j && j !== '{}') return j;
+    } catch {
+      /* ignore */
+    }
+    if (Object.keys(error as object).length === 0) {
+      return `${fallback} (codec threw a non-Error value with no details)`;
+    }
+  }
+  const s = String(error);
+  if (s && s !== '[object Object]') return s;
+  return fallback;
 }
