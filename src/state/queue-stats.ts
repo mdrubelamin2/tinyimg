@@ -159,6 +159,7 @@ function maybeFireAllSuccessfulConfetti(prev: QueueStats, next: QueueStats): voi
       spread: CONFETTI_SPREAD,
       origin: { y: CONFETTI_ORIGIN_Y },
       colors: [...CONFETTI_COLORS],
+      disableForReducedMotion: true,
     });
   });
 }
