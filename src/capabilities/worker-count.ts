@@ -59,13 +59,10 @@ export function computeOptimalWorkerCount(): number {
   if (cores <= 2) return 1;
 
   if (isLikelyMobile()) {
-    const reserved = 1;
-    const n = Math.max(1, Math.min(cores - reserved, MOBILE_MAX_WORKERS));
+    const n = Math.max(1, Math.min(cores, MOBILE_MAX_WORKERS));
     return memoryBoundedWorkerCap(n);
   }
 
-  const reserved = cores > 6 ? 2 : 1;
-  const coreCap = Math.max(1, cores - reserved);
-  const n = Math.max(CONCURRENCY_MIN, Math.min(coreCap, CONCURRENCY_MAX_DESKTOP));
+  const n = Math.max(CONCURRENCY_MIN, Math.min(cores, CONCURRENCY_MAX_DESKTOP));
   return memoryBoundedWorkerCap(n);
 }

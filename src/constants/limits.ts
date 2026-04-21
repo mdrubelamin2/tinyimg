@@ -7,7 +7,7 @@ export const BYTES_PER_KB = 1024;
 
 // --- File intake limits ---
 export const MAX_FILE_SIZE_BYTES = 25 * BYTES_PER_KB * BYTES_PER_KB;
-export const LARGE_FILE_SERIAL_THRESHOLD_BYTES = 5 * BYTES_PER_KB * BYTES_PER_KB;
+export const LARGE_FILE_SERIAL_THRESHOLD_BYTES = 10 * BYTES_PER_KB * BYTES_PER_KB;
 /** Compressed archive (.zip) max size before intake refuses the file (toast only, no queue row). */
 export const MAX_ZIP_FILE_SIZE_BYTES = 2 * BYTES_PER_KB * BYTES_PER_KB * BYTES_PER_KB;
 export const MAX_ZIP_EXTRACTED_FILES = 1000;
@@ -18,14 +18,14 @@ export const MAX_DOWNLOAD_BYTES = 80 * BYTES_PER_KB * BYTES_PER_KB;
 export const MAX_DOWNLOAD_FILES = 200;
 
 // --- Concurrency ---
-export const CONCURRENCY_MIN = Math.max(1, Math.floor(navigator.hardwareConcurrency / 4));
+export const CONCURRENCY_MIN = Math.max(1, Math.floor((navigator.hardwareConcurrency ?? 1) / 4));
 /** Desktop / laptop worker ceiling after cores + memory heuristics. */
-export const CONCURRENCY_MAX_DESKTOP = Math.max(1, Math.floor(navigator.hardwareConcurrency / 2));
+export const CONCURRENCY_MAX_DESKTOP = Math.max(1, Math.floor((navigator.hardwareConcurrency ?? 1) / 2));
 /** When `navigator.deviceMemory` is missing (Safari / Firefox), cap optimizer workers to limit decode+WASM RSS. */
 export const CONCURRENCY_MAX_NO_DEVICE_MEMORY = 4;
 export const MOBILE_MAX_WORKERS = 4;
 /** Rough WASM footprint per worker for memory-based caps (MB). */
-export const MB_PER_WORKER_ESTIMATE = 2048;
+export const MB_PER_WORKER_ESTIMATE = 1024;
 /** Reserve this many GB of reported deviceMemory before sizing workers. */
 export const DEVICE_MEMORY_RESERVE_GB = 2;
 
