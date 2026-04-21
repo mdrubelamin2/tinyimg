@@ -1,5 +1,5 @@
 import { QUOTA_WARN_RATIO } from '@/constants/storage';
-import { toastWarning } from '@/notifications/toast-emitter';
+import { toast } from 'sonner';
 
 /** True when a storage write failed because quota was exceeded (OPFS / IndexedDB). */
 export function isQuotaExceededError(e: unknown): boolean {
@@ -39,8 +39,9 @@ export function startSessionQuotaMonitor(intervalMs: number = DEFAULT_INTERVAL_M
       const ratio = usage / quota;
       if (ratio >= QUOTA_WARN_RATIO && !warned) {
         warned = true;
-        toastWarning(
-          `Browser storage is ${Math.round(ratio * 100)}% full. Download results and clear the queue to free space.`
+        toast.warning(
+          `Browser storage is ${Math.round(ratio * 100)}% full. Download results and clear the queue to free space.`,
+          { id: 'browser-storage-full' }
         );
       }
       if (ratio < QUOTA_WARN_RATIO * 0.85) {

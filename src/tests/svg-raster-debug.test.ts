@@ -120,8 +120,6 @@ describe('SVG Raster Debug', () => {
     try {
       const result = await processSvg(file, {
         svgInternalFormat: 'webp',
-        svgRasterizer: 'resvg',
-        svgExportDensity: 'display',
         svgDisplayDpr: 1
       });
       

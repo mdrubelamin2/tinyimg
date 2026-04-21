@@ -60,8 +60,8 @@ export function VirtualizedQueueTableBody({
               <colgroup>
                 <col className="min-w-0" style={{ width: '28%' }} />
                 <col style={{ width: '12%' }} />
-                <col className="min-w-0" style={{ width: '50%' }} />
-                <col style={{ width: '10%' }} />
+                <col className="min-w-0" style={{ width: '45%' }} />
+                <col style={{ width: '15%' }} />
               </colgroup>
               {children}
             </table>
