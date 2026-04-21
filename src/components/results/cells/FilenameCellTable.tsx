@@ -39,7 +39,6 @@ export function FilenameCellTable({
               className="w-full h-full object-cover"
               decoding="async"
               fetchPriority="low"
-              loading="lazy"
             />
           ) : (
             <div
