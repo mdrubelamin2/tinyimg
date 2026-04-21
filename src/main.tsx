@@ -14,7 +14,6 @@ import { bootstrapSession } from '@/bootstrap/session-bootstrap';
 import { startSessionMonitors } from '@/bootstrap/session-monitors';
 import { registerGlobalFileIntake } from '@/bootstrap/global-file-intake';
 import { applyThemeFromStorage, initSystemThemeMediaListener } from '@/bootstrap/theme-dom';
-import { initSettingsQueueBridge } from '@/store/settings-queue-bridge';
 
 if (import.meta.env.DEV) {
   void import('react-scan').then(({ scan }) => {
@@ -36,13 +35,11 @@ void (async () => {
 
   const stopMonitors = startSessionMonitors();
   const stopFileIntake = registerGlobalFileIntake();
-  const stopSettingsBridge = initSettingsQueueBridge();
 
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       stopMonitors();
       stopFileIntake();
-      stopSettingsBridge();
     });
   }
 

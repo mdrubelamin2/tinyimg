@@ -18,7 +18,6 @@ import {
   ERR_PERSIST_FAILED,
   OUTPUT_QUALITY_MAX,
   OUTPUT_QUALITY_MIN,
-  UPDATE_OPTIONS_DEBOUNCE_MS,
   RESULT_PERSIST_BATCH_MAX_BYTES,
   RESULT_PERSIST_BATCH_MAX_ITEMS,
   LARGE_FILE_SERIAL_THRESHOLD_BYTES,
@@ -92,7 +91,7 @@ interface ImageStoreActions {
   setItemQualityPercent: (id: string, percent: number | null, options: GlobalOptions) => void;
   setVisibleItems: (ids: string[]) => void;
   downloadAll: () => Promise<void>;
-  applyGlobalOptions: (options: GlobalOptions, forceAll?: boolean) => void;
+  applyGlobalOptions: (options: GlobalOptions) => void;
   _applyWorkerResult: (response: WorkerOutbound) => void;
   _applyWorkerError: (task: Task | null) => void;
   _batchApplyResults: () => void;
@@ -104,8 +103,6 @@ interface ImageStoreActions {
 export type ImageStore = ImageStoreState & ImageStoreActions;
 
 let pool: WorkerPool | null = null;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingForceAll = false;
 
 let responseBuffer: WorkerOutbound[] = [];
 let errorBuffer: (Task | null)[] = [];
@@ -349,14 +346,16 @@ function snapshotItemsMap(): Map<string, ImageItem> {
 }
 
 function replaceItemsMap(next: Map<string, ImageItem>): void {
-  for (const id of Object.keys(imageStore$.items.peek())) {
-    if (!next.has(id)) {
-      imageStore$.items[id]?.delete();
+  batch(() => {
+    for (const id of Object.keys(imageStore$.items.peek())) {
+      if (!next.has(id)) {
+        imageStore$.items[id]?.delete();
+      }
     }
-  }
-  for (const [id, item] of next) {
-    imageStore$.items[id]!.set(item);
-  }
+    for (const [id, item] of next) {
+      imageStore$.items[id]!.set(item);
+    }
+  })
 }
 
 async function persistIntakeOriginalsParallel(chunk: CollectIntakeEntry[]): Promise<void> {
@@ -557,13 +556,8 @@ function clearFinishedImpl(): void {
 }
 
 async function clearAllImpl(): Promise<void> {
-  if (debounceTimer) {
-    clearTimeout(debounceTimer);
-    debounceTimer = null;
-  }
   inFlightRowIds.clear();
   largeFileInFlight = false;
-  pendingForceAll = false;
 
   resultPersistChain = Promise.resolve();
   destroyThumbnailWorker();
@@ -694,35 +688,54 @@ function setVisibleItemsImpl(ids: string[]): void {
   imageStore$.visibleItemIds.set([...ids]);
 }
 
-function applyGlobalOptionsImpl(options: GlobalOptions, forceAll: boolean): void {
-  if (forceAll) pendingForceAll = true;
+function applyGlobalOptionsImpl(options: GlobalOptions): void {
 
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    const isForced = pendingForceAll;
-    pendingForceAll = false;
-    debounceTimer = null;
+  batch(() => {
+    const currentPool = pool;
+    const nextItems = new Map<string, ImageItem>();
+    const nextPending: string[] = [];
+    const itemTasksToCancel: { itemId: string; resultId: string }[] = [];
 
-    batch(() => {
-      const nextItems = new Map<string, ImageItem>();
-      const nextPending: string[] = [];
-      for (const id of imageStore$.itemOrder.peek()) {
-        const item = imageStore$.items[id]?.peek();
-        if (!item) continue;
-        if (isForced || item.status === STATUS_PENDING || item.status === STATUS_PROCESSING) {
-          const nextItem = resetItemResultsForOptions(item, options);
-          nextItems.set(id, nextItem);
-          nextPending.push(id);
-        } else {
-          nextItems.set(id, item);
-        }
+    for (const id of imageStore$.itemOrder.peek()) {
+      const item = imageStore$.items[id]?.peek();
+      if (!item) continue;
+
+      let resultIdsToCancel: string[] = [];
+
+      const result = resetItemResultsForOptions(item, options);
+      const nextItem = result.nextItem;
+      resultIdsToCancel = result.resultIdsToCancel;
+      itemTasksToCancel.push(...resultIdsToCancel.map(rid => ({ itemId: id, resultId: rid })));
+
+      nextItems.set(id, nextItem);
+      // If the item status transitioned to PENDING (or was already PENDING), add to queue
+      if (nextItem.status === STATUS_PENDING) {
+        nextPending.push(id);
       }
-      replaceItemsMap(nextItems);
-      imageStore$.pendingIds.set(nextPending);
-    });
+    }
 
-    void getState()._processNextAsync(options, { getState });
-  }, UPDATE_OPTIONS_DEBOUNCE_MS);
+    // Merge current pending IDs that weren't in the loop (shouldn't happen with itemOrder but to be safe)
+    const pendingSet = new Set(nextPending);
+    for (const id of imageStore$.pendingIds.peek()) {
+      if (imageStore$.items[id]?.peek() && !pendingSet.has(id)) {
+        nextPending.push(id);
+        pendingSet.add(id);
+      }
+    }
+
+    // Cancel tasks that are no longer valid
+    if (currentPool && itemTasksToCancel.length > 0) {
+      for (const { itemId, resultId } of itemTasksToCancel) {
+        currentPool.cancelTask(`${itemId}:${resultId}`);
+      }
+    }
+
+    replaceItemsMap(nextItems);
+    imageStore$.pendingIds.set(nextPending);
+  });
+  
+  snapshotItemsMap()
+  void getState()._processNextAsync(options, { getState });
 }
 
 function _applyWorkerResultImpl(response: WorkerOutbound): void {
@@ -845,7 +858,7 @@ async function _processNextAsyncImpl(
   const remainingCapacity = currentPool.concurrencyLimit - currentPool.activeCount;
   if (remainingCapacity <= 0) return;
 
-  const items = snapshotItemsMap();
+  const items = imageStore$.items.peek();
   const itemOrder = imageStore$.itemOrder.peek();
   const pendingIds = imageStore$.pendingIds.peek();
   const visibleItemIds = imageStore$.visibleItemIds.peek();
@@ -871,7 +884,7 @@ async function _processNextAsyncImpl(
   const idsToRemoveFromPending: string[] = [];
 
   for (const candidateId of sortedIds) {
-    const candidateItem = items.get(candidateId);
+    const candidateItem = items[candidateId];
     if (!candidateItem || candidateItem.status !== STATUS_PENDING) continue;
 
     const isLarge = candidateItem.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES;
@@ -931,7 +944,7 @@ function _dispatchRowToPool(
   largeFileInFlight = recomputeLargeFileFlag();
 
   for (const slot of slots) {
-    if (!processingItem.results[slot.resultId]) continue;
+    if (!processingItem.results[slot.resultId] || processingItem.results[slot.resultId]?.status === STATUS_SUCCESS) continue;
     processingItem.results = {
       ...processingItem.results,
       [slot.resultId]: { ...processingItem.results[slot.resultId]!, status: STATUS_PROCESSING },
@@ -999,8 +1012,8 @@ const imageStoreSingleton: ImageStore = {
     const arr = itemsToArray(snapshotItemsMap(), imageStore$.itemOrder.peek());
     await buildAndDownloadZip(arr);
   },
-  applyGlobalOptions(options, forceAll = false) {
-    applyGlobalOptionsImpl(options, forceAll ?? false);
+  applyGlobalOptions(options) {
+    applyGlobalOptionsImpl(options);
   },
   _applyWorkerResult: _applyWorkerResultImpl,
   _applyWorkerError: _applyWorkerErrorImpl,

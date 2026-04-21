@@ -1,4 +1,4 @@
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import {
   Settings,
   RefreshCcw,
@@ -35,8 +35,6 @@ export function ConfigPanel() {
   const options = useSettingsStore(state => state.options);
   const setOptions = useSettingsStore(state => state.setOptions);
   const applyGlobalOptions = getImageStore().applyGlobalOptions;
-
-  const [isPending, startTransition] = useTransition();
 
   const [draft, setDraft] = useState<GlobalOptions>({ ...options });
 
@@ -133,9 +131,7 @@ export function ConfigPanel() {
 
   const handleApplyToAll = () => {
     setOptions(draft);
-    startTransition(() => {
-      applyGlobalOptions(draft, true);
-    });
+    applyGlobalOptions(draft);
   };
 
   const handleResetToDefaults = () => {
@@ -488,15 +484,11 @@ export function ConfigPanel() {
         <Button
           variant="default"
           onClick={handleApplyToAll}
-          disabled={!hasChanges || isPending}
+          disabled={!hasChanges}
           className="w-full text-[10px] uppercase tracking-widest cursor-pointer disabled:cursor-not-allowed transition-colors duration-200"
         >
-          {isPending ? (
-            <RefreshCcw size={14} className="mr-2 animate-spin" />
-          ) : (
-            <CheckCircle size={14} strokeWidth={3} className="mr-2" />
-          )}
-          {isPending ? 'Applying...' : 'Apply to All'}
+          <CheckCircle size={14} strokeWidth={3} className="mr-2" />
+          Apply to All
         </Button>
         <Button
           variant="secondary"
