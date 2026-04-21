@@ -12,6 +12,7 @@ import { Show, useObserveEffect, useValue } from '@legendapp/state/react';
 import { lazy, Suspense } from 'react';
 import { Toaster } from 'sonner';
 import { preview$ } from './store/preview-store';
+import { useTheme } from './hooks/useTheme';
 
 const ImagePreviewLazy = lazy(() =>
   import('@/components/preview/ImagePreview').then((m) => ({ default: m.ImagePreview }))
@@ -22,6 +23,7 @@ const AppFooterFaq = lazy(() =>
 
 export default function App() {
   const preview = useValue(preview$);
+  const { resolved: theme } = useTheme();
   const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get());
 
   const downloadAll = getImageStore().downloadAll;
@@ -42,7 +44,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Toaster richColors closeButton position="bottom-right" />
+      <Toaster richColors closeButton expand position="bottom-right" theme={theme} />
       <ErrorBoundary>
         <AppHeader />
 
