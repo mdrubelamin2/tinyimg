@@ -4,7 +4,7 @@
  */
 
 import { startTransition } from 'react';
-import { batch, observable } from '@legendapp/state';
+import { batch, observable, computed, observe } from '@legendapp/state';
 import { useValue } from '@legendapp/state/react';
 import type { ImageItem, ImageResult, Task, WorkerOutbound, WorkerOutboundResult } from '@/lib/queue/types';
 import type { GlobalOptions } from '@/constants';
@@ -56,10 +56,58 @@ export const imageStore$ = observable({
   /** Per-id queue rows; absent key means removed */
   items: {} as Record<string, ImageItem | undefined>,
   itemOrder: [] as string[],
-  /** Unique pending ids (order not significant) */
-  pendingIds: [] as string[],
   /** Visible row ids from virtualization (order not significant) */
   visibleItemIds: [] as string[],
+});
+
+export const poolStats$ = observable({
+  activeCount: 0,
+  limit: computeConcurrency(),
+});
+
+/** Track active tasks at the result level (itemId:resultId -> boolean) */
+export const inFlightTasks$ = observable({} as Record<string, boolean | undefined>);
+
+/** Derived work queue: flattened list of (itemId, resultId) for results with STATUS_PENDING */
+export const pendingTasks$ = computed(() => {
+  const items = imageStore$.items.get();
+  const order = imageStore$.itemOrder.get();
+  const visible = new Set(imageStore$.visibleItemIds.get());
+
+  const pending: { itemId: string; resultId: string; isLarge: boolean }[] = [];
+
+  for (const id of order) {
+    const item = items[id];
+    if (!item) continue;
+
+    const isLarge = item.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES;
+    for (const rid in item.results) {
+      if (item.results[rid]?.status === STATUS_PENDING) {
+        pending.push({ itemId: id, resultId: rid, isLarge });
+      }
+    }
+  }
+
+  // Sort by visibility first
+  return pending.sort((a, b) => {
+    const aVisible = visible.has(a.itemId);
+    const bVisible = visible.has(b.itemId);
+    if (aVisible && !bVisible) return -1;
+    if (!aVisible && bVisible) return 1;
+    return 0;
+  });
+});
+
+export const isLargeFileInFlight$ = computed(() => {
+  const inFlight = inFlightTasks$.get();
+  const items = imageStore$.items.peek();
+
+  return Object.keys(inFlight).some(taskId => {
+    if (!inFlight[taskId]) return false;
+    const [itemId] = taskId.split(':') as [string];
+    const item = items[itemId];
+    return item && item.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES;
+  });
 });
 
 const INTAKE_UI_CHUNK = 40;
@@ -77,7 +125,6 @@ export const intake$ = observable({
 interface ImageStoreState {
   items: Map<string, ImageItem>;
   itemOrder: string[];
-  pendingIds: Set<string>;
   visibleItemIds: Set<string>;
 }
 
@@ -92,6 +139,7 @@ interface ImageStoreActions {
   setVisibleItems: (ids: string[]) => void;
   downloadAll: () => Promise<void>;
   applyGlobalOptions: (options: GlobalOptions) => void;
+  pendingIds: Set<string>;
   _applyWorkerResult: (response: WorkerOutbound) => void;
   _applyWorkerError: (task: Task | null) => void;
   _batchApplyResults: () => void;
@@ -111,17 +159,7 @@ let flushScheduled = false;
 /** Serializes persist work across RAF batches so large `encodedBytes` are not retained concurrently. */
 let resultPersistChain: Promise<void> = Promise.resolve();
 
-const inFlightRowIds = new Set<string>();
-
-let largeFileInFlight = false;
-
-function recomputeLargeFileFlag(): boolean {
-  for (const id of inFlightRowIds) {
-    const item = imageStore$.items[id]?.peek();
-    if (item && item.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES) return true;
-  }
-  return false;
-}
+let isScheduling = false;
 
 let lastPersistErrorToastAt = 0;
 const PERSIST_ERROR_TOAST_COOLDOWN_MS = 4000;
@@ -161,7 +199,6 @@ export function chunkResultResponsesForPersist(
 function applyPersistFailure(
   response: WorkerOutboundResult,
   errorMessage: string,
-  opts: GlobalOptions
 ): void {
   startTransition(() => {
     batch(() => {
@@ -177,24 +214,14 @@ function applyPersistFailure(
         [rid]: { ...result, status: STATUS_ERROR, error: errorMessage },
       };
 
-      let nextPending = [...imageStore$.pendingIds.peek()];
-      let shouldProcessNext = false;
       if (isTerminal(nextItem)) {
         const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
         nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
         nextItem.progress = 100;
-        nextPending = nextPending.filter(x => x !== response.id);
-        shouldProcessNext = true;
       }
 
       imageStore$.items[response.id]!.set(nextItem);
-      imageStore$.pendingIds.set(nextPending);
-
-      if (shouldProcessNext) {
-        inFlightRowIds.delete(response.id);
-        largeFileInFlight = recomputeLargeFileFlag();
-        void getState()._processNextAsync(opts, { getState });
-      }
+      inFlightTasks$[`${response.id}:${rid}`]!.delete();
     });
   });
 }
@@ -206,7 +233,6 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
   const queue = [...results];
   resultPersistChain = resultPersistChain
     .then(async () => {
-      const opts = useSettingsStore.getState().options;
       while (queue.length > 0) {
         let response: WorkerOutboundResult | null = queue.shift()!;
         if (!response) continue;
@@ -245,36 +271,27 @@ function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
                     size: response!.size,
                     formattedSize: response!.formattedSize,
                     savingsPercent: response!.savingsPercent,
+                    lossless: response!.lossless,
                     payloadKey,
                     label: response!.label,
                     downloadUrl: undefined,
                   },
                 };
 
-                let nextPending = [...imageStore$.pendingIds.peek()];
-                let shouldProcessNext = false;
                 if (isTerminal(nextItem)) {
                   const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
                   nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
                   nextItem.progress = 100;
-                  nextPending = nextPending.filter(x => x !== response!.id);
-                  shouldProcessNext = true;
                 }
 
                 imageStore$.items[response!.id]!.set(nextItem);
-                imageStore$.pendingIds.set(nextPending);
-
-                if (shouldProcessNext) {
-                  inFlightRowIds.delete(response!.id);
-                  largeFileInFlight = recomputeLargeFileFlag();
-                  void getState()._processNextAsync(opts, { getState });
-                }
+                inFlightTasks$[`${response!.id}:${rid}`]!.delete();
               });
             });
           } catch (e) {
             const msg = isQuotaExceededError(e) ? ERR_PERSIST_STORAGE_FULL : ERR_PERSIST_FAILED;
             maybeToastPersistError(msg);
-            applyPersistFailure(response, msg, opts);
+            applyPersistFailure(response, msg);
           }
         } finally {
           heapMetrics.persistDurationMs(performance.now() - t0, byteLen);
@@ -300,9 +317,30 @@ function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
     onError: (_workerIndex, task) => {
       storeApi.getState()._applyWorkerError(task);
     },
+    onActiveCountChange: (count) => {
+      batch(() => {
+        poolStats$.activeCount.set(count);
+        if (pool) {
+          poolStats$.limit.set(pool.concurrencyLimit);
+        }
+      });
+    }
   });
   return pool;
 }
+
+// Reactive queue scheduler
+observe(() => {
+  const pending = pendingTasks$.get();
+  const inFlightCount = Object.keys(inFlightTasks$.get()).length;
+  const limit = poolStats$.limit.get();
+  const isLargeBusy = isLargeFileInFlight$.get();
+  const isIntakeActive = intake$.active.get();
+
+  if (pending.length > 0 && inFlightCount < limit && !isLargeBusy && !isIntakeActive) {
+    void _processNextAsyncImpl(useSettingsStore.getState().options, { getState });
+  }
+});
 
 function isTerminal(item: ImageItem): boolean {
   return !Object.values(item.results).some(
@@ -433,9 +471,7 @@ export async function addFiles(
     const mergeChunkToStore = (chunk: CollectIntakeEntry[]) => {
       batch(() => {
         const order = [...imageStore$.itemOrder.peek()];
-        const pending = [...imageStore$.pendingIds.peek()];
         const orderSet = new Set(order);
-        const pendingSet = new Set(pending);
 
         for (const ent of chunk) {
           imageStore$.items[ent.item.id]!.set(ent.item);
@@ -443,13 +479,8 @@ export async function addFiles(
             order.push(ent.item.id);
             orderSet.add(ent.item.id);
           }
-          if (ent.item.status === STATUS_PENDING && !pendingSet.has(ent.item.id)) {
-            pending.push(ent.item.id);
-            pendingSet.add(ent.item.id);
-          }
         }
         imageStore$.itemOrder.set(order);
-        imageStore$.pendingIds.set(pending);
       });
       enqueueThumbnails(chunk.map(e => e.item.id));
     };
@@ -494,16 +525,16 @@ export async function addFiles(
         throw err;
       }
     }
-
-    void getState()._processNextAsync(options, { getState });
   } finally {
-    batch(() => {
-      intake$.active.set(false);
-      intake$.phase.set('idle');
-      intake$.label.set('');
-      intake$.processed.set(0);
-      intake$.total.set(0);
-    });
+    setTimeout(() => {
+      batch(() => {
+        intake$.active.set(false);
+        intake$.phase.set('idle');
+        intake$.label.set('');
+        intake$.processed.set(0);
+        intake$.total.set(0);
+      });
+    }, 500);
   }
 }
 
@@ -521,7 +552,9 @@ function removeItemImpl(id: string, api: { getState: () => ImageStore }): void {
   batch(() => {
     imageStore$.items[id]?.delete();
     imageStore$.itemOrder.set(imageStore$.itemOrder.peek().filter(i => i !== id));
-    imageStore$.pendingIds.set(imageStore$.pendingIds.peek().filter(x => x !== id));
+    for (const rid in item.results) {
+      inFlightTasks$[`${id}:${rid}`]?.delete();
+    }
   });
 }
 
@@ -530,16 +563,12 @@ function clearFinishedImpl(): void {
     const prevOrder = [...imageStore$.itemOrder.peek()];
     const nextItems = new Map<string, ImageItem>();
     const nextOrder: string[] = [];
-    const nextPending: string[] = [];
     for (const id of prevOrder) {
       const item = imageStore$.items[id]?.peek();
       if (!item) continue;
       if (item.status === STATUS_PROCESSING || item.status === STATUS_PENDING) {
         nextItems.set(id, item);
         nextOrder.push(id);
-        if (item.status === STATUS_PENDING) {
-          nextPending.push(id);
-        }
         continue;
       }
       cancelThumbnail(id);
@@ -550,13 +579,11 @@ function clearFinishedImpl(): void {
     }
     replaceItemsMap(nextItems);
     imageStore$.itemOrder.set(nextOrder);
-    imageStore$.pendingIds.set(nextPending);
   });
 }
 
 async function clearAllImpl(): Promise<void> {
-  inFlightRowIds.clear();
-  largeFileInFlight = false;
+  inFlightTasks$.set({});
 
   resultPersistChain = Promise.resolve();
   destroyThumbnailWorker();
@@ -576,7 +603,6 @@ async function clearAllImpl(): Promise<void> {
       imageStore$.items[id]?.delete();
     }
     imageStore$.itemOrder.set([]);
-    imageStore$.pendingIds.set([]);
     imageStore$.visibleItemIds.set([]);
     intake$.active.set(false);
     intake$.phase.set('idle');
@@ -604,7 +630,6 @@ function reorderItemsImpl(fromIndex: number, toIndex: number): void {
 function setItemOutputFormatsImpl(id: string, formats: string[] | null, options: GlobalOptions, api: { getState: () => ImageStore }): void {
   const currentPool = getPool(api);
   currentPool.abortInFlightForItem(id);
-  currentPool.removeTasksForItem(id);
 
   const item = imageStore$.items[id]?.peek();
   if (!item) return;
@@ -632,12 +657,10 @@ function setItemOutputFormatsImpl(id: string, formats: string[] | null, options:
 
   batch(() => {
     imageStore$.items[id]!.set(nextItem);
-    const pending = [...imageStore$.pendingIds.peek()];
-    if (!pending.includes(id)) pending.push(id);
-    imageStore$.pendingIds.set(pending);
+    for (const rid in item.results) {
+      inFlightTasks$[`${id}:${rid}`]?.delete();
+    }
   });
-
-  void getState()._processNextAsync(options, { getState });
 }
 
 function setItemQualityPercentImpl(id: string, percent: number | null, options: GlobalOptions, api: { getState: () => ImageStore }): void {
@@ -647,7 +670,6 @@ function setItemQualityPercentImpl(id: string, percent: number | null, options: 
 
   const currentPool = getPool(api);
   currentPool.abortInFlightForItem(id);
-  currentPool.removeTasksForItem(id);
 
   const item = imageStore$.items[id]?.peek();
   if (!item) return;
@@ -675,12 +697,10 @@ function setItemQualityPercentImpl(id: string, percent: number | null, options: 
 
   batch(() => {
     imageStore$.items[id]!.set(nextItem);
-    const pending = [...imageStore$.pendingIds.peek()];
-    if (!pending.includes(id)) pending.push(id);
-    imageStore$.pendingIds.set(pending);
+    for (const rid in item.results) {
+      inFlightTasks$[`${id}:${rid}`]?.delete();
+    }
   });
-
-  void getState()._processNextAsync(options, { getState });
 }
 
 function setVisibleItemsImpl(ids: string[]): void {
@@ -688,53 +708,33 @@ function setVisibleItemsImpl(ids: string[]): void {
 }
 
 function applyGlobalOptionsImpl(options: GlobalOptions): void {
-
   batch(() => {
     const currentPool = pool;
     const nextItems = new Map<string, ImageItem>();
-    const nextPending: string[] = [];
     const itemTasksToCancel: { itemId: string; resultId: string }[] = [];
 
     for (const id of imageStore$.itemOrder.peek()) {
       const item = imageStore$.items[id]?.peek();
       if (!item) continue;
 
-      let resultIdsToCancel: string[] = [];
-
       const result = resetItemResultsForOptions(item, options);
       const nextItem = result.nextItem;
-      resultIdsToCancel = result.resultIdsToCancel;
+      const resultIdsToCancel = result.resultIdsToCancel;
       itemTasksToCancel.push(...resultIdsToCancel.map(rid => ({ itemId: id, resultId: rid })));
 
       nextItems.set(id, nextItem);
-      // If the item status transitioned to PENDING (or was already PENDING), add to queue
-      if (nextItem.status === STATUS_PENDING) {
-        nextPending.push(id);
-      }
-    }
-
-    // Merge current pending IDs that weren't in the loop (shouldn't happen with itemOrder but to be safe)
-    const pendingSet = new Set(nextPending);
-    for (const id of imageStore$.pendingIds.peek()) {
-      if (imageStore$.items[id]?.peek() && !pendingSet.has(id)) {
-        nextPending.push(id);
-        pendingSet.add(id);
-      }
     }
 
     // Cancel tasks that are no longer valid
     if (currentPool && itemTasksToCancel.length > 0) {
       for (const { itemId, resultId } of itemTasksToCancel) {
         currentPool.cancelTask(`${itemId}:${resultId}`);
+        inFlightTasks$[`${itemId}:${resultId}`]?.delete();
       }
     }
 
     replaceItemsMap(nextItems);
-    imageStore$.pendingIds.set(nextPending);
   });
-  
-  snapshotItemsMap()
-  void getState()._processNextAsync(options, { getState });
 }
 
 function _applyWorkerResultImpl(response: WorkerOutbound): void {
@@ -771,13 +771,9 @@ function _batchApplyResultsImpl(): void {
 
   if (responses.length === 0 && errors.length === 0) return;
 
-  let shouldProcessNextSync = false;
-  const terminalIds: string[] = [];
-
   startTransition(() => {
     batch(() => {
       const itemsMap = snapshotItemsMap();
-      let nextPending = [...imageStore$.pendingIds.peek()];
 
       for (const response of responses) {
         if (response.type === 'ERROR') {
@@ -807,13 +803,11 @@ function _batchApplyResultsImpl(): void {
           if (isTerminal(nextItem)) {
             nextItem.status = STATUS_ERROR;
             nextItem.progress = 100;
-            nextPending = nextPending.filter(x => x !== response.id);
-            shouldProcessNextSync = true;
-            terminalIds.push(response.id);
           }
 
           itemsMap.set(response.id, nextItem);
           imageStore$.items[response.id]!.set(nextItem);
+          inFlightTasks$[`${response.id}:${rid}`]?.delete();
         }
       }
 
@@ -845,25 +839,13 @@ function _batchApplyResultsImpl(): void {
         if (isTerminal(nextItem)) {
           nextItem.status = STATUS_ERROR;
           nextItem.progress = 100;
-          nextPending = nextPending.filter(x => x !== task.id);
-          shouldProcessNextSync = true;
-          terminalIds.push(task.id);
         }
 
         itemsMap.set(task.id, nextItem);
         imageStore$.items[task.id]!.set(nextItem);
+        inFlightTasks$[`${task.id}:${rid}`]?.delete();
       }
-
-      imageStore$.pendingIds.set(nextPending);
     });
-
-    if (shouldProcessNextSync) {
-      for (const id of terminalIds) {
-        inFlightRowIds.delete(id);
-      }
-      largeFileInFlight = recomputeLargeFileFlag();
-      void getState()._processNextAsync(useSettingsStore.getState().options, { getState });
-    }
   });
 }
 
@@ -871,82 +853,66 @@ async function _processNextAsyncImpl(
   options: GlobalOptions,
   api: { getState: () => ImageStore }
 ): Promise<void> {
-  if (largeFileInFlight) return;
+  if (isScheduling) return;
+  isScheduling = true;
 
-  const currentPool = getPool(api);
+  try {
+    const currentPool = getPool(api);
+    const inFlightCount = Object.keys(inFlightTasks$.peek()).length;
+    const limit = poolStats$.limit.peek();
+    const remainingCapacity = limit - inFlightCount;
 
-  const remainingCapacity = currentPool.concurrencyLimit - currentPool.activeCount;
-  if (remainingCapacity <= 0) return;
+    if (remainingCapacity <= 0) return;
 
-  const items = imageStore$.items.peek();
-  const itemOrder = imageStore$.itemOrder.peek();
-  const pendingIds = imageStore$.pendingIds.peek();
-  const visibleItemIds = imageStore$.visibleItemIds.peek();
+    const pending = pendingTasks$.peek();
+    if (pending.length === 0) return;
 
-  if (pendingIds.length === 0) return;
+    const isLargeBusy = isLargeFileInFlight$.peek();
+    if (isLargeBusy) return;
 
-  const pendingSet = new Set(pendingIds);
-  const currentPendingArray = itemOrder.filter(id => pendingSet.has(id));
-  if (currentPendingArray.length === 0) return;
+    const items = imageStore$.items.peek();
+    let capacity = remainingCapacity;
 
-  const visibleSet = new Set(visibleItemIds);
-  const sortedIds = [...currentPendingArray].sort((a, b) => {
-    const aVisible = visibleSet.has(a);
-    const bVisible = visibleSet.has(b);
-
-    if (aVisible && !bVisible) return -1;
-    if (!aVisible && bVisible) return 1;
-    return 0;
-  });
-
-  let capacity = remainingCapacity;
-  let dispatchedCount = 0;
-  const idsToRemoveFromPending: string[] = [];
-
-  for (const candidateId of sortedIds) {
-    const candidateItem = items[candidateId];
-    if (!candidateItem || candidateItem.status !== STATUS_PENDING) continue;
-
-    const isLarge = candidateItem.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES;
-
-    if (isLarge) {
-      if (inFlightRowIds.size > 0) {
-        break;
+    // Group pending tasks by itemId to minimize resolveOriginalSourceFile calls
+    const tasksByItem = new Map<string, { resultIds: string[]; isLarge: boolean }>();
+    for (const p of pending) {
+      if (!tasksByItem.has(p.itemId)) {
+        tasksByItem.set(p.itemId, { resultIds: [], isLarge: p.isLarge });
       }
-      const sourceFile = await resolveOriginalSourceFile(candidateId, candidateItem);
-      if (!sourceFile) break;
-      _dispatchRowToPool(candidateId, candidateItem, sourceFile, currentPool, options);
-      idsToRemoveFromPending.push(candidateId);
-      dispatchedCount++;
-      break;
+      tasksByItem.get(p.itemId)!.resultIds.push(p.resultId);
     }
 
-    const slots = buildOutputSlots({ ...candidateItem, status: STATUS_PROCESSING }, options);
-    const slotsNeeded = slots.length;
+    for (const [itemId, info] of tasksByItem) {
+      if (capacity <= 0) break;
 
-    if (slotsNeeded > capacity) {
-      if (dispatchedCount === 0 && inFlightRowIds.size === 0) {
-        const sourceFile = await resolveOriginalSourceFile(candidateId, candidateItem);
-        if (!sourceFile) break;
-        _dispatchRowToPool(candidateId, candidateItem, sourceFile, currentPool, options);
-        idsToRemoveFromPending.push(candidateId);
-        dispatchedCount++;
+      const item = items[itemId];
+      if (!item) continue;
+
+      if (info.isLarge) {
+        // Large file needs a completely empty pool to start (serial constraint)
+        if (inFlightCount > 0 || capacity < remainingCapacity) {
+          break; // Stop and wait for idle
+        }
+        const sourceFile = await resolveOriginalSourceFile(itemId, item);
+        if (!sourceFile) continue;
+
+        // Dispatch one result for the large file (can have multiple results but they will be processed serially anyway)
+        const toDispatch = info.resultIds.slice(0, Math.min(2, capacity));
+        const count = _dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch);
+        capacity -= count;
+        break; // Stop after large file dispatch
       }
-      break;
+
+      const sourceFile = await resolveOriginalSourceFile(itemId, item);
+      if (!sourceFile) continue;
+
+      const toDispatch = info.resultIds.slice(0, capacity);
+      const count = _dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch);
+
+      capacity -= count;
     }
-
-    const sourceFile = await resolveOriginalSourceFile(candidateId, candidateItem);
-    if (!sourceFile) break;
-
-    _dispatchRowToPool(candidateId, candidateItem, sourceFile, currentPool, options);
-    idsToRemoveFromPending.push(candidateId);
-    dispatchedCount++;
-    capacity -= slotsNeeded;
-  }
-
-  if (idsToRemoveFromPending.length > 0) {
-    const removeSet = new Set(idsToRemoveFromPending);
-    imageStore$.pendingIds.set(pendingIds.filter(id => !removeSet.has(id)));
+  } finally {
+    isScheduling = false;
   }
 }
 
@@ -955,41 +921,55 @@ function _dispatchRowToPool(
   candidateItem: ImageItem,
   sourceFile: File,
   currentPool: WorkerPool,
-  options: GlobalOptions
-): void {
+  options: GlobalOptions,
+  resultIds: string[]
+): number {
   const processingItem: ImageItem = { ...candidateItem, status: STATUS_PROCESSING };
+  let dispatchedCount = 0;
+
+  // Pre-calculate slots to avoid repeated calls in the loop
   const slots = buildOutputSlots(processingItem, options);
 
-  inFlightRowIds.add(id);
-  largeFileInFlight = recomputeLargeFileFlag();
+  batch(() => {
+    for (const rid of resultIds) {
+      const res = processingItem.results[rid];
+      if (!res || res.status === STATUS_SUCCESS || res.status === STATUS_PROCESSING) continue;
 
-  for (const slot of slots) {
-    if (!processingItem.results[slot.resultId] || processingItem.results[slot.resultId]?.status === STATUS_SUCCESS) continue;
-    processingItem.results = {
-      ...processingItem.results,
-      [slot.resultId]: { ...processingItem.results[slot.resultId]!, status: STATUS_PROCESSING },
-    };
-    currentPool.addTask({
-      id: processingItem.id,
-      resultId: slot.resultId,
-      format: slot.format,
-      file: sourceFile,
-      options: {
-        resultId: slot.resultId,
+      const slot = slots.find(s => s.resultId === rid);
+      if (!slot) continue;
+
+      const task: Task = {
+        id: processingItem.id,
+        resultId: rid,
         format: slot.format,
-        svgInternalFormat: options.svgInternalFormat,
-        svgRasterizer: 'resvg' as const,
-        svgExportDensity: 'display' as const,
-        svgDisplayDpr: 2,
-        qualityPercent: processingItem.qualityPercentOverride ?? 100,
-        resizePreset: slot.resizePreset,
-        stripMetadata: options.stripMetadata,
-        losslessEncoding: options.losslessEncoding,
-      },
-    });
-  }
+        file: sourceFile,
+        options: {
+          resultId: rid,
+          format: slot.format,
+          svgInternalFormat: options.svgInternalFormat,
+          svgRasterizer: 'resvg' as const,
+          svgExportDensity: 'display' as const,
+          svgDisplayDpr: 2,
+          qualityPercent: processingItem.qualityPercentOverride ?? 100,
+          resizePreset: slot.resizePreset,
+          stripMetadata: options.stripMetadata,
+          losslessEncoding: options.losslessEncoding,
+        },
+      };
 
-  imageStore$.items[id]!.set(processingItem);
+      currentPool.addTask(task);
+      processingItem.results = {
+        ...processingItem.results,
+        [rid]: { ...res, status: STATUS_PROCESSING },
+      };
+      inFlightTasks$[`${id}:${rid}`]!.set(true);
+      dispatchedCount++;
+    }
+
+    imageStore$.items[id]!.set(processingItem);
+  });
+
+  return dispatchedCount;
 }
 
 function _processNextImpl(options: GlobalOptions, api: { getState: () => ImageStore }): void {
@@ -1008,7 +988,17 @@ const imageStoreSingleton: ImageStore = {
     return [...imageStore$.itemOrder.peek()];
   },
   get pendingIds() {
-    return new Set(imageStore$.pendingIds.peek() as string[]);
+    // Derived from items for legacy compatibility in tests:
+    // include items that are PENDING or PROCESSING (not terminal yet)
+    const pending = new Set<string>();
+    const items = imageStore$.items.peek();
+    for (const id in items) {
+      const item = items[id];
+      if (item && (!isTerminal(item) || Object.values(item.results).some(r => r.status === STATUS_PENDING))) {
+        pending.add(id);
+      }
+    }
+    return pending;
   },
   get visibleItemIds() {
     return new Set(imageStore$.visibleItemIds.peek() as string[]);
@@ -1053,7 +1043,7 @@ const imageStoreSingleton: ImageStore = {
 };
 
 function setState(
-  partial: Partial<Pick<ImageStoreState, 'items' | 'itemOrder' | 'pendingIds'>>
+  partial: Partial<Pick<ImageStoreState, 'items' | 'itemOrder'>>
 ): void {
   batch(() => {
     if (partial.items) {
@@ -1061,9 +1051,6 @@ function setState(
     }
     if (partial.itemOrder) {
       imageStore$.itemOrder.set([...partial.itemOrder]);
-    }
-    if (partial.pendingIds) {
-      imageStore$.pendingIds.set([...partial.pendingIds]);
     }
   });
 }
