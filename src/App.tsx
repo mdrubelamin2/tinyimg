@@ -7,9 +7,9 @@ import { ResultsTable } from '@/components/ResultsTable';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { syncIntakeProgressToast } from '@/notifications/toast-emitter';
 import { queueStats$ } from '@/state/queue-stats';
-import { getImageStore, imageStore$, intake$ } from '@/store/image-store';
+import { getImageStore, intake$ } from '@/store/image-store';
 import { Show, useObserveEffect, useValue } from '@legendapp/state/react';
-import { lazy, Suspense } from 'react';
+import { Activity, lazy, Suspense } from 'react';
 import { Toaster } from 'sonner';
 import { preview$ } from './store/preview-store';
 import { useTheme } from './hooks/useTheme';
@@ -25,6 +25,7 @@ export default function App() {
   const preview = useValue(preview$);
   const { theme } = useTheme();
   const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get());
+  const hasItems = useValue(() => queueStats$.itemCount.get() > 0)
 
   const downloadAll = getImageStore().downloadAll;
 
@@ -52,9 +53,9 @@ export default function App() {
           <div className="flex-1 space-y-8 md:space-y-10">
             <Dropzone />
 
-            <Show ifReady={imageStore$.itemOrder}>
+            <Activity mode={hasItems ? 'visible' : 'hidden'}>
               <ResultsTable />
-            </Show>
+            </Activity>
           </div>
 
           <div className="lg:w-80 w-full shrink-0">

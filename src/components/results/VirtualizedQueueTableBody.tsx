@@ -16,7 +16,7 @@ import { ResultRowCells } from './ResultRowCells';
 import { StickyTableHead } from './StickyTableHead';
 
 export interface VirtualizedQueueTableBodyProps {
-  scrollParent: HTMLDivElement | null;
+  scrollParent: HTMLDivElement;
 }
 
 export function VirtualizedQueueTableBody({
@@ -36,10 +36,6 @@ export function VirtualizedQueueTableBody({
   const itemContent = useCallback((_index: number, rowId: string) => (
     <ResultRowCells key={rowId} id={rowId} />
   ), []);
-
-  if (itemIds.length === 0 || !scrollParent) {
-    return null;
-  }
 
   return (
     <TableVirtuoso
