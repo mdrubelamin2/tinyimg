@@ -1,4 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/** CI runners often report 2 cores → {@link computeOptimalWorkerCount} is 1; this test needs room for 2+ parallel result slots. */
+vi.mock('@/capabilities/worker-count', () => ({
+  computeOptimalWorkerCount: () => 8,
+}));
+
 import {
   DEFAULT_GLOBAL_OPTIONS,
   STATUS_PENDING,
