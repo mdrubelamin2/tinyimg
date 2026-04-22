@@ -60,7 +60,8 @@ export function isSvgRasterFormat(f: string): f is SvgRasterFormat {
 }
 
 /**
- * Clamp requested DPR to 1..MAX and reduce if logical×DPR would exceed MAX_PIXELS.
+ * Effective scale for display-density raster: requested DPR clamped 1..3, reduced when
+ * pixel count would exceed MAX_PIXELS, or a uniform factor <1 when 1:1 is still over budget.
  */
 export function computeEffectiveDisplayDpr(
   logicalW: number,
@@ -76,11 +77,15 @@ export function computeEffectiveDisplayDpr(
   }
   const bw = Math.max(1, Math.round(logicalW));
   const bh = Math.max(1, Math.round(logicalH));
-  while (dpr > SVG_DISPLAY_DPR_MIN) {
+  while (dpr >= SVG_DISPLAY_DPR_MIN) {
     const pw = Math.max(1, Math.round(bw * dpr));
     const ph = Math.max(1, Math.round(bh * dpr));
     if (pw * ph <= MAX_PIXELS) break;
     dpr -= 1;
+  }
+  if (dpr < SVG_DISPLAY_DPR_MIN) {
+    // Integer DPRs 1..3 cannot fit; use uniform scale so phys pixels stay within MAX_PIXELS
+    return Math.sqrt(MAX_PIXELS / (bw * bh));
   }
   return dpr;
 }
