@@ -17,6 +17,7 @@ export interface WorkerPoolCallbacks {
   onMessage: (workerIndex: number, data: WorkerOutbound) => void;
   onError: (workerIndex: number, task: Task | null) => void;
   onCancelled?: (taskKey: string) => void;
+  onActiveCountChange?: (count: number) => void;
 }
 
 export function computeConcurrency(): number {
@@ -76,6 +77,11 @@ export class WorkerPool {
     const { min, max } = dynamicPoolBounds(limit);
     this.minConcurrent = min;
     this.maxConcurrent = max;
+    this.callbacks.onActiveCountChange?.(this.activeCount);
+  }
+
+  private notifyActiveChange() {
+    this.callbacks.onActiveCountChange?.(this.activeCount);
   }
 
   addTask(task: Task): void {
@@ -98,27 +104,33 @@ export class WorkerPool {
 
   abortInFlightForItem(id: string): void {
     this.removeTasksForItem(id);
+    let changed = false;
     for (const [key, entry] of this.active) {
       if (entry.task.id === id) {
         this.terminateWorkerForTask(key);
         entry.controller.abort();
         this.active.delete(key);
         this.callbacks.onCancelled?.(key);
+        changed = true;
       }
     }
+    if (changed) this.notifyActiveChange();
     void this.pump();
   }
 
   cancelTask(taskId: string): void {
     this.pending = this.pending.filter(t => `${t.id}:${t.resultId}` !== taskId);
+    let changed = false;
     for (const [key, entry] of this.active) {
       if (`${entry.task.id}:${entry.task.resultId}` === taskId) {
         this.terminateWorkerForTask(key);
         entry.controller.abort();
         this.active.delete(key);
         this.callbacks.onCancelled?.(taskId);
+        changed = true;
       }
     }
+    if (changed) this.notifyActiveChange();
     void this.pump();
   }
 
@@ -182,6 +194,7 @@ export class WorkerPool {
         const key = taskKey(task);
         const controller = new AbortController();
         this.active.set(key, { task, controller });
+        this.notifyActiveChange();
 
         let workerEntry: WorkerEntry;
         if (this.idleWorkers.length > 0) {
@@ -212,7 +225,8 @@ export class WorkerPool {
           workerEntry.worker.removeEventListener('message', handleMessage);
           workerEntry.worker.removeEventListener('error', handleError);
           this.activeWorkers.delete(key);
-          this.active.delete(key);
+          const hadTask = this.active.delete(key);
+          if (hadTask) this.notifyActiveChange();
         };
 
         const handleMessage = (e: MessageEvent) => {
