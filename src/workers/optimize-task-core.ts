@@ -92,6 +92,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
     let encodedBytes: ArrayBuffer;
     let mimeType: string;
     let label: string;
+    let isLossless = false;
 
     if (extension === 'svg' || options.format === 'svg') {
       if (isSvgRasterFormat(requestedFormat)) {
@@ -109,7 +110,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
         checkPixelLimit(imageData.width, imageData.height);
 
         const format = requestedFormat as 'avif' | 'webp' | 'jpeg' | 'png';
-        const bytes = await encodeSvgRasterForOutput(imageData, format, {
+        const { data: bytes, lossless } = await encodeSvgRasterForOutput(imageData, format, {
           losslessEncoding: options.losslessEncoding,
           resizePreset: options.resizePreset,
           srcW,
@@ -120,6 +121,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
         await assertEncodedDimensions(bytes, mt, imageData.width, imageData.height);
 
         encodedBytes = bytes;
+        isLossless = lossless;
         mimeType = mt;
         label = `${format}`;
       } else {
@@ -127,6 +129,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
         encodedBytes = await res.blob.arrayBuffer();
         mimeType = res.blob.type || 'image/svg+xml';
         label = res.label;
+        isLossless = true;
       }
     } else {
       let imageBitmap: ImageBitmap;
@@ -179,7 +182,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
                 : {}),
             }
           : undefined;
-      const bytesArray = await encodeBitmapRasterForOutput(imageData, effectiveFormat, {
+      const { data: bytesArray, lossless } = await encodeBitmapRasterForOutput(imageData, effectiveFormat, {
         losslessEncoding: options.losslessEncoding,
         resizePreset: options.resizePreset,
         preset,
@@ -188,6 +191,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
 
       const mimeFormat = effectiveFormat === 'jpeg' ? 'jpeg' : effectiveFormat;
       encodedBytes = bytesArray;
+      isLossless = lossless;
       mimeType = `image/${mimeFormat}`;
       label = effectiveFormat;
     }
@@ -202,6 +206,7 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
       mimeType,
       size: outSize,
       label,
+      lossless: isLossless,
       formattedSize: (outSize / BYTES_PER_KB).toFixed(1),
       savingsPercent: Math.round(Math.abs(((file.size - outSize) / file.size) * 100)),
     });

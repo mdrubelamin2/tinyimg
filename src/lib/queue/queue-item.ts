@@ -11,6 +11,7 @@ import { buildOutputSlots } from '@/lib/queue/output-slots';
 import type { IntakeOriginalKind } from '@/lib/queue/queue-intake';
 import type { ImageItem, ImageResult } from '@/lib/queue/types';
 import { nanoid } from 'nanoid';
+import { shouldUseLosslessRasterEncode } from '../codecs/raster/output-encode';
 
 export { getFormatsToProcess } from '@/lib/queue/formats-to-process';
 
@@ -73,7 +74,11 @@ export function resetItemResultsForOptions(
   for (const newSlot of newSlots) {
     const oldResult = item.results[newSlot.resultId];
 
-    if (oldResult && (oldResult.status === STATUS_SUCCESS || oldResult.status === STATUS_PROCESSING)) {
+    const resetEncode = (() => {
+      if(oldResult?.status !== STATUS_SUCCESS) return true;
+      return oldResult.lossless !== shouldUseLosslessRasterEncode(options.losslessEncoding, newSlot.resizePreset)
+    })()
+    if (oldResult && !resetEncode && (oldResult.status === STATUS_SUCCESS || oldResult.status === STATUS_PROCESSING)) {
       // Keep SUCCESS result if it still exists in new slots
       results[newSlot.resultId] = oldResult;
     } else {

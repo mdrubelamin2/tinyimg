@@ -1,15 +1,15 @@
 import type { ContentPreset } from '@/workers/classify';
-import { PRESETS } from './presets.ts';
-import type { RasterEncodePreset } from './types.ts';
-import { encodeRasterWithPreset } from './encode-with-preset.ts';
-import { toErrorMessage } from './io.ts';
+import { PRESETS } from './presets';
+import type { RasterEncodePreset, EncodeResult } from './types';
+import { encodeRasterWithPreset } from './encode-with-preset';
+import { toErrorMessage } from './io';
 
 export async function encodeRaster(
   imageData: ImageData,
   format: 'avif' | 'webp' | 'jpeg' | 'png',
   preset: ContentPreset,
   rasterOverride?: RasterEncodePreset
-): Promise<ArrayBuffer> {
+): Promise<EncodeResult> {
   const pTry = rasterOverride ?? PRESETS[preset];
   return encodeRasterWithPreset(imageData, format, pTry, false, preset);
 }
@@ -20,7 +20,7 @@ export async function encodeRasterWithFallback(
   effectiveFormat: string,
   preset: ContentPreset,
   boostedByContent?: Partial<Record<ContentPreset, RasterEncodePreset>>
-): Promise<ArrayBuffer> {
+): Promise<EncodeResult> {
   const maxAttempts = preset === 'graphic' ? 2 : 1;
   const format = (effectiveFormat === 'svg' ? 'webp' : effectiveFormat) as 'avif' | 'webp' | 'jpeg' | 'png';
   for (let attempt = 0; attempt < maxAttempts; attempt++) {

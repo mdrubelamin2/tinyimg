@@ -9,12 +9,14 @@ import {
 } from '@/constants';
 import type { ImageItem, TaskResizePreset } from '@/lib/queue/types';
 import { getFormatsToProcess } from '@/lib/queue/formats-to-process';
+import { shouldUseLosslessRasterEncode } from '../codecs/raster/output-encode';
 
 export interface OutputSlot {
   resultId: string;
   format: string;
   variantLabel: string;
   resizePreset: TaskResizePreset;
+  lossless?: boolean;
 }
 
 function sanitizeFormatForId(format: string): string {
@@ -24,11 +26,11 @@ function sanitizeFormatForId(format: string): string {
 /** Stable suffix for a size preset row (custom sizes mode). */
 export function sizePresetResultSuffix(preset: OutputSizePreset): string {
   if (preset.maintainAspect) {
-    if (preset.width > 0) return `w${preset.width}`;
-    if (preset.height > 0) return `h${preset.height}`;
+    if (preset.width > 0) return `__w${preset.width}`;
+    if (preset.height > 0) return `__h${preset.height}`;
     return 'invalid';
   }
-  return `${preset.width}x${preset.height}`;
+  return `__${preset.width}x${preset.height}`;
 }
 
 function variantLabelFromPreset(preset: OutputSizePreset): string {
@@ -76,6 +78,15 @@ function isVectorSvgSlot(item: ImageItem, format: string): boolean {
   return item.originalFormat === 'svg' && format === 'svg';
 }
 
+const RESIZE_PRESETS = {
+  NATIVE: { kind: 'native' } as const,
+  TARGET: { kind: 'target' } as const,
+}
+
+const losslessSuffix = (options: GlobalOptions, resizePreset: TaskResizePreset): string => {
+  return shouldUseLosslessRasterEncode(options.losslessEncoding, resizePreset) ? '__lossless' : '';
+}
+
 /**
  * Build ordered output slots (format × size). When `useOriginalSizes`, resultId equals `format` for backward compatibility.
  */
@@ -85,20 +96,12 @@ export function buildOutputSlots(item: ImageItem, options: GlobalOptions): Outpu
 
   if (options.useOriginalSizes) {
     for (const format of formats) {
-      if (isVectorSvgSlot(item, format)) {
-        slots.push({
-          resultId: format,
-          format,
-          variantLabel: '',
-          resizePreset: { kind: 'native' },
-        });
-        continue;
-      }
       slots.push({
-        resultId: format,
+        resultId: `${format}${losslessSuffix(options, RESIZE_PRESETS.NATIVE)}`,
         format,
         variantLabel: '',
         resizePreset: { kind: 'native' },
+        lossless: shouldUseLosslessRasterEncode(options.losslessEncoding, RESIZE_PRESETS.NATIVE),
       });
     }
     return slots;
@@ -125,7 +128,7 @@ export function buildOutputSlots(item: ImageItem, options: GlobalOptions): Outpu
   if (options.includeNativeSizeInCustom || sizeSteps.length === 0) {
     sizeSteps.push({
       suffix: '',
-      label: 'Original',
+      label: '',
       preset: { kind: 'native' },
     });
   }
@@ -139,17 +142,19 @@ export function buildOutputSlots(item: ImageItem, options: GlobalOptions): Outpu
         format,
         variantLabel: '',
         resizePreset: { kind: 'native' },
+        lossless: true,
       });
       continue;
     }
 
     for (const step of sizeSteps) {
-      const resultId = `${fmtPart(format)}__${step.suffix}`;
+      const resultId = `${fmtPart(format)}${step.suffix}${losslessSuffix(options, step.preset)}`;
       slots.push({
         resultId,
         format,
         variantLabel: step.label,
         resizePreset: step.preset,
+        lossless: shouldUseLosslessRasterEncode(options.losslessEncoding, step.preset),
       });
     }
   }

@@ -142,7 +142,7 @@ export async function processSvg(
   const mimeType = mimeByFormat(internalFormat);
   // JXL is not yet supported in SVG internal encode — fall back to webp
   const encodeFormat = isSvgRasterFormat(internalFormat) ? internalFormat : 'webp' as const;
-  const internalBytes = await encodeLossless(raster.imageData, encodeFormat);
+  const { data: internalBytes } = await encodeLossless(raster.imageData, encodeFormat);
   await assertEncodedDimensions(internalBytes, mimeType, raster.bitmapWidth, raster.bitmapHeight);
 
   const internalBase64 = await toBase64(internalBytes);
@@ -194,7 +194,7 @@ export async function rasterizeSvgToFormat(
   const format = options.format;
   const losslessEncoding = options.losslessEncoding ?? 'none';
   const resizePreset = options.resizePreset ?? ({ kind: 'native' } satisfies TaskResizePreset);
-  const bytes = await encodeSvgRasterForOutput(imageData, format, {
+  const { data: bytes } = await encodeSvgRasterForOutput(imageData, format, {
     losslessEncoding,
     resizePreset,
     srcW: imageData.width,

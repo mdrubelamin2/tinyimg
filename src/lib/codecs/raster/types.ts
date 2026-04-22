@@ -41,3 +41,8 @@ export interface RasterEncodePreset {
     oxipngLevel: number;
   };
 }
+
+export interface EncodeResult {
+  data: ArrayBuffer;
+  lossless: boolean;
+}

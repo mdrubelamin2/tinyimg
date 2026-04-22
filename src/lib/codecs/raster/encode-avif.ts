@@ -1,6 +1,12 @@
 import * as avif from '@jsquash/avif';
-import type { RasterEncodePreset } from './types.ts';
+import type { RasterEncodePreset, EncodeResult } from './types.ts';
 
-export function encodeAvifWithPreset(imageData: ImageData, pTry: RasterEncodePreset): Promise<ArrayBuffer> {
-  return avif.encode(imageData, { ...pTry.avif });
+export async function encodeAvifLossless(imageData: ImageData): Promise<EncodeResult> {
+  const data = await avif.encode(imageData, { lossless: true });
+  return { data, lossless: true };
+}
+
+export async function encodeAvifWithPreset(imageData: ImageData, pTry: RasterEncodePreset): Promise<EncodeResult> {
+  const data = await avif.encode(imageData, { ...pTry.avif });
+  return { data, lossless: false };
 }

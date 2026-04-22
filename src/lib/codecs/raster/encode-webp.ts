@@ -1,18 +1,28 @@
 import * as webp from '@jsquash/webp';
-import type { RasterEncodePreset } from './types.ts';
+import type { RasterEncodePreset, EncodeResult } from './types.ts';
 import { WEBP_QUALITY_TRANSPARENT } from './presets.ts';
 
-export function encodeWebpWithPreset(
+export async function encodeWebpLossless(imageData: ImageData): Promise<EncodeResult> {
+  const data = await webp.encode(imageData, {
+    lossless: 1,
+    quality: 75,
+    method: 4,
+    exact: 1,
+  });
+  return { data, lossless: true };
+}
+
+export async function encodeWebpWithPreset(
   imageData: ImageData,
   pTry: RasterEncodePreset,
   smallTransparent: boolean,
   disableSmallTransparentWebpFallback: boolean
-): Promise<ArrayBuffer> {
+): Promise<EncodeResult> {
   const webpQuality =
     smallTransparent && !disableSmallTransparentWebpFallback
       ? WEBP_QUALITY_TRANSPARENT
       : pTry.webp.quality;
-  return webp.encode(imageData, {
+  const data = await webp.encode(imageData, {
     quality: webpQuality,
     method: pTry.webp.method,
     use_sharp_yuv: pTry.webp.use_sharp_yuv,
@@ -24,4 +34,5 @@ export function encodeWebpWithPreset(
     ...(pTry.webp.near_lossless != null ? { near_lossless: pTry.webp.near_lossless } : {}),
     ...(pTry.webp.alpha_quality != null ? { alpha_quality: pTry.webp.alpha_quality } : {}),
   });
+  return { data, lossless: false };
 }

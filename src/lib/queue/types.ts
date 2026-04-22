@@ -50,6 +50,7 @@ export interface ImageResult {
   downloadUrl?: string | undefined;
   status: ItemStatus;
   error?: string | undefined;
+  lossless?: boolean;
 }
 
 /** Where the original lives: in-memory drop map vs hybrid `src:${id}` (ZIP / folder-expanded). */
@@ -143,6 +144,7 @@ export interface WorkerOutboundResult {
   label: string;
   formattedSize: string;
   savingsPercent: number;
+  lossless: boolean;
 }
 
 export interface WorkerOutboundError {
