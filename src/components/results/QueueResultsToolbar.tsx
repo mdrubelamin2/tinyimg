@@ -27,7 +27,7 @@ export function QueueResultsToolbar() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 sm:justify-end">
-            <Show ifReady={queueStats$.itemCount}>
+            <Show ifReady={successfulOutputCount}>
               <div className="text-center sm:text-right">
                 <p className="text-muted-foreground uppercase font-bold text-[10px] tracking-widest">
                   Optimized
@@ -54,7 +54,7 @@ export function QueueResultsToolbar() {
           </div>
 
           <div className="flex items-center justify-center gap-2 flex-wrap sm:justify-end">
-            <Show ifReady={queueStats$.hasFinishedItems}>
+            <Show ifReady={successfulOutputCount}>
               <Button
                 variant="secondary"
                 size="sm"

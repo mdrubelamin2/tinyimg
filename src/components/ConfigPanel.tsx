@@ -129,6 +129,9 @@ export function ConfigPanel() {
         ? includeOriginalInCustom ? [] : [availableFormats[0]!]
         : [...availableFormats]
     );
+    if(!allFormatsSelected) {
+      updateDraft('includeOriginalInCustom', true);
+    }
   };
 
   const handleApplyToAll = () => {
