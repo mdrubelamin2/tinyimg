@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo",
+    "types": ["vite/client", "node", "vitest/globals"]
+  },
+  "include": [
+    "src/tests/**/*.ts",
+    "src/tests/**/*.tsx",
+    "src/native-file-system-adapter-adapters.d.ts"
+  ],
+  "exclude": []
+}

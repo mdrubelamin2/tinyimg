@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:analyze": "ANALYZE=true tsc -b && ANALYZE=true vite build",
+    "build": "tsc -b tsconfig.build.json && vite build",
+    "build:analyze": "ANALYZE=true tsc -b tsconfig.build.json && ANALYZE=true vite build",
     "check:perf": "node scripts/check-perf-budgets.mjs",
     "compiler:healthcheck": "react-compiler-healthcheck src",
     "typecheck": "tsc -b --noEmit",

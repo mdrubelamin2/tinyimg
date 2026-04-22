@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+
 /**
  * poolifier-web-worker selects runtime at import time (`window` + `navigator` ⇒ browser).
  * Vitest uses `environment: node` — stub minimal globals before any test file imports the pool.
@@ -11,7 +13,7 @@ const w = globalThis.window as object;
 if (!('matchMedia' in w) || typeof (w as { matchMedia?: unknown }).matchMedia !== 'function') {
   Object.defineProperty(w, 'matchMedia', {
     writable: true,
-    value: vi.fn().mockImplementation(query => ({
+    value: vi.fn().mockImplementation((query: string) => ({
       matches: false,
       media: query,
       onchange: null,
