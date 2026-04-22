@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('computeOptimalWorkerCount', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', {
+      matchMedia: vi.fn().mockReturnValue({ matches: false }),
+      innerWidth: 1920,
+    });
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });

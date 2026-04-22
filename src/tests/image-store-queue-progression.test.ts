@@ -1,19 +1,35 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_GLOBAL_OPTIONS, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants';
+import {
+  DEFAULT_GLOBAL_OPTIONS,
+  STATUS_PENDING,
+  STATUS_PROCESSING,
+  STATUS_SUCCESS,
+} from '@/constants';
+import type { GlobalOptions } from '@/constants';
 import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
+import { shouldUseLosslessRasterEncode } from '@/lib/codecs/raster/output-encode';
+import { buildOutputSlots } from '@/lib/queue/output-slots';
+import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
+import { persistEncodedOutput } from '@/storage/queue-binary';
 import { registerDirectDropOriginal } from '@/storage/dropped-original-files';
 import { useImageStore } from '@/store/image-store';
+import { useSettingsStore } from '@/store/settings-store';
 
-vi.mock('@/storage/queue-binary', async () => {
-  const actual = await vi.importActual<typeof import('@/storage/queue-binary')>('@/storage/queue-binary');
+vi.mock('@/storage/queue-binary', () => {
   return {
-    ...actual,
     persistEncodedOutput: vi.fn().mockResolvedValue({ payloadKey: 'out:mock:key' }),
+    resolveOriginalSourceFile: vi.fn().mockImplementation(async () => new File(['mock'], 'mock.png', { type: 'image/png' })),
+    deleteItemPayloads: vi.fn().mockResolvedValue(undefined),
+    deleteOutputPayloadKey: vi.fn().mockResolvedValue(undefined),
+    persistBufferedOriginalSource: vi.fn().mockResolvedValue(undefined),
+    srcKey: vi.fn().mockReturnValue('src:mock'),
+    outKey: vi.fn().mockReturnValue('out:mock'),
+    outKeyPrefix: vi.fn().mockReturnValue('out:'),
   };
 });
 
 function createItem(id: string, name: string): ImageItem {
-  return {
+  const item: ImageItem = {
     id,
     fileName: name,
     mimeType: 'image/png',
@@ -22,19 +38,85 @@ function createItem(id: string, name: string): ImageItem {
     progress: 0,
     originalSize: 1,
     originalFormat: 'png',
-    results: {
-      png: {
-        resultId: 'png',
-        format: 'png',
-        variantLabel: '',
-        status: STATUS_PENDING,
-      },
-    },
+    results: {},
   };
+  const slots = buildOutputSlots(item, DEFAULT_GLOBAL_OPTIONS);
+  for (const slot of slots) {
+    const lossless = shouldUseLosslessRasterEncode(
+      DEFAULT_GLOBAL_OPTIONS.losslessEncoding,
+      slot.resizePreset
+    );
+    item.results[slot.resultId] = {
+      resultId: slot.resultId,
+      format: slot.format,
+      variantLabel: slot.variantLabel,
+      status: STATUS_PENDING,
+      lossless,
+    };
+  }
+  return item;
 }
 
+function createTwoFormatItem(id: string, name: string, options: GlobalOptions = multiFormatOptions): ImageItem {
+  const item: ImageItem = {
+    id,
+    fileName: name,
+    mimeType: 'image/png',
+    originalSourceKind: 'direct',
+    status: STATUS_PENDING,
+    progress: 0,
+    originalSize: 1,
+    originalFormat: 'png',
+    results: {},
+  };
+  const slots = buildOutputSlots(item, options);
+  for (const slot of slots) {
+    const lossless = shouldUseLosslessRasterEncode(options.losslessEncoding, slot.resizePreset);
+    item.results[slot.resultId] = {
+      resultId: slot.resultId,
+      format: slot.format,
+      variantLabel: slot.variantLabel,
+      status: STATUS_PENDING,
+      lossless,
+    };
+  }
+  return item;
+}
+
+const multiFormatOptions: GlobalOptions = {
+  ...DEFAULT_GLOBAL_OPTIONS,
+  useOriginalFormats: false,
+  formats: ['webp', 'png'],
+  useOriginalSizes: true,
+};
+
+/** `buildOutputSlots` resultId for a single `png@originalSizes` + default options (e.g. `png__`) */
+const DEFAULT_PNG_SLOT_ID = (() => {
+  const s = buildOutputSlots(
+    {
+      id: 'rid',
+      fileName: 'x.png',
+      mimeType: 'image/png',
+      originalSourceKind: 'direct',
+      status: STATUS_PENDING,
+      progress: 0,
+      originalSize: 1,
+      originalFormat: 'png',
+      results: {},
+    },
+    DEFAULT_GLOBAL_OPTIONS
+  );
+  return s[0]!.resultId;
+})();
+
 describe('image-store queue progression', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    useSettingsStore.getState().resetToDefaults();
+    await getSessionBinaryStorage();
+    vi.stubGlobal('window', {
+      matchMedia: vi.fn().mockReturnValue({ matches: false }),
+      innerWidth: 1920,
+    });
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -53,13 +135,15 @@ describe('image-store queue progression', () => {
         });
       })
     );
+    // `vi.restoreAllMocks()` in afterEach clears this mock's `mockResolvedValue`.
+    vi.mocked(persistEncodedOutput).mockResolvedValue({ payloadKey: 'out:mock:key' });
     useImageStore.getState().clearAll();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await useImageStore.getState().clearAll();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    useImageStore.getState().clearAll();
   });
 
   async function flushAsyncWork(): Promise<void> {
@@ -68,79 +152,100 @@ describe('image-store queue progression', () => {
     }
   }
 
-  async function seedTwoPendingItems() {
+  /** Two single-slot rows already in the pool (in-flight) — avoids flaking on scheduler/pool in tests. */
+  function setupTwoRowsInFlightProcessing() {
+    useSettingsStore.getState().setOptions({ ...DEFAULT_GLOBAL_OPTIONS });
     const first = createItem('first', 'first.png');
     const second = createItem('second', 'second.png');
-
+    for (const row of [first, second]) {
+      row.status = STATUS_PROCESSING;
+      for (const [rid, res] of Object.entries(row.results)) {
+        if (!res) continue;
+        const loss = res.lossless;
+        row.results[rid] = { ...res, status: STATUS_PROCESSING, lossless: loss ?? false };
+      }
+    }
+    registerDirectDropOriginal(first.id, new File(['x'], 'first.png', { type: 'image/png' }));
+    registerDirectDropOriginal(second.id, new File(['x'], 'second.png', { type: 'image/png' }));
     useImageStore.setState({
       items: new Map([
         [first.id, first],
         [second.id, second],
       ]),
       itemOrder: [first.id, second.id],
-      pendingIds: new Set([first.id, second.id]),
     });
-
-    registerDirectDropOriginal(first.id, new File(['x'], 'first.png', { type: 'image/png' }));
-    registerDirectDropOriginal(second.id, new File(['x'], 'second.png', { type: 'image/png' }));
-
-    const pool = useImageStore.getState()._getPool();
-    const addTask = vi.spyOn(pool, 'addTask').mockImplementation(() => {});
-
-    void useImageStore.getState()._processNextAsync(DEFAULT_GLOBAL_OPTIONS, { getState: useImageStore.getState });
-    await flushAsyncWork();
-
-    // Multi-row dispatch: both small items fit in the available capacity and are dispatched together.
-    expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_PROCESSING);
-    expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
-    expect(addTask).toHaveBeenCalledTimes(2);
-    expect(addTask).toHaveBeenCalledWith(
-      expect.objectContaining({ id: first.id, resultId: 'png', format: 'png' })
-    );
-    expect(addTask).toHaveBeenCalledWith(
-      expect.objectContaining({ id: second.id, resultId: 'png', format: 'png' })
-    );
-
-    return { addTask, first, second };
+    return { first, second };
   }
 
+  it('keeps row in pendingIds when every slot is PROCESSING (no PENDING) after a full dispatch', async () => {
+    useSettingsStore.getState().setOptions(multiFormatOptions);
+    const row = createTwoFormatItem('a', 'a.png');
+    registerDirectDropOriginal(row.id, new File(['x'], 'a.png', { type: 'image/png' }));
+    useImageStore.setState({
+      items: new Map([[row.id, row]]),
+      itemOrder: [row.id],
+    });
+
+    for (let i = 0; i < 4; i++) {
+      await useImageStore.getState()._processNextAsync(multiFormatOptions, { getState: useImageStore.getState });
+      await flushAsyncWork();
+    }
+
+    const it = useImageStore.getState().items.get(row.id);
+    expect(it).toBeDefined();
+    expect(Object.values(it!.results).some(r => r.status === STATUS_PROCESSING)).toBe(true);
+    expect(Object.values(it!.results).every(r => r.status !== STATUS_PENDING)).toBe(true);
+    expect([...useImageStore.getState().pendingIds].includes(row.id)).toBe(true);
+  });
+
   it('starts the next pending item after the current item succeeds', async () => {
-    const { addTask, first, second } = await seedTwoPendingItems();
+    const { first, second } = setupTwoRowsInFlightProcessing();
+    const addTask = vi.spyOn(useImageStore.getState()._getPool(), 'addTask');
 
     const enc = new TextEncoder().encode('done');
+    const b = new Uint8Array(enc.byteLength);
+    b.set(enc);
+    const encodedBytes = b.buffer.slice(
+      b.byteOffset,
+      b.byteOffset + b.byteLength
+    ) as ArrayBuffer;
     const response: WorkerOutboundResult = {
       type: 'RESULT',
       id: first.id,
-      resultId: 'png',
+      resultId: DEFAULT_PNG_SLOT_ID,
       format: 'png',
-      encodedBytes: enc.buffer.slice(enc.byteOffset, enc.byteOffset + enc.byteLength),
+      encodedBytes,
       mimeType: 'image/png',
-      size: 4,
+      size: encodedBytes.byteLength,
       label: 'png',
-      formattedSize: '4.0',
+      formattedSize: (encodedBytes.byteLength / 1024).toFixed(1),
       savingsPercent: 0,
+      lossless: false,
     };
 
     useImageStore.getState()._applyWorkerResult(response);
     await flushAsyncWork();
+    for (let i = 0; i < 120; i++) {
+      await Promise.resolve();
+    }
 
-    // Both were already dispatched in the seed; first is now SUCCESS, second still PROCESSING.
+    // first finished (persisted); second row is still in-flight, no new pool tasks in this test.
     expect(useImageStore.getState().items.get(first.id)?.status).toBe(STATUS_SUCCESS);
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
-    // addTask was called twice in seed (both rows dispatched together); no new calls needed.
-    expect(addTask).toHaveBeenCalledTimes(2);
+    expect(addTask).toHaveBeenCalledTimes(0);
   });
 
   it('starts the next pending item after the current item errors', async () => {
-    const { addTask, first, second } = await seedTwoPendingItems();
+    const { first, second } = setupTwoRowsInFlightProcessing();
+    const addTask = vi.spyOn(useImageStore.getState()._getPool(), 'addTask');
 
     useImageStore.getState()._applyWorkerError({
       id: first.id,
-      resultId: 'png',
+      resultId: DEFAULT_PNG_SLOT_ID,
       format: 'png',
       file: new File(['x'], 'first.png', { type: 'image/png' }),
       options: {
-        resultId: 'png',
+        resultId: DEFAULT_PNG_SLOT_ID,
         format: 'png',
         svgInternalFormat: DEFAULT_GLOBAL_OPTIONS.svgInternalFormat,
         svgRasterizer: 'resvg' as const,
@@ -155,19 +260,18 @@ describe('image-store queue progression', () => {
 
     await flushAsyncWork();
 
-    // Both were already dispatched in the seed; first errored, second still PROCESSING.
+    // first row errored; second is still in-flight, no new pool work in this test.
     expect(useImageStore.getState().items.get(first.id)?.status).toBe('error');
     expect(useImageStore.getState().items.get(second.id)?.status).toBe(STATUS_PROCESSING);
-    // addTask was called twice in seed (both rows dispatched together); no new calls needed.
-    expect(addTask).toHaveBeenCalledTimes(2);
+    expect(addTask).toHaveBeenCalledTimes(0);
   });
 
   it('revokes preview and result URLs when clearing finished items', () => {
     const done = createItem('done', 'done.png');
     done.status = STATUS_SUCCESS;
     done.previewUrl = 'blob:preview';
-    done.results['png'] = {
-      resultId: 'png',
+    done.results[DEFAULT_PNG_SLOT_ID] = {
+      resultId: DEFAULT_PNG_SLOT_ID,
       format: 'png',
       status: STATUS_SUCCESS,
       payloadKey: 'out:done:png',

@@ -55,6 +55,7 @@ describe('chunkResultResponsesForPersist', () => {
       label: 'x',
       formattedSize: '1',
       savingsPercent: 0,
+      lossless: false,
     });
     const rows = Array.from({ length: RESULT_PERSIST_BATCH_MAX_ITEMS + 2 }, (_, i) => mk(i));
     const chunks = chunkResultResponsesForPersist(rows);
@@ -77,6 +78,7 @@ describe('chunkResultResponsesForPersist', () => {
       label: 'a',
       formattedSize: '1',
       savingsPercent: 0,
+      lossless: false,
     };
     const b: WorkerOutboundResult = { ...a, resultId: 'a2' };
     const chunks = chunkResultResponsesForPersist([a, b]);
@@ -88,6 +90,10 @@ describe('chunkResultResponsesForPersist', () => {
 
 describe('schedulePersistWorkerResults quota handling', () => {
   beforeEach(() => {
+    vi.stubGlobal('window', {
+      matchMedia: vi.fn().mockReturnValue({ matches: false }),
+      innerWidth: 1920,
+    });
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -134,6 +140,7 @@ describe('schedulePersistWorkerResults quota handling', () => {
       label: resultId,
       formattedSize: String(data.length),
       savingsPercent: 0,
+      lossless: false,
     };
   }
 
@@ -144,7 +151,6 @@ describe('schedulePersistWorkerResults quota handling', () => {
     useImageStore.setState({
       items: new Map([[id, item]]),
       itemOrder: [id],
-      pendingIds: new Set<string>(),
     });
     registerDirectDropOriginal(id, new File(['x'], 'x.png', { type: 'image/png' }));
 
@@ -183,7 +189,6 @@ describe('schedulePersistWorkerResults quota handling', () => {
         [id2, item2],
       ]),
       itemOrder: [id1, id2],
-      pendingIds: new Set<string>(),
     });
     registerDirectDropOriginal(id1, new File(['a'], 'a.png', { type: 'image/png' }));
     registerDirectDropOriginal(id2, new File(['b'], 'b.png', { type: 'image/png' }));

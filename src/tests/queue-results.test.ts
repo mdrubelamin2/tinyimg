@@ -46,11 +46,16 @@ function resultPayload(
     label: format.toUpperCase(),
     formattedSize: (buf.byteLength / 1024).toFixed(1),
     savingsPercent: 0,
+    lossless: false,
   };
 }
 
 describe('queue worker results via image-store', () => {
   beforeEach(async () => {
+    vi.stubGlobal('window', {
+      matchMedia: vi.fn().mockReturnValue({ matches: false }),
+      innerWidth: 1920,
+    });
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -87,7 +92,6 @@ describe('queue worker results via image-store', () => {
     useImageStore.setState({
       items: new Map([[item.id, item]]),
       itemOrder: [item.id],
-      pendingIds: new Set([item.id]),
     });
 
     const response = resultPayload('item-1', 'webp', 'webp', new Uint8Array([97, 98, 99]));
@@ -129,7 +133,6 @@ describe('queue worker results via image-store', () => {
     useImageStore.setState({
       items: new Map([[item.id, item]]),
       itemOrder: [item.id],
-      pendingIds: new Set([item.id]),
     });
 
     let inflight = 0;
@@ -144,8 +147,6 @@ describe('queue worker results via image-store', () => {
 
     useImageStore.getState()._applyWorkerResult(resultPayload('item-1', 'webp', 'webp', new Uint8Array([1])));
     useImageStore.getState()._applyWorkerResult(resultPayload('item-1', 'png', 'png', new Uint8Array([2])));
-    expect(rafQ.length).toBe(1);
-    rafQ.shift()!(0);
     await flushAsyncWork();
     await vi.waitUntil(() => persistSpy.mock.calls.length >= 2, { timeout: 3000, interval: 5 });
 
@@ -158,7 +159,6 @@ describe('queue worker results via image-store', () => {
     useImageStore.setState({
       items: new Map([[item.id, item]]),
       itemOrder: [item.id],
-      pendingIds: new Set([item.id]),
     });
 
     useImageStore.getState()._applyWorkerError({

@@ -16,8 +16,8 @@ describe('svg raster pipeline invariants', () => {
   });
 
   it('caps internal render size to MAX_PIXELS while keeping >= base size', () => {
-    const width = 12_000;
-    const height = 12_000;
+    const width = 5_000;
+    const height = 5_000;
     const { renderWidth, renderHeight } = computeInternalRenderSize(width, height);
     expect(renderWidth).toBeGreaterThanOrEqual(width);
     expect(renderHeight).toBeGreaterThanOrEqual(height);
@@ -31,12 +31,22 @@ describe('svg raster pipeline invariants', () => {
   });
 
   it('computeEffectiveDisplayDpr lowers DPR when pixels would exceed MAX_PIXELS', () => {
+    const w = 4_000;
+    const h = 4_000;
+    const dpr = computeEffectiveDisplayDpr(w, h, 3);
+    expect(dpr).toBe(1);
+    const pw = Math.round(w * dpr);
+    const ph = Math.round(h * dpr);
+    expect(pw * ph).toBeLessThanOrEqual(MAX_PIXELS);
+  });
+
+  it('computeEffectiveDisplayDpr uses sub-1 scale when 1:1 would exceed MAX_PIXELS', () => {
     const w = 12_000;
     const h = 12_000;
     const dpr = computeEffectiveDisplayDpr(w, h, 3);
-    expect(dpr).toBeGreaterThanOrEqual(1);
-    const pw = Math.round(w * dpr);
-    const ph = Math.round(h * dpr);
+    expect(dpr).toBeLessThan(1);
+    const pw = Math.max(1, Math.round(w * dpr));
+    const ph = Math.max(1, Math.round(h * dpr));
     expect(pw * ph).toBeLessThanOrEqual(MAX_PIXELS);
   });
 });
