@@ -261,18 +261,19 @@ export const imageStoreSingleton = {
     batch(() => {
       const itemTasksToCancel: { itemId: string; resultId: string }[] = [];
       const items = imageStore$.items.peek();
+      const p = getPool();
 
       for (const id of imageStore$.itemOrder.peek()) {
         const item = items[id];
         if (!item) continue;
 
+        p.removeTasksForItem(id); // Clear queued tasks with old options
         const result = resetItemResultsForOptions(item, options);
         itemTasksToCancel.push(...result.resultIdsToCancel.map(rid => ({ itemId: id, resultId: rid })));
         imageStore$.items[id]!.set(result.nextItem);
       }
 
       if (itemTasksToCancel.length > 0) {
-        const p = getPool();
         for (const { itemId, resultId } of itemTasksToCancel) {
           p.cancelTask(`${itemId}:${resultId}`);
           inFlightTasks$[`${itemId}:${resultId}`]?.delete();
