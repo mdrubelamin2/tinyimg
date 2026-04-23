@@ -31,3 +31,25 @@ if (typeof globalThis.navigator === 'undefined') {
     configurable: true,
   });
 }
+
+/**
+ * ImageData polyfill for node environment (used by icodec and other libraries)
+ */
+if (typeof (globalThis as unknown as { ImageData: unknown }).ImageData === 'undefined') {
+  (globalThis as unknown as { ImageData: unknown }).ImageData = class ImageData {
+    data: Uint8ClampedArray;
+    width: number;
+    height: number;
+    constructor(dataOrWidth: Uint8ClampedArray | number, widthOrHeight: number, height?: number) {
+      if (dataOrWidth instanceof Uint8ClampedArray) {
+        this.data = dataOrWidth;
+        this.width = widthOrHeight;
+        this.height = height!;
+      } else {
+        this.width = dataOrWidth;
+        this.height = widthOrHeight;
+        this.data = new Uint8ClampedArray(this.width * this.height * 4);
+      }
+    }
+  };
+}

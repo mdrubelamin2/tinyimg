@@ -193,7 +193,7 @@ describe('image-store queue progression', () => {
     });
 
     for (let i = 0; i < 4; i++) {
-      await useImageStore.getState()._processNextAsync(multiFormatOptions, { getState: useImageStore.getState });
+      await useImageStore.getState()._processNextAsync(multiFormatOptions);
       await flushAsyncWork();
     }
 
