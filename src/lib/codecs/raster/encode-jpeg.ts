@@ -1,4 +1,4 @@
-import * as jpeg from '@jsquash/jpeg';
+import { encode } from '@jsquash/jpeg';
 import type { RasterEncodePreset, EncodeResult } from './types.ts';
 import { compositeImageDataOnWhite } from './composite.ts';
 import { hasTransparency } from './alpha.ts';
@@ -7,7 +7,7 @@ export async function encodeJpegLossless(imageData: ImageData): Promise<EncodeRe
   const jpegInput = hasTransparency(imageData.data)
     ? compositeImageDataOnWhite(imageData)
     : imageData;
-  const data = await jpeg.encode(jpegInput, {
+  const data = await encode(jpegInput, {
     quality: 100,
     progressive: true,
     trellis_multipass: true,
@@ -26,7 +26,7 @@ export async function encodeJpegWithPreset(
   const jpegInput = hasTransparency(imageData.data)
     ? compositeImageDataOnWhite(imageData)
     : imageData;
-  const data = await jpeg.encode(jpegInput, {
+  const data = await encode(jpegInput, {
     quality: pTry.jpeg.quality,
     progressive: pTry.jpeg.progressive,
     trellis_multipass: pTry.jpeg.trellis_multipass,

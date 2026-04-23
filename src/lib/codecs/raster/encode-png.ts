@@ -1,4 +1,4 @@
-import * as png from '@jsquash/oxipng';
+import { optimise } from '@jsquash/oxipng';
 import { ImageQuantizer, encode_palette_to_png } from 'libimagequant-wasm/wasm/libimagequant_wasm.js';
 import { ensureQuant } from '@/workers/optimizer-wasm';
 import type { ContentPreset } from '@/workers/classify';
@@ -22,7 +22,7 @@ async function imageDataToRawPng(imageData: ImageData): Promise<ArrayBuffer> {
 
 export async function encodePngLossless(imageData: ImageData): Promise<EncodeResult> {
   const rawPng = await imageDataToRawPng(imageData);
-  const data = await png.optimise(rawPng, { level: 3, interlace: false, optimiseAlpha: true });
+  const data = await optimise(rawPng, { level: 3, interlace: false, optimiseAlpha: true });
   return { data, lossless: true };
 }
 
@@ -44,7 +44,7 @@ async function encodePngQuantized(
         imageData.width,
         imageData.height
       );
-      return png.optimise(qPng.buffer as ArrayBuffer, {
+      return optimise(qPng.buffer as ArrayBuffer, {
         level: pTry.png.oxipngLevel,
         interlace: false,
         optimiseAlpha: true,
