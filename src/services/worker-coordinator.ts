@@ -288,10 +288,26 @@ export async function destroyPool() {
 // Reactive queue scheduler
 observe(() => {
   const pending = pendingTasks$.get();
-  const inFlightCount = Object.keys(inFlightTasks$.get()).length;
+  const inFlight = inFlightTasks$.get();
+  const inFlightCount = Object.keys(inFlight).length;
   const limit = poolStats$.limit.get();
   const isLargeBusy = isLargeFileInFlight$.get();
   const isIntakeActive = intake$.active.get();
+
+  if (inFlightCount > 0) {
+    const items = imageStore$.items;
+    batch(() => {
+      for (const taskId in inFlight) {
+        if (!inFlight[taskId]) continue;
+        const [itemId, rid] = taskId.split(':') as [string, string];
+        const item = items[itemId]?.peek();
+        if (!item || item.results[rid]?.status !== STATUS_PROCESSING) {
+          console.warn(`[Scheduler] Found zombie in-flight task ${taskId}, cleaning up`);
+          inFlightTasks$[taskId]?.delete();
+        }
+      }
+    });
+  }
 
   if (pending.length > 0 && inFlightCount < limit && !isLargeBusy && !isIntakeActive) {
     void processNextAsync(useSettingsStore.getState().options);

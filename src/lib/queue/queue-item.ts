@@ -85,6 +85,10 @@ export function resetItemResultsForOptions(
       // Keep SUCCESS result if it still exists in new slots
       results[newSlot.resultId] = oldResult;
     } else {
+      // If we are resetting a PROCESSING task, it MUST be cancelled in the worker pool
+      if (oldResult?.status === STATUS_PROCESSING) {
+        resultIdsToCancel.push(newSlot.resultId);
+      }
       // Reset PENDING, ERROR, or new results to PENDING
       results[newSlot.resultId] = {
         resultId: newSlot.resultId,

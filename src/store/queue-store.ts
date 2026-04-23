@@ -69,12 +69,12 @@ export const pendingTasks$ = computed(() => {
 
 export const isLargeFileInFlight$ = computed(() => {
   const inFlight = inFlightTasks$.get();
-  const items = imageStore$.items.peek();
+  const items = imageStore$.items;
 
   return Object.keys(inFlight).some(taskId => {
     if (!inFlight[taskId]) return false;
     const [itemId] = taskId.split(':') as [string];
-    const item = items[itemId];
+    const item = items[itemId]?.peek();
     return (
       item &&
       (item.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES ||

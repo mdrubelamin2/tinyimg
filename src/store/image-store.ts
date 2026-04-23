@@ -299,19 +299,19 @@ export const useImageStore = Object.assign(
     getState: () => imageStoreSingleton,
     setState: (partial: Record<string, unknown>) => {
       batch(() => {
-        if (partial.items) {
+        if (partial['items']) {
           const nextItems: Record<string, ImageItem | undefined> = {};
-          if (partial.items instanceof Map) {
-            for (const [id, item] of partial.items) {
-              nextItems[id] = item;
+          if (partial['items'] instanceof Map) {
+            for (const [id, item] of partial['items']) {
+              nextItems[id] = item as ImageItem;
             }
           } else {
-            Object.assign(nextItems, partial.items);
+            Object.assign(nextItems, partial['items']);
           }
           imageStore$.items.set(nextItems);
         }
-        if (partial.itemOrder) {
-          imageStore$.itemOrder.set([...partial.itemOrder]);
+        if (partial['itemOrder']) {
+          imageStore$.itemOrder.set([...(partial['itemOrder'] as string[])]);
         }
       });
     },
