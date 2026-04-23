@@ -8,6 +8,7 @@ export * from './limits.ts';
 export * from './presets.ts';
 export * from './storage.ts';
 export * from './ui.ts';
+export * from './config.ts';
 
 // --- Global options (depends on types from formats and limits) ---
 
@@ -35,8 +36,12 @@ export interface GlobalOptions {
   /** In custom sizes mode, add one output at native decoded dimensions per format. */
   includeNativeSizeInCustom: boolean;
   customSizePresets: OutputSizePreset[];
+  qualityPercent: number;
   stripMetadata: boolean;
   svgInternalFormat: SvgInternalFormat;
+  svgRasterizer: 'auto' | 'browser' | 'resvg';
+  svgExportDensity: 'legacy' | 'display';
+  svgDisplayDpr: number;
   losslessEncoding: LosslessEncoding;
 }
 
@@ -52,7 +57,11 @@ export const DEFAULT_GLOBAL_OPTIONS: GlobalOptions = {
   customSizePresets: [
     { id: 'default-800w', width: 768, height: 0, maintainAspect: true },
   ],
+  qualityPercent: 100,
   stripMetadata: true,
   svgInternalFormat: 'webp',
+  svgRasterizer: 'resvg',
+  svgExportDensity: 'display',
+  svgDisplayDpr: 2,
   losslessEncoding: 'none',
 };

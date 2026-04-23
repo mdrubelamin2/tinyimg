@@ -11,6 +11,7 @@ import {
   isValidImageExtension,
   ERR_FILE_EXCEEDS_LIMIT,
   ERR_INVALID_FILE,
+  mimeByFormat,
 } from '@/constants';
 
 const FILE_HEADER_READ_LENGTH = 16;
@@ -83,7 +84,7 @@ export function checkMagicBytesFromBufferExport(b: Uint8Array, ext: string): boo
 }
 
 /** Get MIME type for a filename; re-export for use in ZIP handling. */
-export { getMimeType, DEFAULT_MIME };
+export { getMimeType, DEFAULT_MIME, mimeByFormat };
 
 /**
  * Detect whether the current browser can likely decode HEIC/HEIF images.
