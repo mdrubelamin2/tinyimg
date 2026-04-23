@@ -18,7 +18,8 @@ export { getFormatsToProcess } from '@/lib/queue/formats-to-process';
 export function createQueueItem(
   file: File,
   options: GlobalOptions,
-  intakeKind: IntakeOriginalKind
+  intakeKind: IntakeOriginalKind,
+  dimensions?: { width: number; height: number }
 ): ImageItem {
   if (/\.zip$/i.test(file.name)) {
     throw new Error('Queue items must not be created for raw .zip archives (expand in intake first)');
@@ -33,6 +34,8 @@ export function createQueueItem(
     progress: 0,
     originalSize: file.size,
     originalFormat: file.name.split('.').pop()?.toLowerCase() ?? 'unknown',
+    width: dimensions?.width,
+    height: dimensions?.height,
     results: {},
   };
 

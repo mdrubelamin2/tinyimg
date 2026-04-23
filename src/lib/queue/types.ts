@@ -73,6 +73,8 @@ export interface ImageItem {
   originalSize: number;
   formattedOriginalSize?: string | undefined;
   originalFormat: string;
+  width?: number | undefined;
+  height?: number | undefined;
   results: Record<string, ImageResult>;
   error?: string | undefined;
   /** Per-item format override (null = follow global config) */
@@ -87,6 +89,8 @@ export interface ImageItem {
 export interface TaskOptions {
   resultId: string;
   format: string;
+  originalExtension?: string;
+  originalSize: number;
   svgInternalFormat: SvgInternalFormat;
   svgRasterizer: 'auto' | 'browser' | 'resvg';
   svgExportDensity: 'legacy' | 'display';

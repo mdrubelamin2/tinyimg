@@ -169,6 +169,7 @@ describe('queue worker results via image-store', () => {
       options: {
         resultId: 'webp',
         format: 'webp',
+        originalSize: 1,
         svgInternalFormat: 'webp',
         svgRasterizer: 'resvg',
         svgExportDensity: 'legacy',

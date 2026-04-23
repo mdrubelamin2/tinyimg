@@ -5,6 +5,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 
 // Mock File for Node environment
+/*
 class MockFile {
   name: string;
   private content: string;
@@ -14,6 +15,7 @@ class MockFile {
   }
   async text() { return this.content; }
 }
+*/
 
 function findRepoRoot(startDir: string): string {
   let dir = startDir;
@@ -115,10 +117,11 @@ describe('SVG Raster Debug', () => {
   it('analyzes svg-raster.svg processing', async () => {
     const filePath = path.join(PROJECT_ROOT, 'test-images/svg-raster.svg');
     const content = fs.readFileSync(filePath, 'utf-8');
-    const file = new MockFile(content, 'svg-raster.svg') as unknown as File;
-    
+    // const file = new MockFile(content, 'svg-raster.svg') as unknown as File;
+
     try {
-      const result = await processSvg(file, {
+      const buffer = new TextEncoder().encode(content).buffer;
+      const result = await processSvg(buffer, {
         svgInternalFormat: 'webp',
         svgDisplayDpr: 1
       });

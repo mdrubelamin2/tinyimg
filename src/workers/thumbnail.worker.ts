@@ -3,24 +3,16 @@
  * SVG thumbnails use Resvg (same WASM as the optimizer) — not createImageBitmap on raw SVG.
  */
 
-import type { ThumbnailWorkerInbound, ThumbnailWorkerOutbound } from '../thumbnails/thumbnail-protocol';
+import * as Comlink from 'comlink';
+import type { ThumbnailWorkerOutbound } from '../thumbnails/thumbnail-protocol';
 import { checkPixelLimit } from './raster-encode';
 import { ensureResvg, Resvg } from './optimizer-wasm';
 
 const MAX_EDGE_PX = 120;
 const WEBP_QUALITY = 0.6;
 
-function postOutbound(data: ThumbnailWorkerOutbound): void {
-  (globalThis as unknown as { postMessage: (d: ThumbnailWorkerOutbound) => void }).postMessage(data);
-}
-
-function isSvgFile(file: File): boolean {
-  if (file.type === 'image/svg+xml') return true;
-  return file.name.toLowerCase().endsWith('.svg');
-}
-
-async function svgFileToBitmap(file: File): Promise<ImageBitmap> {
-  const svgText = await file.text();
+async function svgBufferToBitmap(buffer: ArrayBuffer): Promise<ImageBitmap> {
+  const svgText = new TextDecoder().decode(buffer);
   await ensureResvg();
   const resvg = new Resvg(svgText, {
     fitTo: { mode: 'width', value: MAX_EDGE_PX },
@@ -37,11 +29,11 @@ async function svgFileToBitmap(file: File): Promise<ImageBitmap> {
   }
 }
 
-async function decodeSourceToBitmap(file: File): Promise<ImageBitmap> {
-  if (isSvgFile(file)) {
-    return svgFileToBitmap(file);
+async function decodeSourceToBitmap(buffer: ArrayBuffer, type: string): Promise<ImageBitmap> {
+  if (type === 'image/svg+xml') {
+    return svgBufferToBitmap(buffer);
   }
-  return createImageBitmap(file);
+  return createImageBitmap(new Blob([buffer], { type }));
 }
 
 let sharedCanvas: OffscreenCanvas | null = null;
@@ -58,33 +50,39 @@ function getCanvasForSize(w: number, h: number): { canvas: OffscreenCanvas; ctx:
   return { canvas: sharedCanvas, ctx: sharedCtx! };
 }
 
-self.onmessage = async (e: MessageEvent<ThumbnailWorkerInbound>) => {
-  const msg = e.data;
-  if (msg.type === 'PING') {
-    postOutbound({ type: 'PONG' });
-    return;
+export interface ThumbnailAPI {
+  generate(id: string, buffer: ArrayBuffer, type: string): Promise<ThumbnailWorkerOutbound>;
+}
+
+const api: ThumbnailAPI = {
+  async generate(id: string, buffer: ArrayBuffer, type: string): Promise<ThumbnailWorkerOutbound> {
+    try {
+      const bmp = await decodeSourceToBitmap(buffer, type);
+      const w = bmp.width;
+      const h = bmp.height;
+      const scale = Math.min(MAX_EDGE_PX / w, MAX_EDGE_PX / h, 1);
+      const tw = Math.max(1, Math.round(w * scale));
+      const th = Math.max(1, Math.round(h * scale));
+
+      const { canvas, ctx } = getCanvasForSize(tw, th);
+      ctx.drawImage(bmp, 0, 0, tw, th);
+      bmp.close();
+      const blob = await canvas.convertToBlob({ type: 'image/webp', quality: WEBP_QUALITY });
+      return Comlink.transfer({ type: 'THUMB_OK', id, blob, width: w, height: h }, [buffer]);
+    } catch (err) {
+      return {
+        type: 'THUMB_ERR',
+        id,
+        error: String(err),
+      };
+    }
   }
-  if (msg.type !== 'THUMB') return;
+};
 
-  const { id, file } = msg;
-  try {
-    const bmp = await decodeSourceToBitmap(file);
-    const w = bmp.width;
-    const h = bmp.height;
-    const scale = Math.min(MAX_EDGE_PX / w, MAX_EDGE_PX / h, 1);
-    const tw = Math.max(1, Math.round(w * scale));
-    const th = Math.max(1, Math.round(h * scale));
-
-    const { canvas, ctx } = getCanvasForSize(tw, th);
-    ctx.drawImage(bmp, 0, 0, tw, th);
-    bmp.close();
-    const blob = await canvas.convertToBlob({ type: 'image/webp', quality: WEBP_QUALITY });
-    postOutbound({ type: 'THUMB_OK', id, blob });
-  } catch (err) {
-    postOutbound({
-      type: 'THUMB_ERR',
-      id,
-      error: String(err),
-    });
+self.onmessage = (event: MessageEvent<{ type: string; port: MessagePort }>) => {
+  if (event.data?.type === 'INIT') {
+    const port = event.data.port;
+    Comlink.expose(api, port);
+    port.start();
   }
 };

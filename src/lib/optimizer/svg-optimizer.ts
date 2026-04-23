@@ -1,3 +1,7 @@
+import {
+  SVG_COMPLEXITY_NODE_THRESHOLD,
+  SVG_COMPLEXITY_SEGMENT_THRESHOLD,
+} from '@/constants';
 import type { Config, CustomPlugin } from 'svgo';
 import { Logger } from '@/workers/logger';
 
@@ -176,7 +180,7 @@ export async function optimizeSvg(svgText: string): Promise<{ data: string; meta
       // Classification logic based on gathered metadata
       if (metadata.rasterBytes > 0) {
         metadata.type = 'HYBRID';
-      } else if (metadata.nodeCount > 1500 || metadata.segmentCount > 5000) {
+      } else if (metadata.nodeCount > SVG_COMPLEXITY_NODE_THRESHOLD || metadata.segmentCount > SVG_COMPLEXITY_SEGMENT_THRESHOLD) {
         metadata.type = 'COMPLEX';
       } else {
         metadata.type = 'SIMPLE';

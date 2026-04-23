@@ -4,14 +4,18 @@
  * and immediate Web Worker termination on cancel.
  */
 
+import * as Comlink from 'comlink';
 import type { Task, TaskOptions, WorkerOutbound } from '@/lib/queue/types';
 import { CONCURRENCY_MIN } from '@/constants/limits';
 import optimizerWorkerUrl from './optimizer.worker.ts?worker&url';
 import { computeOptimalWorkerCount } from '@/capabilities/worker-count';
-import { findTransferable } from './transferable';
 import { DYNAMIC_SCALE_DELAY_MS, MIN_WORKER_STAGGER_MS, WORKER_IDLE_TIMEOUT_MS } from '@/constants/worker';
 
-type OptimizePayload = { id: string; file: File | Blob; options: TaskOptions };
+export type OptimizePayload = { id: string; buffer: ArrayBuffer; options: TaskOptions };
+
+export interface OptimizerAPI {
+  optimize(payload: OptimizePayload): Promise<WorkerOutbound>;
+}
 
 export interface WorkerPoolCallbacks {
   onMessage: (workerIndex: number, data: WorkerOutbound) => void;
@@ -48,7 +52,7 @@ export class WorkerPool {
   private minConcurrent: number;
   private maxConcurrent: number;
   private pending: Task[] = [];
-  private readonly active = new Map<TaskKey, { task: Task; controller: AbortController }>();
+  private readonly active = new Map<TaskKey, { task: Task; controller: AbortController; port?: MessagePort }>();
 
   private isPumping = false;
   private lastWorkerCreatedMs = 0;
@@ -100,6 +104,10 @@ export class WorkerPool {
       this.activeWorkers.delete(key);
       this.allWorkers.delete(entry);
     }
+    const active = this.active.get(key);
+    if (active?.port) {
+      active.port.close();
+    }
   }
 
   abortInFlightForItem(id: string): void {
@@ -137,11 +145,12 @@ export class WorkerPool {
   async destroy(): Promise<void> {
     clearTimeout(this.pumpTimeoutId);
     this.pending.length = 0;
-    for (const { controller } of this.active.values()) {
-      controller.abort();
+    for (const entry of this.active.values()) {
+      entry.controller.abort();
+      entry.port?.close();
     }
     this.active.clear();
-    
+
     for (const entry of this.allWorkers) {
       clearTimeout(entry.idleTimeoutId);
       entry.worker.terminate();
@@ -174,16 +183,16 @@ export class WorkerPool {
           const now = Date.now();
           const elapsed = now - this.lastWorkerCreatedMs;
           if (this.allWorkers.size < this.minConcurrent) {
-            // Ramping up to MIN workers: stagger slightly to keep main thread fluid
             const delay = MIN_WORKER_STAGGER_MS - elapsed;
-            if (delay > 0) await new Promise(r => setTimeout(r, delay));
-          } else {
-            // Dynamic scale up: wait longer to give busy workers a chance to finish
+            if (delay > 0) {
+              this.pumpTimeoutId = setTimeout(() => { void this.pump(); }, delay);
+              return;
+            }
+          } else if (this.allWorkers.size < this.maxConcurrent) {
             const delay = DYNAMIC_SCALE_DELAY_MS - elapsed;
             if (delay > 0) {
-              await new Promise(r => setTimeout(r, delay));
-              this.pumpTimeoutId = setTimeout(() => { void this.pump(); }, DYNAMIC_SCALE_DELAY_MS);
-              return; // Exit pump. If a worker finishes, it will resume automatically.
+              this.pumpTimeoutId = setTimeout(() => { void this.pump(); }, delay);
+              return;
             }
           }
         }
@@ -193,8 +202,6 @@ export class WorkerPool {
         const task = this.pending.shift()!;
         const key = taskKey(task);
         const controller = new AbortController();
-        this.active.set(key, { task, controller });
-        this.notifyActiveChange();
 
         let workerEntry: WorkerEntry;
         if (this.idleWorkers.length > 0) {
@@ -207,56 +214,72 @@ export class WorkerPool {
           this.allWorkers.add(workerEntry);
         }
 
-        // Handle case where task was aborted while awaiting delay
-        if (!this.active.has(key)) {
-          this.releaseWorker(workerEntry);
-          continue;
-        }
-
+        this.active.set(key, { task, controller });
         this.activeWorkers.set(key, workerEntry);
+        this.notifyActiveChange();
 
-        const payload: OptimizePayload = {
-          id: task.id,
-          file: task.file,
-          options: task.options,
-        };
-
-        const cleanup = () => {
-          workerEntry.worker.removeEventListener('message', handleMessage);
-          workerEntry.worker.removeEventListener('error', handleError);
-          this.activeWorkers.delete(key);
-          const hadTask = this.active.delete(key);
-          if (hadTask) this.notifyActiveChange();
-        };
-
-        const handleMessage = (e: MessageEvent) => {
-          cleanup();
-          this.releaseWorker(workerEntry);
-          this.callbacks.onMessage(0, e.data);
-          void this.pump();
-        };
-
-        const handleError = () => {
-          cleanup();
-          workerEntry.worker.terminate();
-          this.allWorkers.delete(workerEntry);
-          this.callbacks.onError(0, task);
-          void this.pump();
-        };
-
-        workerEntry.worker.addEventListener('message', handleMessage);
-        workerEntry.worker.addEventListener('error', handleError);
-
-        try {
-          const transferList = findTransferable(payload);
-          workerEntry.worker.postMessage(payload, transferList);
-        } catch (err) {
-          console.error('Failed to postMessage to worker', err);
-          handleError();
-        }
+        void this.runTask(key, task, workerEntry);
       }
     } finally {
       this.isPumping = false;
     }
   }
+
+  private async runTask(key: TaskKey, task: Task, workerEntry: WorkerEntry): Promise<void> {
+    const channel = new MessageChannel();
+    const port1 = channel.port1;
+    const port2 = channel.port2;
+
+    const activeEntry = this.active.get(key);
+    if (activeEntry) {
+      activeEntry.port = port1;
+    }
+
+    const cleanup = () => {
+      port1.close();
+      this.activeWorkers.delete(key);
+      const hadTask = this.active.delete(key);
+      if (hadTask) this.notifyActiveChange();
+    };
+
+    const handleError = () => {
+      cleanup();
+      workerEntry.worker.terminate();
+      this.allWorkers.delete(workerEntry);
+      this.callbacks.onError(0, task);
+      void this.pump();
+    };
+
+    try {
+      workerEntry.worker.postMessage({ type: 'TASK_START', port: port2 }, [port2]);
+      const proxy = Comlink.wrap<OptimizerAPI>(port1);
+
+      const buffer = await task.file.arrayBuffer();
+      const payload: OptimizePayload = {
+        id: task.id,
+        buffer: buffer,
+        options: task.options,
+      };
+
+      const result = await proxy.optimize(Comlink.transfer(payload, [buffer]));
+      proxy[Comlink.releaseProxy](); 
+      port1.close();
+
+      if (!this.active.has(key)) {
+        this.releaseWorker(workerEntry);
+        return;
+      }
+
+      this.callbacks.onMessage(0, result);
+      cleanup();
+      this.releaseWorker(workerEntry);
+      void this.pump();
+    } catch (err) {
+      if (this.active.get(key)) {
+        console.error('Failed to run optimize task via Comlink', err);
+        handleError();
+      }
+    }
+  }
 }
+

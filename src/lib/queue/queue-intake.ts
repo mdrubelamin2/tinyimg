@@ -4,13 +4,15 @@ import {
   ID_RANDOM_LENGTH,
   isValidImageExtension,
   MAX_FILE_SIZE_BYTES,
+  MAX_PIXELS,
   MAX_ZIP_EXTRACTED_FILES,
   MAX_ZIP_EXTRACTED_TOTAL_BYTES,
   MAX_ZIP_FILE_SIZE_BYTES,
   STATUS_ERROR,
+  ERR_INVALID_FILE,
 } from '@/constants';
 import type { ImageItem } from '@/lib/queue/types';
-import { DEFAULT_MIME, getMimeType, isHeicDecodeLikelySupported } from '@/lib/validation';
+import { DEFAULT_MIME, getMimeType, isHeicDecodeLikelySupported, mimeByFormat } from '@/lib/validation';
 import { ensureZipJsConfigured } from '@/lib/zip-js-config';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { srcKey } from '@/storage/keys';
@@ -18,6 +20,7 @@ import type { StorageAdapter } from '@/storage/storage-adapter';
 import type { Entry, EntryGetDataOptions, FileEntry } from '@zip.js/zip.js';
 import { BlobReader, ZipReader } from '@zip.js/zip.js';
 import { nanoid } from 'nanoid';
+import { imageDimensionsFromStream } from 'image-dimensions';
 
 type FileSystemDirectoryHandleWithEntries = FileSystemDirectoryHandle & {
   entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
@@ -29,6 +32,8 @@ const ZIP_ENTRY_READ_OPTIONS: EntryGetDataOptions = {
   useWebWorkers: true,
   useCompressionStream: true,
 };
+
+const DETECTION_TIMEOUT = Symbol('detection-timeout');
 
 async function streamZipEntryToStorageKey(
   entry: FileEntry,
@@ -204,7 +209,7 @@ function isFileUploadSource(source: IntakeUploadSource): source is File[] {
 }
 
 export interface IntakeContext {
-  createItem: (file: File, intakeKind: IntakeOriginalKind) => ImageItem;
+  createItem: (file: File, intakeKind: IntakeOriginalKind, dimensions?: { width: number; height: number }) => ImageItem;
   onExtractingArchive?: (archiveFileName: string) => void;
   onZipManifest?: (archiveFileName: string, entryCount: number) => void;
   onZipProgress?: (processed: number, total: number) => void;
@@ -261,25 +266,77 @@ function createErrorCollectEntry(
     const r = item.results[k]!;
     item.results[k] = { ...r, status: STATUS_ERROR };
   }
-  return { item };
+  return {
+    item,
+    intakeOriginal: { kind: intakeKind, file },
+  };
 }
 
-function createValidatedItem(
+async function createValidatedItem(
   file: File,
   ctx: IntakeContext,
-  intakeKind: IntakeOriginalKind
-): CollectIntakeEntry | null {
+  intakeKind: IntakeOriginalKind,
+  options?: { skipProbing?: boolean; overrideSize?: number }
+): Promise<CollectIntakeEntry | null> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (!isValidImageExtension(ext)) return null;
-  if (file.size > MAX_FILE_SIZE_BYTES) {
+
+  const effectiveSize = options?.overrideSize ?? file.size;
+  if (effectiveSize > MAX_FILE_SIZE_BYTES) {
     return createErrorCollectEntry(file, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem, intakeKind);
   }
-  if ((ext === 'heic' || ext === 'heif') && !isHeicDecodeLikelySupported()) {
-    return createErrorCollectEntry(file, ERR_HEIC_BROWSER, ctx.createItem, intakeKind);
+
+  let dimensions: { width: number; height: number } | undefined;
+  let detectedMime: string | undefined;
+
+  if (!options?.skipProbing) {
+    try {
+      // Attempt to get dimensions and type from stream with a 150ms timeout
+      const result = await Promise.race([
+        imageDimensionsFromStream(file.stream()),
+        new Promise<typeof DETECTION_TIMEOUT>((resolve) => setTimeout(() => resolve(DETECTION_TIMEOUT), 150))
+      ]);
+
+      if (result && result !== DETECTION_TIMEOUT) {
+        dimensions = { width: result.width, height: result.height };
+        detectedMime = mimeByFormat(result.type);
+
+        if (dimensions.width * dimensions.height > MAX_PIXELS) {
+          const errEnt = createErrorCollectEntry(
+            file,
+            `Image dimensions too large (max ${Math.round(MAX_PIXELS / 1_000_000)} megapixels)`,
+            ctx.createItem,
+            intakeKind
+          );
+          errEnt.item.width = dimensions.width;
+          errEnt.item.height = dimensions.height;
+          return errEnt;
+        }
+      } else if (result === undefined && ext !== 'svg') {
+        // Library returned undefined definitively -> invalid image content
+        return createErrorCollectEntry(file, ERR_INVALID_FILE, ctx.createItem, intakeKind);
+      }
+    } catch {
+      // Ignore errors for now (e.g. stream failure), we'll fall back to browser decode in thumbnail worker
+    }
+  }
+
+  if (ext === 'heic' || ext === 'heif') {
+    if (!isHeicDecodeLikelySupported()) {
+      return createErrorCollectEntry(file, ERR_HEIC_BROWSER, ctx.createItem, intakeKind);
+    }
+  }
+
+  const item = ctx.createItem(file, intakeKind, dimensions);
+  if (detectedMime) {
+    item.mimeType = detectedMime;
+  }
+  if (options?.overrideSize !== undefined) {
+    item.originalSize = options.overrideSize;
   }
 
   return {
-    item: ctx.createItem(file, intakeKind),
+    item,
     intakeOriginal: { kind: intakeKind, file },
   };
 }
@@ -348,9 +405,14 @@ async function* streamCollectIntakeFromZip(
 
         const mime = getMimeType(fileName);
         const stubFile = new File([], fileName, { type: mime });
-        const validated = createValidatedItem(stubFile, ctx, 'buffered');
+        const validated = await createValidatedItem(stubFile, ctx, 'buffered', {
+          skipProbing: true,
+          overrideSize: entry.uncompressedSize,
+        });
         if (!validated) continue;
         if (validated.item.status === STATUS_ERROR) {
+          // If it's a resolution error from createValidatedItem, it already has dimensions and intakeOriginal if it could get them.
+          // But for ZIP entries we might need to attach the buffered source if it's already there.
           yield validated;
           continue;
         }
@@ -361,13 +423,31 @@ async function* streamCollectIntakeFromZip(
           const storage = await getSessionBinaryStorage();
           await streamZipEntryToStorageKey(entry, storage, srcKey(validated.item.id));
           validated.intakeOriginal = { kind: 'buffered-session', itemId: validated.item.id };
+
+          // Try to get dimensions from stored file if we didn't get them from stream (unlikely for zip but for consistency)
+          if (!validated.item.width || !validated.item.height) {
+            try {
+              const storedFile = await storage.getBackedFile(srcKey(validated.item.id));
+              if (storedFile) {
+                const result = await Promise.race([
+                  imageDimensionsFromStream(storedFile.stream()),
+                  new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 100))
+                ]);
+                if (result) {
+                  validated.item.width = result.width;
+                  validated.item.height = result.height;
+                }
+              }
+            } catch { /* ignore */ }
+          }
+
           yield validated;
         } catch {
           const storage = await getSessionBinaryStorage();
           await storage.delete(srcKey(validated.item.id)).catch(() => {});
           const blob = await readZipEntryAsBlob(entry);
           const validFile = new File([blob], fileName, { type: mime });
-          const fallback = createValidatedItem(validFile, ctx, 'buffered');
+          const fallback = await createValidatedItem(validFile, ctx, 'buffered');
           if (fallback) yield fallback;
         }
       } finally {
@@ -400,7 +480,7 @@ async function* collectPlainFileYield(file: File, ctx: IntakeContext): AsyncGene
     return;
   }
 
-  const validated = createValidatedItem(file, ctx, 'direct');
+  const validated = await createValidatedItem(file, ctx, 'direct');
   if (validated) yield validated;
 }
 

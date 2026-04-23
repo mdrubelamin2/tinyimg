@@ -14,6 +14,8 @@ import { shouldUseLosslessRasterEncode } from '../codecs/raster/output-encode';
 export interface OutputSlot {
   resultId: string;
   format: string;
+  originalExtension?: string;
+  originalSize: number;
   variantLabel: string;
   resizePreset: TaskResizePreset;
   lossless?: boolean;
@@ -99,6 +101,8 @@ export function buildOutputSlots(item: ImageItem, options: GlobalOptions): Outpu
       slots.push({
         resultId: `${format}${losslessSuffix(options, RESIZE_PRESETS.NATIVE)}`,
         format,
+        originalExtension: item.originalFormat,
+        originalSize: item.originalSize,
         variantLabel: '',
         resizePreset: { kind: 'native' },
         lossless: shouldUseLosslessRasterEncode(options.losslessEncoding, RESIZE_PRESETS.NATIVE),
@@ -140,6 +144,8 @@ export function buildOutputSlots(item: ImageItem, options: GlobalOptions): Outpu
       slots.push({
         resultId: format,
         format,
+        originalExtension: item.originalFormat,
+        originalSize: item.originalSize,
         variantLabel: '',
         resizePreset: { kind: 'native' },
         lossless: true,
@@ -152,6 +158,8 @@ export function buildOutputSlots(item: ImageItem, options: GlobalOptions): Outpu
       slots.push({
         resultId,
         format,
+        originalExtension: item.originalFormat,
+        originalSize: item.originalSize,
         variantLabel: step.label,
         resizePreset: step.preset,
         lossless: shouldUseLosslessRasterEncode(options.losslessEncoding, step.preset),

@@ -190,28 +190,34 @@ function scheduleStatsFlush(): void {
   });
 }
 
-function showStatToast(): void {
-  const stats = computeQueueStats();
-  if(stats.processingCount > 0) {
+function showStatToast(stats: QueueStats): void {
+  if (stats.processingCount > 0) {
     toast.loading(
       `Optimized ${stats.successfulOutputCount} of ${stats.totalOutputCount} image${stats.processingCount > 1 ? 's' : ''}... Saved ${stats.savingsPercent}% so far!`,
-       { id: 'progress-toast' }
+      { id: 'progress-toast' }
     );
   }
-  if(stats.allSuccessful) {
+  if (stats.allSuccessful) {
     toast.success(
       `Optimized ${stats.successfulOutputCount} image${stats.successfulCount > 1 ? 's' : ''}! Total savings: ${stats.savingsPercent}%`,
-       { id: 'progress-toast' }
+      { id: 'progress-toast' }
     );
   }
 }
 
 observe(() => {
-  imageStore$.itemOrder.get();
-  for (const id of imageStore$.itemOrder.peek()) {
-    imageStore$.items[id]?.status.get();
-    imageStore$.items[id]?.results.get();
+  const order = imageStore$.itemOrder.get();
+  for (const id of order) {
+    const node = imageStore$.items[id];
+    if (node) {
+      node.status.get();
+      node.results.get();
+    }
   }
   scheduleStatsFlush();
-  showStatToast();
+});
+
+observe(() => {
+  const stats = queueStats$.get();
+  showStatToast(stats);
 });

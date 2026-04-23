@@ -8,7 +8,8 @@ import {
 } from '@/constants';
 import type { ImageItem, WorkerOutboundResult } from '@/lib/queue/types';
 import { registerDirectDropOriginal } from '@/storage/dropped-original-files';
-import { chunkResultResponsesForPersist, useImageStore } from '@/store/image-store';
+import { chunkResultResponsesForPersist } from '@/services/storage-sync';
+import { useImageStore } from '@/store/image-store';
 
 vi.mock('@/storage/queue-binary', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/storage/queue-binary')>();

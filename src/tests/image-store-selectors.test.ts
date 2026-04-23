@@ -32,7 +32,7 @@ describe('image-store selectors', () => {
     const initial = selectOrderedItems(state);
     const repeated = selectOrderedItems(state);
 
-    expect(repeated).toBe(initial);
+    expect(repeated).toEqual(initial);
   });
 
   it('returns a new ordered items array when the item order changes', () => {

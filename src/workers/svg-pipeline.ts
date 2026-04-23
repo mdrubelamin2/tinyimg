@@ -111,10 +111,10 @@ export function computeEffectiveDisplayDpr(
  *   it is wrapped to ensure smooth mobile performance.
  */
 export async function processSvg(
-  file: File,
+  buffer: ArrayBuffer,
   options: SvgPipelineOptions
 ): Promise<{ blob: Blob; label: string; }> {
-  const text = await file.text();
+  const text = new TextDecoder().decode(buffer);
 
   const { data: optimizedSvg, metadata } = await optimizeSvg(text);
   const totalSizeBytes = new TextEncoder().encode(optimizedSvg).length;
@@ -165,14 +165,14 @@ export async function processSvg(
  * Rasterize SVG file to raw `ImageData` (before format encode). Used when output size may differ from rasterized pixels.
  */
 export async function rasterizeSvgFileToImageData(
-  file: File,
+  buffer: ArrayBuffer,
   options: SvgPipelineOptions
 ): Promise<{
   imageData: ImageData;
   bitmapWidth: number;
   bitmapHeight: number;
 }> {
-  const text = await file.text();
+  const text = new TextDecoder().decode(buffer);
 
   const raster = await buildSvgRaster(text, 0, 0, options);
   assertDimensions(raster.imageData.width, raster.imageData.height, raster.bitmapWidth, raster.bitmapHeight, 'post-raster');
@@ -188,13 +188,13 @@ export async function rasterizeSvgFileToImageData(
  * Rasterize SVG to requested flat raster format (webp/avif/png/jpeg).
  */
 export async function rasterizeSvgToFormat(
-  file: File,
+  buffer: ArrayBuffer,
   options: { format: SvgRasterFormat } & SvgPipelineOptions & {
     losslessEncoding?: LosslessEncoding;
     resizePreset?: TaskResizePreset;
   }
 ): Promise<{ blob: Blob; label: string; }> {
-  const { imageData, bitmapWidth, bitmapHeight } = await rasterizeSvgFileToImageData(file, options);
+  const { imageData, bitmapWidth, bitmapHeight } = await rasterizeSvgFileToImageData(buffer, options);
 
   const format = options.format;
   const losslessEncoding = options.losslessEncoding ?? 'none';

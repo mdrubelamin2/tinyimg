@@ -167,10 +167,10 @@ describe('SVG Adaptive Output Pipeline', () => {
 
   it('classifies SIMPLE SVG and returns optimized SVG (not wrapped)', async () => {
     const simpleSvg = '<svg><circle /></svg>';
-    const file = new File([simpleSvg], 'simple.svg', { type: 'image/svg+xml' });
-    
-    const result = await processSvg(file, defaultOptions);
-    
+    const buffer = new TextEncoder().encode(simpleSvg).buffer;
+
+    const result = await processSvg(buffer, defaultOptions);
+
     expect(result.label).toBe('svg (optimized)');
     const text = await result.blob.text();
     expect(text).toContain('<circle />');
@@ -180,13 +180,13 @@ describe('SVG Adaptive Output Pipeline', () => {
   it('classifies COMPLEX SVG and returns raster-wrapped webp', async () => {
     // 1501 nodes triggers COMPLEX
     const complexSvg = '<svg>' + '<rect />'.repeat(1501) + '</svg>';
-    const file = new File([complexSvg], 'complex.svg', { type: 'image/svg+xml' });
-    
-    const result = await processSvg(file, defaultOptions);
-    
+    const buffer = new TextEncoder().encode(complexSvg).buffer;
+
+    const result = await processSvg(buffer, defaultOptions);
+
     // Label should indicate wrapped
     expect(result.label).toContain('svg (webp)');
-    
+
     const text = await result.blob.text();
     // Should be wrapped in an SVG with an image tag
     expect(text).toContain('<image');
@@ -197,12 +197,12 @@ describe('SVG Adaptive Output Pipeline', () => {
   it('classifies HYBRID SVG and returns raster-wrapped webp', async () => {
     // <image> triggers HYBRID
     const hybridSvg = '<svg><image href="foo.png" /></svg>';
-    const file = new File([hybridSvg], 'hybrid.svg', { type: 'image/svg+xml' });
-    
-    const result = await processSvg(file, defaultOptions);
-    
+    const buffer = new TextEncoder().encode(hybridSvg).buffer;
+
+    const result = await processSvg(buffer, defaultOptions);
+
     expect(result.label).toContain('svg (webp)');
-    
+
     const text = await result.blob.text();
     expect(text).toContain('<image');
     expect(text).toContain('data:image/webp;base64,mock-base64');

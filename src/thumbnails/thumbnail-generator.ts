@@ -1,4 +1,5 @@
 import { batch } from '@legendapp/state';
+import * as Comlink from 'comlink';
 import { imageStore$ } from '@/store/image-store';
 import type { ImageItem } from '@/lib/queue/types';
 import { resolveOriginalSourceFile } from '@/storage/queue-binary';
@@ -10,22 +11,38 @@ import {
   setThumbnailEvictionHandler,
   setThumbnailVisibleIdsGetter,
 } from '@/thumbnails/thumbnail-cache';
-import type { ThumbnailWorkerInbound, ThumbnailWorkerOutbound } from '@/thumbnails/thumbnail-protocol';
+import type { ThumbnailAPI } from '@/workers/thumbnail.worker';
 
 type QueueEntry = { id: string; file: File };
 
 let worker: Worker | null = null;
+let proxy: Comlink.Remote<ThumbnailAPI> | null = null;
 const queue: QueueEntry[] = [];
 const queuedId = new Set<string>();
 let busy = false;
 
-async function ensureWorker(): Promise<Worker> {
-  if (worker) return worker;
-  await new Promise(r => setTimeout(r, 100));
+async function ensureWorker(): Promise<Comlink.Remote<ThumbnailAPI>> {
+  if (proxy) return proxy;
   const url = new URL(ThumbnailWorkerUrl, import.meta.url);
   worker = new Worker(url, { type: 'module' });
-  worker.onmessage = (ev: MessageEvent<ThumbnailWorkerOutbound>) => {
-    const data = ev.data;
+  const channel = new MessageChannel();
+  worker.postMessage({ type: 'INIT', port: channel.port2 }, [channel.port2]);
+  proxy = Comlink.wrap<ThumbnailAPI>(channel.port1);
+  return proxy;
+}
+
+async function pump(): Promise<void> {
+  if (busy) return;
+  const next = queue.shift();
+  if (!next) return;
+  busy = true;
+  queuedId.delete(next.id);
+
+  try {
+    const api = await ensureWorker();
+    const buffer = await next.file.arrayBuffer();
+    const data = await api.generate(next.id, Comlink.transfer(buffer, [buffer]), next.file.type);
+
     if (data.type === 'THUMB_OK') {
       const urlStr = URL.createObjectURL(data.blob);
       thumbnailCacheSet(data.id, urlStr);
@@ -36,36 +53,27 @@ async function ensureWorker(): Promise<Worker> {
         if (item) {
           const prev = item.previewUrl;
           batch(() => {
-            imageStore$.items[data.id]?.set({ ...item, previewUrl: urlStr });
+            const nextItem = { ...item, previewUrl: urlStr };
+            if (data.width && data.height && (!item.width || !item.height)) {
+              nextItem.width = data.width;
+              nextItem.height = data.height;
+            }
+            imageStore$.items[data.id]?.set(nextItem);
           });
           if (prev) URL.revokeObjectURL(prev);
         }
       } else {
         URL.revokeObjectURL(urlStr);
       }
-    }
-    if (data.type === 'THUMB_ERR') {
+    } else if (data.type === 'THUMB_ERR') {
       console.warn('thumbnail worker', data.id, data.error);
-      queuedId.delete(data.id);
     }
+  } catch (err) {
+    console.error('Thumbnail generation failed', err);
+  } finally {
     busy = false;
-    pump();
-  };
-  worker.onerror = () => {
-    busy = false;
-    pump();
-  };
-  return worker;
-}
-
-async function pump(): Promise<void> {
-  if (busy) return;
-  const next = queue.shift();
-  if (!next) return;
-  busy = true;
-  queuedId.delete(next.id);
-  const w = await ensureWorker();
-  w.postMessage({ type: 'THUMB', id: next.id, file: next.file } satisfies ThumbnailWorkerInbound);
+    void pump();
+  }
 }
 
 /** Prioritize visible ids (Virtuoso range); others keep FIFO order. */

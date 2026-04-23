@@ -253,6 +253,7 @@ describe('image-store queue progression', () => {
       options: {
         resultId: DEFAULT_PNG_SLOT_ID,
         format: 'png',
+        originalSize: 1,
         svgInternalFormat: DEFAULT_GLOBAL_OPTIONS.svgInternalFormat,
         svgRasterizer: 'resvg' as const,
         svgExportDensity: 'display' as const,
