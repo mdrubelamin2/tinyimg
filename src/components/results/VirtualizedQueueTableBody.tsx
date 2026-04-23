@@ -1,8 +1,9 @@
 import { cn } from '@/lib/utils';
-import { imageStore$ } from '@/store/image-store';
+import { imageStore$ } from '@/store/queue-store';
+import { getImageStore } from '@/store/image-store';
 import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator';
 import { useValue } from '@legendapp/state/react';
-import { startTransition, useCallback, useDeferredValue, type HTMLAttributes } from 'react';
+import { startTransition, useDeferredValue, type HTMLAttributes } from 'react';
 import type { ListRange } from 'react-virtuoso';
 import { TableVirtuoso } from 'react-virtuoso';
 import {
@@ -14,9 +15,10 @@ import { QueueTableHeaderRow } from './QueueTableHeaderRow';
 import { QueueTableVirtuosoRow } from './QueueTableVirtuosoRow';
 import { ResultRowCells } from './ResultRowCells';
 import { StickyTableHead } from './StickyTableHead';
+import {debounce} from 'es-toolkit'
 
 export interface VirtualizedQueueTableBodyProps {
-  scrollParent: HTMLDivElement;
+  scrollParent: HTMLDivElement | null;
 }
 
 export function VirtualizedQueueTableBody({
@@ -24,22 +26,22 @@ export function VirtualizedQueueTableBody({
 }: VirtualizedQueueTableBodyProps) {
   const itemIds = useValue(() => imageStore$.itemOrder.get());
   const deferredItemIds = useDeferredValue(itemIds);
-  
-  const onRangeChanged = (range: ListRange) => {
-      startTransition(() => {
-        const visibleIds = itemIds.slice(range.startIndex, range.endIndex + 1);
-        prioritizeThumbnails(visibleIds);
-        imageStore$.visibleItemIds.set(visibleIds);
-    })
-  }
 
-  const itemContent = useCallback((_index: number, rowId: string) => (
+  const onRangeChanged = debounce((range: ListRange) => {
+    startTransition(() => {
+      const visibleIds = itemIds.slice(range.startIndex, range.endIndex + 1);
+      prioritizeThumbnails(visibleIds);
+      getImageStore().setVisibleItems(visibleIds);
+    })
+  }, 500);
+
+  const itemContent = (_index: number, rowId: string) => (
     <ResultRowCells key={rowId} id={rowId} />
-  ), []);
+  );
 
   return (
     <TableVirtuoso
-      customScrollParent={scrollParent}
+      customScrollParent={scrollParent!}
       data={deferredItemIds}
       defaultItemHeight={QUEUE_ROW_HEIGHT_PX}
       overscan={{ main: QUEUE_VIRTUOSO_OVERSCAN_MAIN_PX, reverse: QUEUE_VIRTUOSO_OVERSCAN_REVERSE_PX }}

@@ -8,7 +8,7 @@ import { downloadStoredOutput } from '@/lib/download';
 import { imageStore$ } from '@/store/image-store';
 import { useValue } from '@legendapp/state/react';
 import { Download, X, ZoomIn } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface ImagePreviewProps {
   itemId: string;
@@ -38,12 +38,11 @@ export function ImagePreview({
   const [optimizedObjectUrl, setOptimizedObjectUrl] = useState<string | null>(null);
   const optimizedRef = useRef<string | null>(null);
 
-  const successResults = useMemo(() => {
-    if (!item) return [];
-    return Object.values(item.results)
-      .filter(r => r.status === STATUS_SUCCESS)
-      .sort((a, b) => a.resultId.localeCompare(b.resultId));
-  }, [item]);
+  const successResults = item
+    ? Object.values(item.results)
+        .filter(r => r.status === STATUS_SUCCESS)
+        .sort((a, b) => a.resultId.localeCompare(b.resultId))
+    : [];
 
   const currentResult = item?.results[selectedResultId];
   const originalUrl = resolvedOriginalObjectUrl;
@@ -122,11 +121,8 @@ export function ImagePreview({
     ? ((originalSize - optimizedSize) / originalSize * 100).toFixed(1)
     : '0';
 
-  const downloadBaseName = useMemo(() => {
-    if (!item) return '';
-    const d = item.fileName.lastIndexOf('.');
-    return d > 0 ? item.fileName.substring(0, d) : item.fileName;
-  }, [item]);
+  const lastDotIndex = item?.fileName.lastIndexOf('.') ?? -1;
+  const downloadBaseName = lastDotIndex > 0 ? item!.fileName.substring(0, lastDotIndex) : (item?.fileName ?? '');
 
   const formatBytes = (bytes: number) => {
     if (bytes < BYTES_PER_KB) return `${bytes} B`;
