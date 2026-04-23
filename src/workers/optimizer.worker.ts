@@ -2,7 +2,7 @@ import * as Comlink from 'comlink';
 import type { WorkerOutbound } from '@/lib/queue/types';
 import { runOptimizeTask } from './optimize-task-core';
 import type { OptimizePayload, OptimizerAPI } from './worker-pool-v2';
-import { ensureResvg, ensureQuant } from './optimizer-wasm';
+import { ensureResvg, ensureQuant, ensureHeicDecoder, ensureHeicEncoder } from './optimizer-wasm';
 
 /**
  * Hot WASM pre-initialization.
@@ -11,6 +11,8 @@ import { ensureResvg, ensureQuant } from './optimizer-wasm';
 const wasmReady = Promise.all([
   ensureResvg().catch(err => console.warn('Pre-init Resvg failed', err)),
   ensureQuant().catch(err => console.warn('Pre-init Quant failed', err)),
+  ensureHeicDecoder().catch(err => console.warn('Pre-init Heic Decoder failed', err)),
+  ensureHeicEncoder().catch(err => console.warn('Pre-init Heic Encoder failed', err)),
 ]);
 
 const optimizer: OptimizerAPI = {

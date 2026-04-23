@@ -40,9 +40,18 @@ export interface RasterEncodePreset {
     quantMax: number;
     oxipngLevel: number;
   };
+  heic: {
+    quality: number;
+    chroma: '420' | '422' | '444';
+    lossless?: boolean;
+  };
 }
 
 export interface EncodeResult {
   data: ArrayBuffer;
   lossless: boolean;
 }
+
+export type RasterFormat = 'avif' | 'webp' | 'jpeg' | 'png';
+
+export type AllRasterFormat = RasterFormat | 'heic' | 'heif';

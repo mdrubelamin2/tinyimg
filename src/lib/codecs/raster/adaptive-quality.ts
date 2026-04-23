@@ -77,7 +77,7 @@ function clamp(n: number, lo: number, hi: number): number {
  */
 export function applyScaleBoostToPreset(
   preset: RasterEncodePreset,
-  format: 'avif' | 'webp' | 'jpeg' | 'png',
+  format: 'avif' | 'webp' | 'jpeg' | 'png' | 'heic' | 'heif',
   b: number,
   contentPreset: ContentPreset
 ): RasterEncodePreset {
@@ -85,6 +85,11 @@ export function applyScaleBoostToPreset(
   if (b <= 0) return out;
 
   switch (format) {
+    case 'heic':
+    case 'heif': {
+      out.heic.quality = clamp(out.heic.quality + b, 30, 95);
+      break;
+    }
     case 'jpeg': {
       out.jpeg.quality = clamp(out.jpeg.quality + b, 30, 95);
       if (out.jpeg.separate_chroma_quality && out.jpeg.chroma_quality != null) {

@@ -9,7 +9,7 @@ import { encodeRasterWithFallback } from './encode-fallback.ts';
 import { encodeLossless } from './lossless.ts';
 import { encodeRasterWithPreset } from './encode-with-preset.ts';
 import { SVG_DISPLAY_VECTOR_PRESET } from './presets.ts';
-import type { EncodeResult, RasterEncodePreset } from './types.ts';
+import type { EncodeResult, RasterEncodePreset, AllRasterFormat } from './types.ts';
 import {
   applyScaleBoostToPreset,
   computeDownscaleRatio,
@@ -35,7 +35,7 @@ export async function encodeBitmapRasterForOutput(
     boostedByContent?: Partial<Record<ContentPreset, RasterEncodePreset>>;
   }
 ): Promise<EncodeResult> {
-  const fmt = (effectiveFormat === 'svg' ? 'webp' : effectiveFormat) as 'avif' | 'webp' | 'jpeg' | 'png';
+  const fmt = (effectiveFormat === 'svg' ? 'webp' : effectiveFormat) as AllRasterFormat;
   if (shouldUseLosslessRasterEncode(params.losslessEncoding, params.resizePreset)) {
     return encodeLossless(imageData, fmt);
   }
@@ -49,7 +49,7 @@ export async function encodeBitmapRasterForOutput(
 
 export async function encodeSvgRasterForOutput(
   imageData: ImageData,
-  format: 'avif' | 'webp' | 'jpeg' | 'png',
+  format: AllRasterFormat,
   params: {
     losslessEncoding: LosslessEncoding;
     resizePreset: TaskResizePreset;

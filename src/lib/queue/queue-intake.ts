@@ -1,6 +1,5 @@
 import {
   ERR_FILE_EXCEEDS_LIMIT,
-  ERR_HEIC_BROWSER,
   ID_RANDOM_LENGTH,
   isValidImageExtension,
   MAX_FILE_SIZE_BYTES,
@@ -12,7 +11,7 @@ import {
   ERR_INVALID_FILE,
 } from '@/constants';
 import type { ImageItem } from '@/lib/queue/types';
-import { DEFAULT_MIME, getMimeType, isHeicDecodeLikelySupported, mimeByFormat } from '@/lib/validation';
+import { DEFAULT_MIME, getMimeType, mimeByFormat } from '@/lib/validation';
 import { ensureZipJsConfigured } from '@/lib/zip-js-config';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { srcKey } from '@/storage/keys';
@@ -318,12 +317,6 @@ async function createValidatedItem(
       }
     } catch {
       // Ignore errors for now (e.g. stream failure), we'll fall back to browser decode in thumbnail worker
-    }
-  }
-
-  if (ext === 'heic' || ext === 'heif') {
-    if (!isHeicDecodeLikelySupported()) {
-      return createErrorCollectEntry(file, ERR_HEIC_BROWSER, ctx.createItem, intakeKind);
     }
   }
 

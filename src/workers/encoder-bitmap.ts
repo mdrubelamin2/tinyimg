@@ -4,6 +4,7 @@ import {
   normalizeOutputFormat,
 } from './raster-encode';
 import { resolveResizeTarget } from './resize-preset';
+import { decodeHeic } from '../lib/codecs/raster/decode-heic';
 import { resizeImageDataHighQuality } from '@/lib/codecs/raster/resize-jsquash';
 import { classifyContent } from './classify';
 import {
@@ -21,17 +22,23 @@ export class BitmapEncoderStrategy implements EncoderStrategy {
     const { buffer, options } = input;
     const finalFormat = normalizeOutputFormat(options.format, options.originalExtension);
 
-    let imageBitmap: ImageBitmap;
-    try {
-      imageBitmap = await createImageBitmap(new Blob([buffer]));
-    } catch {
-      throw new Error('Unsupported or corrupt image');
-    }
+    let imageData: ImageData;
+    const isHeifInput = options.originalExtension === 'heic' || options.originalExtension === 'heif';
 
-    let imageData = await getImageData(imageBitmap);
-    try {
-      imageBitmap.close();
-    } catch { /* ignore */ }
+    if (isHeifInput) {
+      imageData = await decodeHeic(buffer);
+    } else {
+      let imageBitmap: ImageBitmap;
+      try {
+        imageBitmap = await createImageBitmap(new Blob([buffer]));
+      } catch {
+        throw new Error('Unsupported or corrupt image');
+      }
+      imageData = await getImageData(imageBitmap);
+      try {
+        imageBitmap.close();
+      } catch { /* ignore */ }
+    }
 
     checkPixelLimit(imageData.width, imageData.height);
 
@@ -47,11 +54,11 @@ export class BitmapEncoderStrategy implements EncoderStrategy {
     const preset = classifyContent(imageData);
 
     const effectiveFormat = finalFormat === 'svg' ? 'webp' : finalFormat;
-    const fmt = effectiveFormat as 'avif' | 'webp' | 'jpeg' | 'png';
+    const fmt = effectiveFormat as 'avif' | 'webp' | 'jpeg' | 'png' | 'heic' | 'heif';
     const downscaleRatio = computeDownscaleRatio(srcW, srcH, imageData.width, imageData.height);
     const boost = qualityBoostFromRatio(downscaleRatio);
     const boostedByContent =
-      boost > 0
+      boost > 0 && (fmt === 'avif' || fmt === 'webp' || fmt === 'jpeg' || fmt === 'png')
         ? {
             photo: applyScaleBoostToPreset(
               PRESETS.photo as unknown as RasterEncodePreset,

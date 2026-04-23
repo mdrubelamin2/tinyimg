@@ -6,16 +6,30 @@
 import * as Comlink from 'comlink';
 import type { ThumbnailWorkerOutbound } from '../thumbnails/thumbnail-protocol';
 import { checkPixelLimit } from './raster-encode';
-import { ensureResvg, Resvg } from './optimizer-wasm';
+import { ensureResvg, Resvg, ensureHeicDecoder } from './optimizer-wasm';
+import { decodeHeic } from '../lib/codecs/raster/decode-heic';
+import { checkMagicBytesFromBufferExport } from '@/lib/validation';
+import { mimeForOutputFormat } from '@/constants/formats';
 
 const MAX_EDGE_PX = 120;
 const WEBP_QUALITY = 0.6;
 
-async function svgBufferToBitmap(buffer: ArrayBuffer): Promise<ImageBitmap> {
+async function heifBufferToBitmap(buffer: ArrayBuffer): Promise<ImageBitmap> {
+  await ensureHeicDecoder();
+  const raw = await decodeHeic(buffer);
+  const imageData = new ImageData(
+    new Uint8ClampedArray(raw.data),
+    raw.width,
+    raw.height
+  );
+  return await createImageBitmap(imageData);
+}
+
+async function svgBufferToBitmap(buffer: ArrayBuffer, maxEdge: number): Promise<ImageBitmap> {
   const svgText = new TextDecoder().decode(buffer);
   await ensureResvg();
   const resvg = new Resvg(svgText, {
-    fitTo: { mode: 'width', value: MAX_EDGE_PX },
+    fitTo: { mode: 'width', value: maxEdge },
   });
   const rendered = resvg.render();
   try {
@@ -29,11 +43,31 @@ async function svgBufferToBitmap(buffer: ArrayBuffer): Promise<ImageBitmap> {
   }
 }
 
-async function decodeSourceToBitmap(buffer: ArrayBuffer, type: string): Promise<ImageBitmap> {
-  if (type === 'image/svg+xml') {
-    return svgBufferToBitmap(buffer);
+async function decodeSourceToBitmap(buffer: ArrayBuffer, type: string, maxEdge: number): Promise<ImageBitmap> {
+  let effectiveType = type;
+
+  if (!effectiveType || effectiveType === 'application/octet-stream') {
+    const bytes = new Uint8Array(buffer);
+    if (checkMagicBytesFromBufferExport(bytes, 'heic') || checkMagicBytesFromBufferExport(bytes, 'heif')) {
+      effectiveType = mimeForOutputFormat('heic');
+    } else if (checkMagicBytesFromBufferExport(bytes, 'svg')) {
+      effectiveType = mimeForOutputFormat('svg');
+    } else if (checkMagicBytesFromBufferExport(bytes, 'webp')) {
+      effectiveType = mimeForOutputFormat('webp');
+    } else if (checkMagicBytesFromBufferExport(bytes, 'jpeg')) {
+      effectiveType = mimeForOutputFormat('jpeg');
+    } else if (checkMagicBytesFromBufferExport(bytes, 'png')) {
+      effectiveType = mimeForOutputFormat('png');
+    }
   }
-  return createImageBitmap(new Blob([buffer], { type }));
+
+  if (effectiveType === mimeForOutputFormat('svg')) {
+    return svgBufferToBitmap(buffer, maxEdge);
+  }
+  if (effectiveType === mimeForOutputFormat('heic') || effectiveType === mimeForOutputFormat('heif')) {
+    return heifBufferToBitmap(buffer);
+  }
+  return createImageBitmap(new Blob([buffer], { type: effectiveType }));
 }
 
 let sharedCanvas: OffscreenCanvas | null = null;
@@ -51,23 +85,23 @@ function getCanvasForSize(w: number, h: number): { canvas: OffscreenCanvas; ctx:
 }
 
 export interface ThumbnailAPI {
-  generate(id: string, buffer: ArrayBuffer, type: string): Promise<ThumbnailWorkerOutbound>;
+  generate(id: string, buffer: ArrayBuffer, type: string, maxEdge?: number): Promise<ThumbnailWorkerOutbound>;
 }
 
 const api: ThumbnailAPI = {
-  async generate(id: string, buffer: ArrayBuffer, type: string): Promise<ThumbnailWorkerOutbound> {
+  async generate(id: string, buffer: ArrayBuffer, type: string, maxEdge = MAX_EDGE_PX): Promise<ThumbnailWorkerOutbound> {
     try {
-      const bmp = await decodeSourceToBitmap(buffer, type);
+      const bmp = await decodeSourceToBitmap(buffer, type, maxEdge);
       const w = bmp.width;
       const h = bmp.height;
-      const scale = Math.min(MAX_EDGE_PX / w, MAX_EDGE_PX / h, 1);
+      const scale = Math.min(maxEdge / w, maxEdge / h, 1);
       const tw = Math.max(1, Math.round(w * scale));
       const th = Math.max(1, Math.round(h * scale));
 
       const { canvas, ctx } = getCanvasForSize(tw, th);
       ctx.drawImage(bmp, 0, 0, tw, th);
       bmp.close();
-      const blob = await canvas.convertToBlob({ type: 'image/webp', quality: WEBP_QUALITY });
+      const blob = await canvas.convertToBlob({ type: mimeForOutputFormat('webp'), quality: WEBP_QUALITY });
       return Comlink.transfer({ type: 'THUMB_OK', id, blob, width: w, height: h }, [buffer]);
     } catch (err) {
       return {

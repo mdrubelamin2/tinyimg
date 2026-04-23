@@ -9,6 +9,7 @@ import { resizeImageDataHighQuality } from '@/lib/codecs/raster/resize-jsquash';
 import { checkPixelLimit } from './raster-encode';
 import { encodeSvgRasterForOutput } from '@/lib/codecs/raster/output-encode';
 import type { EncoderStrategy, EncoderResult, OptimizeTaskInput } from './encoder-types';
+import type { AllRasterFormat } from '@/lib/codecs/raster/types';
 import { svgPipelineOptionsFromWorker } from './encoder-types';
 
 export class SvgEncoderStrategy implements EncoderStrategy {
@@ -30,7 +31,7 @@ export class SvgEncoderStrategy implements EncoderStrategy {
 
       checkPixelLimit(imageData.width, imageData.height);
 
-      const format = requestedFormat as 'avif' | 'webp' | 'jpeg' | 'png';
+      const format = requestedFormat as AllRasterFormat;
       const { data: bytes, lossless } = await encodeSvgRasterForOutput(imageData, format, {
         losslessEncoding: options.losslessEncoding,
         resizePreset: options.resizePreset,

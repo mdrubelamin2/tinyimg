@@ -9,6 +9,7 @@ import { imageStore$ } from '@/store/image-store';
 import { useValue } from '@legendapp/state/react';
 import { Download, X, ZoomIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { isHeicDecodeLikelySupported } from '@/lib/validation';
 
 interface ImagePreviewProps {
   itemId: string;
@@ -50,12 +51,23 @@ export function ImagePreview({
   const originalSize = item?.originalSize ?? 0;
   const optimizedSize = currentResult?.size ?? 0;
 
+  const isPreviewSupported = (format: string | undefined) => {
+    if (isHeicDecodeLikelySupported()) {
+      return true;
+    }
+    return !(format === 'heic' || format === 'heif');
+  };
+
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       const snap = imageStore$.items[itemId]?.peek() as ImageItem | undefined;
       if (!snap) return;
+      console.log('is supported', isPreviewSupported(snap.originalFormat), snap.originalFormat);
+      if(!isPreviewSupported(snap.originalFormat)) {
+        return;
+      }
       const file = await resolveOriginalSourceFile(snap.id, snap);
       if (cancelled || !file) return;
       const url = URL.createObjectURL(file);
@@ -86,6 +98,9 @@ export function ImagePreview({
     void (async () => {
       const snap = imageStore$.items[itemId]?.peek() as ImageItem | undefined;
       const r = snap?.results[selectedResultId];
+      if(!isPreviewSupported(r?.format)) {
+        return;
+      }
       if (!r || r.status !== STATUS_SUCCESS || !r.payloadKey) {
         if (optimizedRef.current) {
           URL.revokeObjectURL(optimizedRef.current);
@@ -130,25 +145,6 @@ export function ImagePreview({
   };
 
   if (!item) return null;
-
-  if (!originalUrl || !optimizedUrl) {
-    return (
-      <div
-        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-        onClick={onClose}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Loading preview"
-      >
-        <div
-          className="relative bg-surface text-surface-foreground rounded-2xl shadow-2xl px-8 py-6 border border-border"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <p className="text-sm text-muted-foreground">Preparing preview…</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -229,12 +225,33 @@ export function ImagePreview({
 
         <div className="relative aspect-video w-full shrink-0 touch-none select-none overflow-hidden bg-muted min-h-0">
           <div className="absolute inset-0 min-h-0 overflow-hidden">
+            {!originalUrl && !optimizedUrl && (
+              <div className="flex flex-col items-center gap-2 justify-center h-full">
+                <p className="text-sm text-muted-foreground">Image Preview not available</p>
+              </div>
+            )}
+            {originalUrl && !optimizedUrl && (
+              <img
+                src={originalUrl}
+                alt={`Original ${item.fileName}`}
+                className="object-contain w-full h-full"
+              />
+            )}
+            {!originalUrl && optimizedUrl && (
+              <img
+              src={optimizedUrl}
+                alt={`Optimized ${item.fileName}`}
+                className="object-contain w-full h-full"
+              />
+            )}
+            {originalUrl && optimizedUrl && (
             <ImageCompareViewer
               originalUrl={originalUrl}
               optimizedUrl={optimizedUrl}
               initialPositionPercent={90}
               className="!rounded-none border-0 bg-transparent"
             />
+            )}
           </div>
         </div>
 

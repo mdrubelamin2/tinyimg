@@ -16,15 +16,15 @@ export type ItemStatus =
   | typeof STATUS_ERROR;
 
 // --- Output format types ---
-export type OutputFormat = 'original' | 'webp' | 'avif' | 'jpeg' | 'png' | 'svg' | 'jxl';
-export type SvgInternalFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'jxl';
+export type OutputFormat = 'original' | 'webp' | 'avif' | 'jpeg' | 'png' | 'svg' | 'jxl' | 'heic' | 'heif';
+export type SvgInternalFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'jxl' | 'heic' | 'heif';
 export type SvgRasterizer = 'auto' | 'browser' | 'resvg';
 export type SvgExportDensity = 'legacy' | 'display';
-export type RasterFormat = 'webp' | 'avif' | 'jpeg' | 'png';
+export type RasterFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'heic' | 'heif';
 
-export const SUPPORTED_FORMATS: readonly string[] = ['webp', 'avif', 'jpeg', 'png'];
-export const SVG_INTERNAL_FORMATS: readonly SvgInternalFormat[] = ['webp', 'avif', 'jpeg', 'png'];
-export const RASTER_FORMATS: readonly RasterFormat[] = ['webp', 'avif', 'jpeg', 'png'];
+export const SUPPORTED_FORMATS: readonly string[] = ['webp', 'avif', 'jpeg', 'png', 'heic', 'heif'];
+export const SVG_INTERNAL_FORMATS: readonly SvgInternalFormat[] = ['webp', 'avif', 'jpeg', 'png', 'heic', 'heif'];
+export const RASTER_FORMATS: readonly RasterFormat[] = ['webp', 'avif', 'jpeg', 'png', 'heic', 'heif'];
 export const SVG_RASTERIZERS: readonly SvgRasterizer[] = ['auto', 'browser', 'resvg'];
 export const SVG_EXPORT_DENSITIES: readonly SvgExportDensity[] = ['legacy', 'display'];
 
@@ -67,6 +67,8 @@ export function mimeForOutputFormat(format: string): string {
   if (format === 'avif') return 'image/avif';
   if (format === 'svg') return 'image/svg+xml';
   if (format === 'jxl') return 'image/jxl';
+  if (format === 'heic') return 'image/heic';
+  if (format === 'heif') return 'image/heif';
   return 'application/octet-stream';
 }
 

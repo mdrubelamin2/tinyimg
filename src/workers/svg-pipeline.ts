@@ -16,6 +16,7 @@ import {
 } from '@/constants';
 import { encodeLossless } from '@/lib/codecs/raster/lossless';
 import { encodeSvgRasterForOutput } from '@/lib/codecs/raster/output-encode';
+import type { RasterFormat } from '@/lib/codecs/raster/types';
 import { optimizeSvg } from '@/lib/optimizer/svg-optimizer';
 import type { TaskResizePreset } from '@/lib/queue/types';
 import { Resvg } from '@resvg/resvg-wasm';
@@ -52,7 +53,7 @@ interface SvgRasterizeResult {
   naturalHeight?: number;
 }
 
-const RASTER_FORMATS = ['webp', 'avif', 'jpeg', 'png'] as const;
+const RASTER_FORMATS = ['webp', 'avif', 'jpeg', 'png', 'heic', 'heif'] as const;
 export type SvgRasterFormat = (typeof RASTER_FORMATS)[number];
 
 export function isSvgRasterFormat(f: string): f is SvgRasterFormat {
@@ -199,7 +200,7 @@ export async function rasterizeSvgToFormat(
   const format = options.format;
   const losslessEncoding = options.losslessEncoding ?? 'none';
   const resizePreset = options.resizePreset ?? ({ kind: 'native' } satisfies TaskResizePreset);
-  const { data: bytes } = await encodeSvgRasterForOutput(imageData, format, {
+  const { data: bytes } = await encodeSvgRasterForOutput(imageData, format as RasterFormat, {
     losslessEncoding,
     resizePreset,
     srcW: imageData.width,
@@ -323,6 +324,9 @@ export async function assertEncodedDimensions(
   expectedWidth: number,
   expectedHeight: number
 ): Promise<void> {
+  if (mimeType.includes('heic') || mimeType.includes('heif')) {
+    return;
+  }
   const bitmap = await createImageBitmap(new Blob([bytes], { type: mimeType }));
   try {
     assertDimensions(bitmap.width, bitmap.height, expectedWidth, expectedHeight, 'post-encode');
