@@ -15,12 +15,6 @@ import { startSessionMonitors } from '@/bootstrap/session-monitors';
 import { registerGlobalFileIntake } from '@/bootstrap/global-file-intake';
 import { applyThemeFromStorage, initSystemThemeMediaListener } from '@/bootstrap/theme-dom';
 
-if (import.meta.env.DEV) {
-  void import('react-scan').then(({ scan }) => {
-    scan({ enabled: true });
-  });
-}
-
 ensureZipJsConfigured();
 
 void (async () => {

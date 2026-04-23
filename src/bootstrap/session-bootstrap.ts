@@ -7,3 +7,7 @@ export async function bootstrapSession(): Promise<void> {
   clearDirectDropOriginals();
   void requestPersistence();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  void bootstrapSession();
+});
