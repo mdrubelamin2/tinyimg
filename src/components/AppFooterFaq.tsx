@@ -21,6 +21,11 @@ const FAQ_DATA = [
     question: 'What is the file size limit?',
     answer: '25MB per image file; ZIP archives up to 2GB. Batch download is capped to avoid memory issues.',
   },
+  {
+    question: 'Why does "Download All" fail with my download manager?',
+    answer:
+      'Download managers (IDM, FDM, etc.) intercept downloads before our streaming system can handle them. Please temporarily disable your download manager extension and use your browser\'s built-in downloader. This allows us to stream files directly from storage without loading everything into memory, which is essential for handling large batches on low-memory devices.',
+  },
 ];
 
 /** Below-the-fold FAQ; loaded with React.lazy to trim initial bundle. */

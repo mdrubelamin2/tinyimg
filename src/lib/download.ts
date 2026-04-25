@@ -1,6 +1,4 @@
 import {
-  MAX_DOWNLOAD_FILES,
-  MAX_DOWNLOAD_BYTES,
   STATUS_SUCCESS,
   DOWNLOAD_URL_REVOKE_DELAY_MS,
   mimeForOutputFormat,
@@ -9,8 +7,7 @@ import type { ImageItem, ImageResult } from './queue/types';
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { createTransientObjectUrlForPayloadKey, deleteOutputPayloadKey } from '@/storage/queue-binary';
-import { BlobReader, BlobWriter, ZipWriter } from '@zip.js/zip.js';
-import { ensureZipJsConfigured } from '@/lib/zip-js-config';
+import { nanoid } from 'nanoid';
 
 export function revokeResultUrls(item: ImageItem): void {
   Object.values(item.results).forEach((r: ImageResult) => {
@@ -51,13 +48,17 @@ export async function downloadStoredOutput(
 }
 
 export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
-  ensureZipJsConfigured();
+  if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+    alert("Service worker is initializing. Please try again in a few seconds.");
+    return;
+  }
+
   const storage = await getSessionBinaryStorage();
+
   const ts = Date.now();
   const zipDisplayName = `tinyimg-batch-${ts}.zip`;
-
-  let fileCount = 0;
-  let totalBytes = 0;
+  const batchId = nanoid();
+  const manifest: { path: string; payloadKey: string }[] = [];
   const processedPaths = new Set<string>();
 
   function uniqueZipPath(fullBase: string, ext: string): string {
@@ -71,71 +72,66 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
     return candidate;
   }
 
-  const zipWriter = new ZipWriter(new BlobWriter('application/zip'), {
-    bufferedWrite: true,
-    useWebWorkers: false
+  for (const item of items) {
+    const results = Object.values(item.results);
+
+    for (const result of results) {
+      if (result.status === STATUS_SUCCESS && result.payloadKey) {
+        const dot = item.fileName.lastIndexOf('.');
+        const baseName = dot > 0 ? item.fileName.substring(0, dot) : item.fileName;
+        const ext = result.format === 'jpeg' ? 'jpg' : result.format;
+        const fullName = buildOptimizedDownloadFilename(baseName, result);
+        const zipStem = fullName.replace(/^tinyimg-/, '').replace(/\.[^.]+$/, '');
+        const path = uniqueZipPath(zipStem, ext);
+
+        const exists = await storage.has(result.payloadKey);
+        if (!exists) {
+          console.warn(`[Main] ⚠️ PayloadKey not found in storage: ${result.payloadKey}`);
+        }
+
+        manifest.push({ path, payloadKey: result.payloadKey });
+      }
+    }
+  }
+
+  const sw = await navigator.serviceWorker.ready;
+
+  // Send the manifest to the Service Worker's memory map and wait for acknowledgment
+  if (!sw.active) {
+    console.error('[Main] No active service worker');
+    return;
+  }
+
+  // Use MessageChannel to get acknowledgment
+  const messageChannel = new MessageChannel();
+  const manifestReadyPromise = new Promise<void>((resolve) => {
+    messageChannel.port1.onmessage = (event) => {
+      if (event.data.type === 'MANIFEST_READY' && event.data.batchId === batchId) {
+        resolve();
+      }
+    };
   });
 
-  try {
-    for (const item of items) {
-      if (fileCount >= MAX_DOWNLOAD_FILES) break;
-      const results = Object.values(item.results);
-      for (const result of results) {
-        if (fileCount >= MAX_DOWNLOAD_FILES || totalBytes >= MAX_DOWNLOAD_BYTES) break;
-        if (result.status === STATUS_SUCCESS && result.payloadKey) {
-          const dot = item.fileName.lastIndexOf('.');
-          const baseName = dot > 0 ? item.fileName.substring(0, dot) : item.fileName;
-          const ext = result.format === 'jpeg' ? 'jpg' : result.format;
-          const fullName = buildOptimizedDownloadFilename(baseName, result);
-          const zipStem = fullName.replace(/^tinyimg-/, '').replace(/\.[^.]+$/, '');
-          const path = uniqueZipPath(zipStem, ext);
+  sw.active.postMessage({
+    type: 'PREPARE_ZIP_STREAM',
+    batchId,
+    manifest
+  }, [messageChannel.port2]);
 
-          const backed = await storage.getBackedFile(result.payloadKey);
-          if (backed) {
-            const size = backed.size;
-            if (totalBytes + size > MAX_DOWNLOAD_BYTES) continue;
-            await zipWriter.add(path, new BlobReader(backed));
-            fileCount++;
-            totalBytes += size;
-            continue;
-          }
+  // Wait for SW to acknowledge
+  await manifestReadyPromise;
 
-          const ab = await storage.get(result.payloadKey);
-          if (!ab) continue;
-          const size = ab.byteLength;
-          if (totalBytes + size > MAX_DOWNLOAD_BYTES) continue;
+  // 3. Trigger download via navigation (so SW can intercept and stream directly)
+  // Using iframe to avoid page navigation while still triggering SW fetch
+  const downloadUrl = `/_/download-zip/${batchId}/${zipDisplayName}`;
 
-          const blob = new Blob([ab], { type: mimeForOutputFormat(result.format) });
-          await zipWriter.add(path, new BlobReader(blob));
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = downloadUrl;
+  document.body.appendChild(iframe);
 
-          fileCount++;
-          totalBytes += size;
-        }
-      }
-    }
-
-    if (fileCount > 0) {
-      const finalBlob = await zipWriter.close();
-      if (!finalBlob || finalBlob.size === 0) {
-        throw new Error('Generated ZIP is empty');
-      }
-
-      const url = URL.createObjectURL(finalBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = zipDisplayName;
-      document.body.appendChild(a);
-      a.click();
-
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, DOWNLOAD_URL_REVOKE_DELAY_MS);
-    } else {
-      await zipWriter.close().catch(() => {});
-    }
-  } catch (e) {
-    await zipWriter.close().catch(() => {});
-    throw e;
-  }
+  // Clean up iframe after download starts
+  setTimeout(() => {
+    document.body.removeChild(iframe);
+  }, 5000);
 }

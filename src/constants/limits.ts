@@ -8,15 +8,11 @@ export const BYTES_PER_KB = 1024;
 // --- File intake limits ---
 export const MAX_FILE_SIZE_BYTES = 25 * BYTES_PER_KB * BYTES_PER_KB;
 export const LARGE_FILE_SERIAL_THRESHOLD_BYTES = 10 * BYTES_PER_KB * BYTES_PER_KB;
-export const LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS = 12_000_000;
+export const LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS = 24_000_000;
 /** Compressed archive (.zip) max size before intake refuses the file (toast only, no queue row). */
 export const MAX_ZIP_FILE_SIZE_BYTES = 2 * BYTES_PER_KB * BYTES_PER_KB * BYTES_PER_KB;
 export const MAX_ZIP_EXTRACTED_FILES = 1000;
 export const MAX_ZIP_EXTRACTED_TOTAL_BYTES = 2 * BYTES_PER_KB * BYTES_PER_KB * BYTES_PER_KB;
-
-// --- Download / export limits ---
-export const MAX_DOWNLOAD_BYTES = 80 * BYTES_PER_KB * BYTES_PER_KB;
-export const MAX_DOWNLOAD_FILES = 200;
 
 // --- Concurrency ---
 export const CONCURRENCY_MIN = Math.max(1, Math.floor((navigator.hardwareConcurrency ?? 1) / 4));

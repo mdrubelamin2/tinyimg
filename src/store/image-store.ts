@@ -253,7 +253,9 @@ export const imageStoreSingleton = {
   },
 
   async downloadAll() {
-    const arr = itemsToArray(imageStore$.items.peek(), imageStore$.itemOrder.peek());
+    const items = imageStore$.items.peek();
+    const order = imageStore$.itemOrder.peek();
+    const arr = order.map(id => items[id]).filter((i): i is ImageItem => i != null);
     await buildAndDownloadZip(arr);
   },
 

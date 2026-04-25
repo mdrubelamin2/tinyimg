@@ -9,19 +9,32 @@ import '@fontsource/space-grotesk/600.css';
 import '@fontsource/space-grotesk/700.css';
 import App from './App.tsx';
 import './index.css';
-import { ensureZipJsConfigured } from '@/lib/zip-js-config';
 import { bootstrapSession } from '@/bootstrap/session-bootstrap';
 import { startSessionMonitors } from '@/bootstrap/session-monitors';
 import { registerGlobalFileIntake } from '@/bootstrap/global-file-intake';
 import { applyThemeFromStorage, initSystemThemeMediaListener } from '@/bootstrap/theme-dom';
-
-ensureZipJsConfigured();
+import { getSerwist } from "virtual:serwist";
 
 void (async () => {
   try {
     await bootstrapSession();
   } catch (e) {
     console.warn('Session bootstrap failed:', e);
+  }
+
+  // Register the Service Worker for ZIP streaming and PWA features
+   if ("serviceWorker" in navigator) {
+    const serwist = await getSerwist();
+
+    serwist?.addEventListener("installed", () => {
+      console.log("Serwist installed!");
+    });
+
+    void serwist?.register({immediate: true}).then(() => {
+      console.log("Serwist registration successful!");
+    }).catch((err) => {
+      console.error("Serwist registration failed:", err);
+    });
   }
 
   applyThemeFromStorage();
