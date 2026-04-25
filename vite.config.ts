@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { serwist } from '@serwist/vite';
+import mkcert from 'vite-plugin-mkcert';
 
 const analyze = process.env.ANALYZE === 'true';
 
@@ -22,6 +24,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    mkcert(),
     wasm(),
     topLevelAwait(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,6 +38,16 @@ export default defineConfig({
       },
     }),
     tailwindcss(),
+    serwist({
+      swSrc: 'src/sw.ts',
+      swDest: 'sw.js',
+      globDirectory: 'dist',
+      injectionPoint: 'self.__SW_MANIFEST',
+      rollupFormat: "iife",
+      devOptions: {
+        bundle: true,
+      },
+    }),
     ...(analyze
       ? [
           visualizer({
@@ -47,9 +60,8 @@ export default defineConfig({
       : []),
   ],
   server: {
-    port: 5174,
-    strictPort: true,
     headers: crossOriginIsolationHeaders,
+    cors: true,
   },
   preview: {
     headers: crossOriginIsolationHeaders,

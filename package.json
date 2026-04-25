@@ -42,9 +42,9 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.3",
     "@resvg/resvg-wasm": "^2.6.2",
-    "@zip.js/zip.js": "^2.8.26",
-    "canvas-confetti": "^1.9.4",
+    "@serwist/window": "^9.5.7",
     "class-variance-authority": "^0.7.1",
+    "client-zip": "^2.5.0",
     "comlink": "^4.4.2",
     "es-toolkit": "^1.46.0",
     "icodec": "^0.6.0",
@@ -55,8 +55,10 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-virtuoso": "^4.18.5",
+    "serwist": "^9.5.7",
     "sonner": "^2.0.7",
     "svgo": "^4.0.1",
+    "unzipit": "^2.0.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
@@ -66,6 +68,7 @@
     "@playwright/test": "^1.58.2",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
+    "@serwist/vite": "^9.5.7",
     "@tailwindcss/vite": "^4.2.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^24.12.2",
@@ -94,6 +97,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.0.0",
+    "vite-plugin-mkcert": "^2.0.0",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
     "vitest": "^3.2.4"
