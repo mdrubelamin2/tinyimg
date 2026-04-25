@@ -12,12 +12,11 @@ import {
 } from '@/constants';
 import type { ImageItem } from '@/lib/queue/types';
 import { DEFAULT_MIME, getMimeType, mimeByFormat } from '@/lib/validation';
-import { ensureZipJsConfigured } from '@/lib/zip-js-config';
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage';
 import { srcKey } from '@/storage/keys';
 import type { StorageAdapter } from '@/storage/storage-adapter';
-import type { Entry, EntryGetDataOptions, FileEntry } from '@zip.js/zip.js';
-import { BlobReader, ZipReader } from '@zip.js/zip.js';
+import { unzip } from 'unzipit';
+import type { ZipEntry } from 'unzipit';
 import { nanoid } from 'nanoid';
 import { imageDimensionsFromStream } from 'image-dimensions';
 
@@ -27,33 +26,27 @@ type FileSystemDirectoryHandleWithEntries = FileSystemDirectoryHandle & {
 
 const ZIP_PATH_IGNORE = '__MACOSX';
 
-const ZIP_ENTRY_READ_OPTIONS: EntryGetDataOptions = {
-  useWebWorkers: true,
-  useCompressionStream: true,
-};
-
 const DETECTION_TIMEOUT = Symbol('detection-timeout');
 
 async function streamZipEntryToStorageKey(
-  entry: FileEntry,
+  entry: ZipEntry,
   storage: StorageAdapter,
   key: string
 ): Promise<void> {
   const handle = await storage.getWritableHandle(key);
   const writable = await handle.createWritable();
   try {
-    await entry.getData(writable, ZIP_ENTRY_READ_OPTIONS);
+    const arrayBuffer = await entry.arrayBuffer();
+    await writable.write(arrayBuffer);
+    await writable.close();
   } catch (e) {
     await writable.close().catch(() => {});
     throw e;
   }
 }
 
-async function readZipEntryAsBlob(entry: FileEntry): Promise<Blob> {
-  const passthrough = new TransformStream<Uint8Array, Uint8Array>();
-  const blobPromise = new Response(passthrough.readable).blob();
-  await entry.getData(passthrough.writable, ZIP_ENTRY_READ_OPTIONS);
-  return blobPromise;
+async function readZipEntryAsBlob(entry: ZipEntry): Promise<Blob> {
+  return await entry.blob();
 }
 
 export function isZipArchive(fileName: string): boolean {
@@ -335,12 +328,11 @@ async function createValidatedItem(
 }
 
 /** File entries in central-directory order (same counting rules as legacy zip walk). */
-function buildZipWorkList(archiveEntries: Entry[]): { entry: FileEntry; fileName: string }[] {
-  const work: { entry: FileEntry; fileName: string }[] = [];
+function buildZipWorkList(entries: Record<string, ZipEntry>): { entry: ZipEntry; fileName: string }[] {
+  const work: { entry: ZipEntry; fileName: string }[] = [];
   let fileCount = 0;
-  for (const entry of archiveEntries) {
-    if (entry.directory) continue;
-    const path = entry.filename ?? '';
+  for (const [path, entry] of Object.entries(entries)) {
+    if (entry.isDirectory) continue;
     if (path.includes(ZIP_PATH_IGNORE)) continue;
     const fileName = path.split('/').pop() ?? path;
     if (!fileName || fileName.length === 0) continue;
@@ -348,7 +340,7 @@ function buildZipWorkList(archiveEntries: Entry[]): { entry: FileEntry; fileName
     if (fileCount > MAX_ZIP_EXTRACTED_FILES) {
       throw new Error('ZIP contains too many files');
     }
-    work.push({ entry: entry as FileEntry, fileName });
+    work.push({ entry, fileName });
   }
   return work;
 }
@@ -357,32 +349,30 @@ async function* streamCollectIntakeFromZip(
   file: File,
   ctx: IntakeContext
 ): AsyncGenerator<CollectIntakeEntry> {
-  ensureZipJsConfigured();
   ctx.onExtractingArchive?.(file.name);
-  const zipReader = new ZipReader(new BlobReader(file));
   let extractedBytes = 0;
   try {
-    const archiveEntries = await zipReader.getEntries();
-    const work = buildZipWorkList(archiveEntries);
+    const { entries } = await unzip(file);
+    const work = buildZipWorkList(entries);
     ctx.onZipManifest?.(file.name, work.length);
 
     let processed = 0;
     for (const { entry, fileName } of work) {
       try {
-        extractedBytes += entry.uncompressedSize;
+        extractedBytes += entry.size;
         if (extractedBytes > MAX_ZIP_EXTRACTED_TOTAL_BYTES) {
           throw new Error('ZIP uncompressed data too large');
         }
 
-        if (entry.uncompressedSize === 0) {
+        if (entry.size === 0) {
           continue;
         }
-        if (entry.uncompressedSize > MAX_FILE_SIZE_BYTES) {
+        if (entry.size > MAX_FILE_SIZE_BYTES) {
           const oversized = new File([], fileName, {
             type: getMimeType(fileName),
           });
           const errEnt = createErrorCollectEntry(oversized, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem, 'buffered');
-          errEnt.item.originalSize = entry.uncompressedSize;
+          errEnt.item.originalSize = entry.size;
           yield errEnt;
           continue;
         }
@@ -400,7 +390,7 @@ async function* streamCollectIntakeFromZip(
         const stubFile = new File([], fileName, { type: mime });
         const validated = await createValidatedItem(stubFile, ctx, 'buffered', {
           skipProbing: true,
-          overrideSize: entry.uncompressedSize,
+          overrideSize: entry.size,
         });
         if (!validated) continue;
         if (validated.item.status === STATUS_ERROR) {
@@ -410,7 +400,7 @@ async function* streamCollectIntakeFromZip(
           continue;
         }
 
-        validated.item.originalSize = entry.uncompressedSize;
+        validated.item.originalSize = entry.size;
 
         try {
           const storage = await getSessionBinaryStorage();
@@ -448,10 +438,11 @@ async function* streamCollectIntakeFromZip(
         ctx.onZipProgress?.(processed, work.length);
       }
     }
-  } finally {
-    await zipReader.close();
+  } catch (err) {
     ctx.onZipStreamEnd?.();
+    throw err;
   }
+  ctx.onZipStreamEnd?.();
 }
 
 async function* collectPlainFileYield(file: File, ctx: IntakeContext): AsyncGenerator<CollectIntakeEntry> {
