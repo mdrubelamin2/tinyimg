@@ -1,16 +1,12 @@
-import { batch, observe, observable } from '@legendapp/state';
-import { imageStore$ } from '@/store/image-store';
 import {
-  STATUS_SUCCESS,
   STATUS_ERROR,
-  STATUS_PROCESSING,
   STATUS_PENDING,
-  CONFETTI_PARTICLE_COUNT,
-  CONFETTI_SPREAD,
-  CONFETTI_ORIGIN_Y,
-  CONFETTI_COLORS,
+  STATUS_PROCESSING,
+  STATUS_SUCCESS
 } from '@/constants';
 import type { ImageItem } from '@/lib/queue/types';
+import { imageStore$ } from '@/store/image-store';
+import { batch, observable, observe } from '@legendapp/state';
 import { toast } from 'sonner';
 
 /** Heuristic typical savings % by MIME for pre-result estimate (instant feedback). */
@@ -165,15 +161,6 @@ function maybeFireAllSuccessfulConfetti(prev: QueueStats, next: QueueStats): voi
   }
   if (prev.allSuccessful || confettiFiredForAllSuccessful) return;
   confettiFiredForAllSuccessful = true;
-  void import('canvas-confetti').then(({ default: confetti }) => {
-    confetti({
-      particleCount: CONFETTI_PARTICLE_COUNT,
-      spread: CONFETTI_SPREAD,
-      origin: { y: CONFETTI_ORIGIN_Y },
-      colors: [...CONFETTI_COLORS],
-      disableForReducedMotion: true,
-    });
-  });
 }
 
 function scheduleStatsFlush(): void {
