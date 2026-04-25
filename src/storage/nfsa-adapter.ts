@@ -10,7 +10,7 @@ type RootDir = FileSystemDirectoryHandle & {
 async function resolveRoot(): Promise<RootDir> {
   try {
     const r = await getOriginPrivateDirectory();
-    if (r) return r as RootDir;
+    if (r) return r as unknown as RootDir;
   } catch {
     /* fall through */
   }
@@ -18,14 +18,14 @@ async function resolveRoot(): Promise<RootDir> {
     const r = await getOriginPrivateDirectory(
       import('native-file-system-adapter/src/adapters/indexeddb.js')
     );
-    if (r) return r as RootDir;
+    if (r) return r as unknown as RootDir;
   } catch {
     /* fall through */
   }
   const r = await getOriginPrivateDirectory(
     import('native-file-system-adapter/src/adapters/memory.js')
   );
-  return r as RootDir;
+  return r as unknown as RootDir;
 }
 
 export async function createNfsaAdapter(): Promise<StorageAdapter> {
