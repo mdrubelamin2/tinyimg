@@ -4,11 +4,39 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { GlobalOptions } from '@/constants/index.ts';
-import { DEFAULT_GLOBAL_OPTIONS } from '@/constants/index.ts';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { safeLocalStorage } from '@/lib/safe-local-storage';
+import type { GlobalOptions } from '@/constants';
+import { DEFAULT_GLOBAL_OPTIONS } from '@/constants';
 
 const STORAGE_KEY = 'tinyimg_config';
+
+/** Merge persisted options with current defaults (handles older localStorage without size fields). */
+function mergePersistedOptions(stored: unknown): GlobalOptions {
+  if (!stored || typeof stored !== 'object') return { ...DEFAULT_GLOBAL_OPTIONS };
+  const o = stored as Partial<GlobalOptions>;
+  return {
+    ...DEFAULT_GLOBAL_OPTIONS,
+    ...o,
+    formats: Array.isArray(o.formats) ? o.formats : DEFAULT_GLOBAL_OPTIONS.formats,
+    customSizePresets:
+      Array.isArray(o.customSizePresets) && o.customSizePresets.length > 0
+        ? o.customSizePresets
+        : DEFAULT_GLOBAL_OPTIONS.customSizePresets,
+    useOriginalSizes:
+      typeof o.useOriginalSizes === 'boolean' ? o.useOriginalSizes : DEFAULT_GLOBAL_OPTIONS.useOriginalSizes,
+    includeNativeSizeInCustom:
+      typeof o.includeNativeSizeInCustom === 'boolean'
+        ? o.includeNativeSizeInCustom
+        : DEFAULT_GLOBAL_OPTIONS.includeNativeSizeInCustom,
+    losslessEncoding:
+      o.losslessEncoding === 'none' ||
+      o.losslessEncoding === 'all' ||
+      o.losslessEncoding === 'custom_sizes_only'
+        ? o.losslessEncoding
+        : DEFAULT_GLOBAL_OPTIONS.losslessEncoding,
+  };
+}
 
 interface SettingsState {
   options: GlobalOptions;
@@ -28,7 +56,16 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createJSONStorage(() => safeLocalStorage),
       partialize: (state) => ({ options: state.options }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<SettingsState> | undefined;
+        return {
+          ...current,
+          ...(p ?? {}),
+          options: mergePersistedOptions(p?.options),
+        };
+      },
     }
   )
 );

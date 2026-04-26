@@ -6,8 +6,9 @@
 import type {
   ItemStatus,
   SvgInternalFormat,
+  LosslessEncoding,
   GlobalOptions,
-} from '@/constants/index.ts';
+} from '@/constants';
 
 export type { GlobalOptions };
 
@@ -22,51 +23,58 @@ export type PipelineStage =
   | 'svg-optimize'
   | 'svg-rasterize';
 
-// ---------------------------------------------------------------------------
-// Stage timing (shared between raster and SVG paths)
-// ---------------------------------------------------------------------------
-export interface StageTiming {
-  decodeMs?: number | undefined;
-  classifyMs?: number | undefined;
-  encodeMs?: number | undefined;
-  resizeMs?: number | undefined;
-  svgoMs?: number | undefined;
-  naturalSizeMs?: number | undefined;
-  renderMs?: number | undefined;
-  downscaleMs?: number | undefined;
-  totalMs?: number | undefined;
-  svgRasterizerPath?: 'browser' | 'resvg' | undefined;
-  svgEffectiveDpr?: number | undefined;
-}
 
 // ---------------------------------------------------------------------------
-// Image result (one per output format per item)
+// Resize intent (worker resolves target pixels from source + preset)
+// ---------------------------------------------------------------------------
+export type TaskResizePreset =
+  | { kind: 'native' }
+  | { kind: 'target'; maintainAspect: boolean; width: number; height: number };
+
+// ---------------------------------------------------------------------------
+// Image result (one per output slot: format × size)
 // ---------------------------------------------------------------------------
 export interface ImageResult {
+  /** Stable map key and storage suffix (`out:id:resultId`) */
+  resultId: string;
+  /** Encode / MIME format (e.g. webp, jpeg) */
   format: string;
+  /** Short size variant label from config (e.g. 800w, 1200×800) */
+  variantLabel?: string | undefined;
   label?: string | undefined;
-  blob?: Blob | undefined;
+  /** Session hybrid storage key (`out:id:resultId`); encoded bytes live here, not in Legend state */
+  payloadKey?: string | undefined;
   size?: number | undefined;
   formattedSize?: string | undefined;
   savingsPercent?: number | undefined;
   downloadUrl?: string | undefined;
   status: ItemStatus;
   error?: string | undefined;
-  timing?: StageTiming | undefined;
+  lossless?: boolean;
 }
+
+/** Where the original lives: in-memory drop map vs hybrid `src:${id}` (ZIP / folder-expanded). */
+export type OriginalSourceKind = 'direct' | 'storage';
 
 // ---------------------------------------------------------------------------
 // Queue item (one per uploaded file)
 // ---------------------------------------------------------------------------
 export interface ImageItem {
   id: string;
-  file: File;
+  /** Original filename for display and download naming */
+  fileName: string;
+  /** MIME type for thumbnails and decoding */
+  mimeType: string;
+  /** `direct` → in-memory drop map by id; `storage` → hybrid session `src:${id}` */
+  originalSourceKind: OriginalSourceKind;
   previewUrl?: string | undefined;
   status: ItemStatus;
   progress: number;
   originalSize: number;
   formattedOriginalSize?: string | undefined;
   originalFormat: string;
+  width?: number | undefined;
+  height?: number | undefined;
   results: Record<string, ImageResult>;
   error?: string | undefined;
   /** Per-item format override (null = follow global config) */
@@ -79,14 +87,18 @@ export interface ImageItem {
 // Task options (sent to the worker for each encode job)
 // ---------------------------------------------------------------------------
 export interface TaskOptions {
+  resultId: string;
   format: string;
+  originalExtension?: string;
+  originalSize: number;
   svgInternalFormat: SvgInternalFormat;
   svgRasterizer: 'auto' | 'browser' | 'resvg';
   svgExportDensity: 'legacy' | 'display';
   svgDisplayDpr: number;
   qualityPercent: number;
-  resizeMaxEdge: number;
+  resizePreset: TaskResizePreset;
   stripMetadata: boolean;
+  losslessEncoding: LosslessEncoding;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +106,7 @@ export interface TaskOptions {
 // ---------------------------------------------------------------------------
 export interface Task {
   id: string;
+  resultId: string;
   format: string;
   file: File;
   options: TaskOptions;
@@ -126,18 +139,22 @@ export interface WorkerOutboundProgress {
 export interface WorkerOutboundResult {
   type: 'RESULT';
   id: string;
+  resultId: string;
   format: string;
-  blob: Blob;
+  /** Encoded bytes (structured-clone from worker; prefer detached buffer). */
+  encodedBytes: ArrayBuffer;
+  mimeType: string;
   size: number;
   label: string;
   formattedSize: string;
   savingsPercent: number;
-  timing?: StageTiming | undefined;
+  lossless: boolean;
 }
 
 export interface WorkerOutboundError {
   type: 'ERROR';
   id: string;
+  resultId: string;
   format: string;
   error: string;
 }
@@ -146,27 +163,3 @@ export interface WorkerOutboundCancelled {
   type: 'CANCELLED';
   id: string;
 }
-
-// ---------------------------------------------------------------------------
-// Legacy compat: WorkerResponse union (bridges old queue-results.ts)
-// ---------------------------------------------------------------------------
-export interface WorkerResponseSuccess {
-  id: string;
-  format: string;
-  blob: Blob;
-  size: number;
-  label: string;
-  formattedSize: string;
-  savingsPercent: number;
-  status: 'success';
-  timing?: StageTiming | undefined;
-}
-
-export interface WorkerResponseError {
-  id: string;
-  format: string;
-  status: 'error';
-  error: string;
-}
-
-export type WorkerResponse = WorkerResponseSuccess | WorkerResponseError;

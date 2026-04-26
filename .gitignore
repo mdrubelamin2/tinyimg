@@ -27,6 +27,9 @@ playwright-report/
 test-output/
 .vitest.result.json
 
+# --- Editor / tool backups ---
+*.backup
+
 # --- Editors & OS ---
 .vscode/*
 !.vscode/extensions.json

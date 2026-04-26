@@ -111,13 +111,18 @@ async function decodeSvgBlobToBitmap(
 
 function bitmapToImageData(bitmap: ImageBitmap, physW: number, physH: number): ImageData {
   const canvas = new OffscreenCanvas(physW, physH);
-  const ctx = canvas.getContext('2d', { alpha: true });
-  if (!ctx) {
-    throw new BrowserSvgRasterError('Could not get 2d context');
+  try {
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) {
+      throw new BrowserSvgRasterError('Could not get 2d context');
+    }
+    ctx.clearRect(0, 0, physW, physH);
+    ctx.drawImage(bitmap, 0, 0, physW, physH);
+    return ctx.getImageData(0, 0, physW, physH);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
   }
-  ctx.clearRect(0, 0, physW, physH);
-  ctx.drawImage(bitmap, 0, 0, physW, physH);
-  return ctx.getImageData(0, 0, physW, physH);
 }
 
 /**

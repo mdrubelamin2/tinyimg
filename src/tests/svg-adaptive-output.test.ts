@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-require-imports */
 import { describe, it, expect, vi } from 'vitest';
+import { TextEncoder as NodeTextEncoder } from 'node:util';
 import { processSvg } from '@/workers/svg-pipeline';
 
 // Define ImageData mock globally for node environment
@@ -76,8 +76,7 @@ if (typeof (global as any).OffscreenCanvas === 'undefined') {
 }
 
 if (typeof global.TextEncoder === 'undefined') {
-  const util = require('util');
-  (global as any).TextEncoder = util.TextEncoder;
+  (global as any).TextEncoder = NodeTextEncoder;
 }
 vi.mock('@/lib/optimizer/svg-optimizer', () => ({
   optimizeSvg: vi.fn(async (text: string) => {
@@ -145,10 +144,12 @@ vi.mock('@/workers/svg-browser-raster', () => ({
   rasterizeSvgWithBrowser: vi.fn(),
 }));
 
+vi.mock('@/lib/codecs/raster/lossless', () => ({
+  encodeLossless: vi.fn(async () => new Uint8Array([4, 5, 6])),
+}));
+
 vi.mock('@/workers/raster-encode', () => ({
   checkPixelLimit: vi.fn(),
-  encodeRaster: vi.fn(async () => new Uint8Array([1, 2, 3])),
-  encodeRasterVectorSafeWithSizeSafeguard: vi.fn(async () => new Uint8Array([4, 5, 6])),
   toBase64: vi.fn(async () => 'mock-base64'),
 }));
 
@@ -166,10 +167,10 @@ describe('SVG Adaptive Output Pipeline', () => {
 
   it('classifies SIMPLE SVG and returns optimized SVG (not wrapped)', async () => {
     const simpleSvg = '<svg><circle /></svg>';
-    const file = new File([simpleSvg], 'simple.svg', { type: 'image/svg+xml' });
-    
-    const result = await processSvg(file, defaultOptions);
-    
+    const buffer = new TextEncoder().encode(simpleSvg).buffer;
+
+    const result = await processSvg(buffer, defaultOptions);
+
     expect(result.label).toBe('svg (optimized)');
     const text = await result.blob.text();
     expect(text).toContain('<circle />');
@@ -179,13 +180,13 @@ describe('SVG Adaptive Output Pipeline', () => {
   it('classifies COMPLEX SVG and returns raster-wrapped webp', async () => {
     // 1501 nodes triggers COMPLEX
     const complexSvg = '<svg>' + '<rect />'.repeat(1501) + '</svg>';
-    const file = new File([complexSvg], 'complex.svg', { type: 'image/svg+xml' });
-    
-    const result = await processSvg(file, defaultOptions);
-    
+    const buffer = new TextEncoder().encode(complexSvg).buffer;
+
+    const result = await processSvg(buffer, defaultOptions);
+
     // Label should indicate wrapped
-    expect(result.label).toContain('svg (webp-wrapped)');
-    
+    expect(result.label).toContain('svg (webp)');
+
     const text = await result.blob.text();
     // Should be wrapped in an SVG with an image tag
     expect(text).toContain('<image');
@@ -196,12 +197,12 @@ describe('SVG Adaptive Output Pipeline', () => {
   it('classifies HYBRID SVG and returns raster-wrapped webp', async () => {
     // <image> triggers HYBRID
     const hybridSvg = '<svg><image href="foo.png" /></svg>';
-    const file = new File([hybridSvg], 'hybrid.svg', { type: 'image/svg+xml' });
-    
-    const result = await processSvg(file, defaultOptions);
-    
-    expect(result.label).toContain('svg (webp-wrapped)');
-    
+    const buffer = new TextEncoder().encode(hybridSvg).buffer;
+
+    const result = await processSvg(buffer, defaultOptions);
+
+    expect(result.label).toContain('svg (webp)');
+
     const text = await result.blob.text();
     expect(text).toContain('<image');
     expect(text).toContain('data:image/webp;base64,mock-base64');

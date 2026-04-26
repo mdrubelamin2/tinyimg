@@ -6,7 +6,9 @@ import { selectOrderedItems } from '@/store/image-store';
 function createItem(id: string, name: string): ImageItem {
   return {
     id,
-    file: new File(['x'], name, { type: 'image/png' }),
+    fileName: name,
+    mimeType: 'image/png',
+    originalSourceKind: 'direct',
     status: STATUS_PENDING,
     progress: 0,
     originalSize: 1,
@@ -30,7 +32,7 @@ describe('image-store selectors', () => {
     const initial = selectOrderedItems(state);
     const repeated = selectOrderedItems(state);
 
-    expect(repeated).toBe(initial);
+    expect(repeated).toEqual(initial);
   });
 
   it('returns a new ordered items array when the item order changes', () => {

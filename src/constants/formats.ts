@@ -16,15 +16,15 @@ export type ItemStatus =
   | typeof STATUS_ERROR;
 
 // --- Output format types ---
-export type OutputFormat = 'original' | 'webp' | 'avif' | 'jpeg' | 'png' | 'svg' | 'jxl';
-export type SvgInternalFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'jxl';
+export type OutputFormat = 'original' | 'webp' | 'avif' | 'jpeg' | 'png' | 'svg' | 'jxl' | 'heic' | 'heif';
+export type SvgInternalFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'jxl' | 'heic' | 'heif';
 export type SvgRasterizer = 'auto' | 'browser' | 'resvg';
 export type SvgExportDensity = 'legacy' | 'display';
-export type RasterFormat = 'webp' | 'avif' | 'jpeg' | 'png';
+export type RasterFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'heic' | 'heif';
 
-export const SUPPORTED_FORMATS: readonly string[] = ['webp', 'avif', 'jpeg', 'png'];
-export const SVG_INTERNAL_FORMATS: readonly SvgInternalFormat[] = ['webp', 'avif', 'jpeg', 'png'];
-export const RASTER_FORMATS: readonly RasterFormat[] = ['webp', 'avif', 'jpeg', 'png'];
+export const SUPPORTED_FORMATS: readonly string[] = ['webp', 'avif', 'jpeg', 'png', 'heic', 'heif'];
+export const SVG_INTERNAL_FORMATS: readonly SvgInternalFormat[] = ['webp', 'avif', 'jpeg', 'png', 'heic', 'heif'];
+export const RASTER_FORMATS: readonly RasterFormat[] = ['webp', 'avif', 'jpeg', 'png', 'heic', 'heif'];
 export const SVG_RASTERIZERS: readonly SvgRasterizer[] = ['auto', 'browser', 'resvg'];
 export const SVG_EXPORT_DENSITIES: readonly SvgExportDensity[] = ['legacy', 'display'];
 
@@ -54,6 +54,22 @@ export function getMimeType(filename: string): string {
 
 export function mimeByFormat(format: string): string {
   return `image/${format === 'jpeg' ? 'jpeg' : format}`;
+}
+
+/**
+ * MIME type for `Blob` / object URLs for queue result formats (batch ZIP and hybrid storage).
+ * Differs from {@link mimeByFormat} for e.g. `svg` (`image/svg+xml` vs `image/svg`).
+ */
+export function mimeForOutputFormat(format: string): string {
+  if (format === 'jpeg' || format === 'jpg') return 'image/jpeg';
+  if (format === 'png') return 'image/png';
+  if (format === 'webp') return 'image/webp';
+  if (format === 'avif') return 'image/avif';
+  if (format === 'svg') return 'image/svg+xml';
+  if (format === 'jxl') return 'image/jxl';
+  if (format === 'heic') return 'image/heic';
+  if (format === 'heif') return 'image/heif';
+  return 'application/octet-stream';
 }
 
 // --- Valid upload extensions ---
