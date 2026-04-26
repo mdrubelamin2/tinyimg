@@ -8,21 +8,18 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { syncIntakeProgressToast } from '@/notifications/toast-emitter';
 import { queueStats$ } from '@/state/queue-stats';
 import { getImageStore, intake$ } from '@/store/image-store';
-import { Show, useObserveEffect, useValue } from '@legendapp/state/react';
-import { Activity, lazy, Suspense } from 'react';
+import { useObserveEffect, useValue } from '@legendapp/state/react';
+import { Activity, lazy } from 'react';
 import { Toaster } from 'sonner';
-import { preview$ } from './store/preview-store';
+import PreviewPortal from './components/preview/PreviewPortal';
 import { useTheme } from './hooks/useTheme';
+import { preview$ } from './store/preview-store';
 
-const ImagePreviewLazy = lazy(() =>
-  import('@/components/preview/ImagePreview').then((m) => ({ default: m.ImagePreview }))
-);
 const AppFooterFaq = lazy(() =>
   import('@/components/AppFooterFaq').then((m) => ({ default: m.AppFooterFaq }))
 );
 
 export default function App() {
-  const preview = useValue(preview$);
   const { theme } = useTheme();
   const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get());
   const hasItems = useValue(() => queueStats$.itemCount.get() > 0)
@@ -40,7 +37,7 @@ export default function App() {
 
   useKeyboardShortcuts({
     onDownload: hasFinishedItems ? downloadAll : undefined,
-    onEscape: preview ? () => preview$.set(null) : undefined,
+    onEscape: preview$.peek() ? () => preview$.set(null) : undefined,
   });
 
   return (
@@ -66,19 +63,7 @@ export default function App() {
         <AppFooterFaq />
 
         <FileDropOverlay />
-
-        <Show ifReady={preview$}>
-          <Suspense>
-            <ImagePreviewLazy
-              itemId={preview$.itemId.get() ?? ''}
-              selectedResultId={preview$.selectedResultId.get() ?? ''}
-              onResultChange={(resultId) => {
-                preview$.selectedResultId.set(resultId);
-              }}
-              onClose={() => preview$.set(null)}
-            />
-          </Suspense>
-        </Show>
+        <PreviewPortal />
       </ErrorBoundary>
     </div>
   );
