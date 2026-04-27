@@ -184,6 +184,13 @@ function showStatToast(stats: QueueStats): void {
       { id: 'progress-toast' }
     );
   }
+  if(stats.allDone && !stats.allSuccessful) {
+    const failed = stats.totalOutputCount - stats.successfulOutputCount;
+    toast.warning(
+      `Optimized ${stats.successfulOutputCount} image${stats.successfulCount > 1 ? 's' : ''}! Total savings: ${stats.savingsPercent}%. ${failed} image${failed > 1 ? 's' : ''} failed to optimize.`,
+      { id: 'progress-toast' }
+    );
+  }
   if (stats.allSuccessful) {
     toast.success(
       `Optimized ${stats.successfulOutputCount} image${stats.successfulCount > 1 ? 's' : ''}! Total savings: ${stats.savingsPercent}%`,
