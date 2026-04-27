@@ -9,6 +9,7 @@ import { debounce } from 'es-toolkit';
 import {
   startTransition,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -32,6 +33,7 @@ export function VirtualizedQueueTableBody({
   scrollParent,
 }: VirtualizedQueueTableBodyProps) {
   const itemIds = useValue(() => imageStore$.itemOrder.get());
+  const deferredItemIds = useDeferredValue(itemIds);
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
@@ -49,16 +51,16 @@ export function VirtualizedQueueTableBody({
     return () => observer.disconnect();
   }, []);
 
-  const getItemKey = useCallback((index: number) => itemIds[index] ?? index, [itemIds]);
+  const getItemKey = useCallback((index: number) => deferredItemIds[index] ?? index, [deferredItemIds]);
 
   const rowVirtualizer = useVirtualizer({
-    count: itemIds.length,
+    count: deferredItemIds.length,
     getScrollElement: () => scrollParent.current,
     estimateSize: () => QUEUE_ROW_HEIGHT_PX,
     overscan: QUEUE_OVERSCAN,
     getItemKey,
-    useFlushSync: true,
     scrollMargin: headerHeight,
+    useFlushSync: false,
   });
 
   const virtualItems = rowVirtualizer.getVirtualItems();
@@ -71,18 +73,17 @@ export function VirtualizedQueueTableBody({
     const start = firstItem.index;
     const end = lastItem.index;
 
+    const visibleIds = deferredItemIds.slice(start, end + 1);
     const debouncedUpdate = debounce((ids: string[]) => {
       startTransition(() => {
         prioritizeThumbnails(ids);
         getImageStore().setVisibleItems(ids);
-      });
-    }, 500);
-
-    const visibleIds = itemIds.slice(start, end + 1);
+     });
+    }, 300);
     debouncedUpdate(visibleIds);
 
     return () => debouncedUpdate.cancel();
-  }, [virtualItems, itemIds]);
+  }, [virtualItems, deferredItemIds]);
 
   return (
     <div
@@ -93,7 +94,7 @@ export function VirtualizedQueueTableBody({
         <QueueTableHeaderRow />
       </StickyTableHead>
       {virtualItems.map((virtualRow) => {
-        const rowId = itemIds[virtualRow.index];
+        const rowId = deferredItemIds[virtualRow.index];
         if (!rowId) return null;
 
         return (
@@ -102,7 +103,6 @@ export function VirtualizedQueueTableBody({
             id={rowId}
             index={virtualRow.index}
             start={virtualRow.start}
-            measureElement={rowVirtualizer.measureElement}
           >
             <ResultRowCells id={rowId} />
           </QueueTableRow>

@@ -21,7 +21,7 @@ export function FilenameCellTable({
   };
 
   return (
-    <div className="px-3 py-4 align-middle min-w-0 md:px-6 lg:px-8 md:py-5" data-testid="filename-cell">
+    <div className="p-2 align-middle min-w-0 md:px-6 lg:px-8 md:py-5" data-testid="filename-cell">
       <div className="flex items-center gap-3 min-w-0">
         <div
           className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center overflow-hidden shrink-0 group-hover:bg-primary/10 transition-colors duration-200 shadow-sm relative cursor-pointer"

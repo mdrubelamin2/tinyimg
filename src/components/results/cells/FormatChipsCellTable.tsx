@@ -25,8 +25,8 @@ export function FormatChipsCellTable({
   if (!node) return null;
 
   return (
-    <div className="px-3 py-4 align-middle min-w-0 md:px-6 md:py-5">
-      <div className="flex w-full min-w-0 flex-wrap content-start gap-2">
+    <div className="p-2 align-middle min-w-0 md:px-6 md:py-5">
+      <div className="flex w-full min-w-0 flex-wrap content-start gap-1">
         <For each={node.results as Observable<Record<string, ImageResult>>} optimized>
           {(res$, key) => (
             <ResultChip
@@ -62,7 +62,7 @@ function ResultChip({ res$, fileName$ }: { res$: Observable<ImageResult>; fileNa
         if (!res) return null;
 
         const chipClassName = cn(
-          'flex shrink-0 items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-200 min-w-0',
+          'flex shrink-0 items-center gap-1 p-2 rounded-xl border transition-colors duration-200 min-w-0',
           res.status === STATUS_SUCCESS
             ? 'bg-surface border-border shadow-sm hover:border-primary/50 hover:bg-primary/5 hover:shadow-md cursor-pointer'
             : 'bg-muted/50 border-border opacity-60 cursor-default'
@@ -85,7 +85,7 @@ function ResultChip({ res$, fileName$ }: { res$: Observable<ImageResult>; fileNa
                 <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
                   {chipTitle}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <span className="text-xs font-bold text-foreground">
                     {res.formattedSize ?? (res.size != null ? (res.size / BYTES_PER_KB).toFixed(1) : '—')} KB
                   </span>

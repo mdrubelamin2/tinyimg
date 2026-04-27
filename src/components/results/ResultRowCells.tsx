@@ -1,9 +1,9 @@
 import type { ImageItem } from '@/lib/queue/types';
-import { FilenameCellTable } from './cells/FilenameCellTable';
-import { OriginalSizeCellTable } from './cells/OriginalSizeCellTable';
-import { FormatChipsCellTable } from './cells/FormatChipsCellTable';
-import { RowActionsCellTable } from './cells/RowActionsCellTable';
 import { preview$ } from '@/store/preview-store';
+import { FilenameCellTable } from './cells/FilenameCellTable';
+import { FormatChipsCellTable } from './cells/FormatChipsCellTable';
+import { OriginalSizeCellTable } from './cells/OriginalSizeCellTable';
+import { RowActionsCellTable } from './cells/RowActionsCellTable';
 
 export interface ResultRowCellsProps {
   id: string;

@@ -8,7 +8,7 @@ export function OriginalSizeCellTable({ id }: { id: string }) {
   if (!node) return null;
 
   return (
-    <div className="px-3 py-4 align-middle text-xs font-medium text-muted-foreground min-w-0 tabular-nums md:px-6 md:py-5">
+    <div className="p-2 align-middle text-xs font-medium text-muted-foreground min-w-0 tabular-nums md:px-6 md:py-5">
       <Computed>
         {() => {
           const formattedOriginalSize = node.formattedOriginalSize.get();
