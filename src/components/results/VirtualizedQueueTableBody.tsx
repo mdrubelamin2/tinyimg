@@ -1,29 +1,31 @@
 'use no memo';
 
-import { imageStore$ } from '@/store/queue-store';
 import { getImageStore } from '@/store/image-store';
+import { imageStore$ } from '@/store/queue-store';
 import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator';
 import { useValue } from '@legendapp/state/react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { debounce } from 'es-toolkit';
 import {
   startTransition,
-  useEffect,
   useCallback,
-  useRef,
+  useEffect,
   useLayoutEffect,
+  useRef,
   useState,
+  type RefObject
 } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import {
+  QUEUE_OVERSCAN,
   QUEUE_ROW_HEIGHT_PX,
 } from './constants';
 import { QueueTableHeaderRow } from './QueueTableHeaderRow';
 import { QueueTableRow } from './QueueTableRow';
 import { ResultRowCells } from './ResultRowCells';
 import { StickyTableHead } from './StickyTableHead';
-import { debounce } from 'es-toolkit';
 
 export interface VirtualizedQueueTableBodyProps {
-  scrollParent: HTMLDivElement | null;
+  scrollParent: RefObject<HTMLDivElement | null>;
 }
 
 export function VirtualizedQueueTableBody({
@@ -51,9 +53,9 @@ export function VirtualizedQueueTableBody({
 
   const rowVirtualizer = useVirtualizer({
     count: itemIds.length,
-    getScrollElement: () => scrollParent,
+    getScrollElement: () => scrollParent.current,
     estimateSize: () => QUEUE_ROW_HEIGHT_PX,
-    overscan: 5,
+    overscan: QUEUE_OVERSCAN,
     getItemKey,
     useFlushSync: true,
     scrollMargin: headerHeight,
