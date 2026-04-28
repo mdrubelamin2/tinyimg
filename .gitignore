@@ -42,3 +42,7 @@ test-output/
 .next/
 .vercel/
 .turbo/
+
+# --- Serwist ---
+public/sw*
+public/swe-worker*
