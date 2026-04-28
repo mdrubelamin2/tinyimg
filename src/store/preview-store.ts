@@ -1,8 +1,8 @@
-import { observable } from "@legendapp/state";
+import { observable } from '@legendapp/state'
 
 interface PreviewState {
-  itemId: string;
-  selectedResultId: string;
+  itemId: string
+  selectedResultId: string
 }
 
-export const preview$ = observable<PreviewState | null>(null)
+export const preview$ = observable<null | PreviewState>(null)

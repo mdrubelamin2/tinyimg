@@ -1,5 +1,5 @@
-import path from 'path';
-import { defineConfig } from 'vitest/config';
+import path from 'node:path'
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
@@ -8,10 +8,10 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/tests/**/*.test.ts'],
-    exclude: ['src/tests/e2e/**'],
     environment: 'node',
+    exclude: ['src/tests/e2e/**'],
     globals: true,
+    include: ['src/tests/**/*.test.ts'],
     setupFiles: ['./src/tests/vitest-setup.ts'],
   },
-});
+})

@@ -1,8 +1,8 @@
 export type ThumbnailWorkerInbound =
-  | { type: 'THUMB'; id: string; buffer: ArrayBuffer }
-  | { type: 'PING' };
+  | { buffer: ArrayBuffer; id: string; type: 'THUMB' }
+  | { type: 'PING' }
 
 export type ThumbnailWorkerOutbound =
-  | { type: 'THUMB_OK'; id: string; blob: Blob; width: number; height: number }
-  | { type: 'THUMB_ERR'; id: string; error: string }
-  | { type: 'PONG' };
+  | { blob: Blob; height: number; id: string; type: 'THUMB_OK'; width: number }
+  | { error: string; id: string; type: 'THUMB_ERR' }
+  | { type: 'PONG' }

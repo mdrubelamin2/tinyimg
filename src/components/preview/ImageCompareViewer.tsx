@@ -1,12 +1,13 @@
-import { CIBeforeAfterViewer } from '@cloudimage/before-after/react';
-import { cn } from '@/lib/utils';
-import { useTheme } from '@/hooks/useTheme';
+import { CIBeforeAfterViewer } from '@cloudimage/before-after/react'
+
+import { useTheme } from '@/hooks/use-theme'
+import { cn } from '@/lib/utils'
 
 export interface ImageCompareViewerProps {
-  originalUrl: string;
-  optimizedUrl: string;
-  initialPositionPercent?: number;
-  className?: string;
+  className?: string
+  initialPositionPercent?: number
+  optimizedUrl: string
+  originalUrl: string
 }
 
 const cloudImageLayoutClassName = cn(
@@ -15,30 +16,35 @@ const cloudImageLayoutClassName = cn(
   '[&_.ci-before-after-wrapper]:!h-full [&_.ci-before-after-wrapper]:!min-h-0 [&_.ci-before-after-wrapper]:!aspect-[unset]',
   '[&_img.ci-before-after-image]:!object-contain [&_img.ci-before-after-image]:object-center',
   '[&_img.ci-before-after-before]:!absolute [&_img.ci-before-after-before]:inset-0',
-);
+)
 
-export const ImageCompareViewer = ({ originalUrl, optimizedUrl, initialPositionPercent = 90, className }: ImageCompareViewerProps) => {
-  const { theme } = useTheme();
+export const ImageCompareViewer = ({
+  className,
+  initialPositionPercent = 90,
+  optimizedUrl,
+  originalUrl,
+}: ImageCompareViewerProps) => {
+  const { theme } = useTheme()
 
   return (
     <CIBeforeAfterViewer
-      className={cn(cloudImageLayoutClassName, 'rounded-lg border border-border', className)}
-      beforeSrc={optimizedUrl}
+      afterAlt='Original'
       afterSrc={originalUrl}
-      beforeAlt="Optimized"
-      afterAlt="Original"
-      mode="drag"
-      initialPosition={initialPositionPercent}
-      zoom
-      theme={theme}
-      labels={{
-        before: 'Optimized',
-        after: 'Original',
-      }}
-      handleStyle="arrows"
-      fullscreenButton={false}
-      scrollHint={true}
       animate
+      beforeAlt='Optimized'
+      beforeSrc={optimizedUrl}
+      className={cn(cloudImageLayoutClassName, 'border-border rounded-lg border', className)}
+      fullscreenButton={false}
+      handleStyle='arrows'
+      initialPosition={initialPositionPercent}
+      labels={{
+        after: 'Original',
+        before: 'Optimized',
+      }}
+      mode='drag'
+      scrollHint={true}
+      theme={theme}
+      zoom
     />
-  );
-};
+  )
+}

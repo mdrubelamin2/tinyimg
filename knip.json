@@ -1,16 +1,13 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "tags": ["-lintignore"],
-  "entry": [
-    "src/lib/codecs/**/*.ts",
-    "src/workers/**/*.ts",
-    "scripts/*.mjs"
-  ],
+  "entry": ["src/lib/codecs/**/*.ts", "src/workers/**/*.ts", "scripts/*.mjs", "src/sw.ts"],
   "project": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.mjs"],
   "ignore": ["src/native-file-system-adapter-adapters.d.ts"],
   "ignoreDependencies": [
     "conventional-changelog-conventionalcommits",
-    "tailwindcss"
+    "tailwindcss",
+    "@serwist/window"
   ],
   "rules": {
     "exports": "off",

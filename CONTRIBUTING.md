@@ -45,6 +45,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) for clear, s
 ```
 
 **Types:**
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation changes
@@ -58,6 +59,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) for clear, s
 - `revert`: Revert previous commits
 
 **Example:**
+
 ```
 feat(optimizer): add AVIF compression support
 
@@ -70,6 +72,7 @@ Closes #123
 ### Pre-commit Checks
 
 Before committing, ensure:
+
 - All linting passes (`npm run lint`)
 - Type checking passes (`npm run typecheck`)
 - Tests pass (`npm run test`)
@@ -96,8 +99,7 @@ npm run test:quality
 
 ## PR checklist
 
-- [ ] Scope is focused and reviewable.
-- [ ] New behavior includes tests.
-- [ ] Docs updated (`README`, `ARCHITECTURE`, runbooks) when behavior changes.
-- [ ] No destructive git operations.
-
+- Scope is focused and reviewable.
+- New behavior includes tests.
+- Docs updated (`README`, `ARCHITECTURE`, runbooks) when behavior changes.
+- No destructive git operations.

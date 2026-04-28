@@ -3,20 +3,14 @@
  * Implementation lives in @/lib/codecs/raster; this file is the stable worker entry facade.
  */
 
+export { compositeImageDataOnWhite } from '@/lib/codecs/raster/composite'
+export { encodeRaster, encodeRasterWithFallback } from '@/lib/codecs/raster/encode-fallback'
 export {
-  resizeImage,
-  getImageData,
   checkPixelLimit,
+  getImageData,
   normalizeOutputFormat,
+  resizeImage,
   toBase64,
   toErrorMessage,
-} from '@/lib/codecs/raster/io';
-
-export { compositeImageDataOnWhite } from '@/lib/codecs/raster/composite';
-
-export { PRESETS } from '@/lib/codecs/raster/presets';
-
-export {
-  encodeRaster,
-  encodeRasterWithFallback,
-} from '@/lib/codecs/raster/encode-fallback';
+} from '@/lib/codecs/raster/io'
+export { PRESETS } from '@/lib/codecs/raster/presets'

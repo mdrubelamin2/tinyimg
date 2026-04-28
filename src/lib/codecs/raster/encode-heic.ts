@@ -1,41 +1,48 @@
-import type {  EncodeResult, RasterEncodePreset } from './types.ts';
-import { heic } from 'icodec';
+import { heic } from 'icodec'
+
+import type { EncodeResult, RasterEncodePreset } from './types.ts'
 
 export interface HeifEncodeOptions {
-  quality?: number;
-  lossless?: boolean | undefined;
+  lossless?: boolean | undefined
+  quality?: number
 }
 
 const getEncodedBuffer = (data: Uint8Array): ArrayBuffer => {
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+}
+
+export async function encodeHeicLossless(imageData: ImageData): Promise<EncodeResult> {
+  const data = heic.encode(
+    {
+      data: imageData.data,
+      depth: 8,
+      height: imageData.height,
+      width: imageData.width,
+    },
+    {
+      chroma: '444',
+      lossless: true,
+    },
+  )
+  return { data: getEncodedBuffer(data), lossless: true }
 }
 
 export async function encodeHeicWithPreset(
   imageData: ImageData,
   pTry: RasterEncodePreset,
 ): Promise<EncodeResult> {
-  const data = heic.encode({
-    data: imageData.data,
-    width: imageData.width,
-    height: imageData.height,
-    depth: 8,
-  }, {
-    quality: pTry.heic.quality,
-    chroma: pTry.heic.chroma,
-    lossless: false,
-  });
-  return { data: getEncodedBuffer(data), lossless: false };
-}
-
-export async function encodeHeicLossless(imageData: ImageData): Promise<EncodeResult> {
-  const data = heic.encode({
-    data: imageData.data,
-    width: imageData.width,
-    height: imageData.height,
-    depth: 8,
-  }, {
-    lossless: true,
-    chroma: '444',
-  });
-  return { data: getEncodedBuffer(data), lossless: true };
+  const data = heic.encode(
+    {
+      data: imageData.data,
+      depth: 8,
+      height: imageData.height,
+      width: imageData.width,
+    },
+    {
+      chroma: pTry.heic.chroma,
+      lossless: false,
+      quality: pTry.heic.quality,
+    },
+  )
+  return { data: getEncodedBuffer(data), lossless: false }
 }

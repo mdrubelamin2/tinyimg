@@ -1,129 +1,143 @@
-import { Badge } from '@/components/ui/badge';
-import {
-  BYTES_PER_KB,
-  STATUS_ERROR,
-  STATUS_PROCESSING,
-  STATUS_SUCCESS,
-} from '@/constants';
-import { downloadStoredOutput } from '@/lib/download';
-import type { ImageResult } from '@/lib/queue/types';
-import { buildOptimizedDownloadFilename } from '@/lib/result-download-name';
-import { cn } from '@/lib/utils';
-import { imageStore$ } from '@/store/image-store';
-import type { Observable } from '@legendapp/state';
-import { For, Memo } from '@legendapp/state/react';
-import { Download } from 'lucide-react';
-import type { MouseEvent } from 'react';
+import type { Observable } from '@legendapp/state'
+import type { MouseEvent } from 'react'
 
-export function FormatChipsCellTable({
-  id,
-}: {
-  id: string;
-}) {
-  const node = imageStore$.items[id];
+import { For, Memo } from '@legendapp/state/react'
+import { Download } from 'lucide-react'
 
-  if (!node) return null;
+import type { ImageResult } from '@/lib/queue/types'
+
+import { Badge } from '@/components/ui/badge'
+import { BYTES_PER_KB, STATUS_ERROR, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants'
+import { downloadStoredOutput } from '@/lib/download'
+import { buildOptimizedDownloadFilename } from '@/lib/result-download-name'
+import { cn } from '@/lib/utils'
+import { imageStore$ } from '@/store/image-store'
+
+export function FormatChipsCellTable({ id }: { id: string }) {
+  const node = imageStore$.items[id]
+
+  if (!node) return null
 
   return (
-    <div className="p-2 align-middle min-w-0 md:px-6 md:py-5">
-      <div className="flex w-full min-w-0 flex-wrap content-start gap-1">
-        <For each={node.results as Observable<Record<string, ImageResult>>} optimized>
+    <div className='min-w-0 p-2 align-middle md:px-6 md:py-5'>
+      <div className='flex w-full min-w-0 flex-wrap content-start gap-1'>
+        <For
+          each={node.results as Observable<Record<string, ImageResult>>}
+          optimized
+        >
           {(res$, key) => (
             <ResultChip
+              fileName$={node.fileName}
               key={key}
               res$={res$}
-              fileName$={node.fileName}
             />
           )}
         </For>
       </div>
     </div>
-  );
+  )
 }
 
-function ResultChip({ res$, fileName$ }: { res$: Observable<ImageResult>; fileName$: Observable<string | undefined> }) {
+function ResultChip({
+  fileName$,
+  res$,
+}: {
+  fileName$: Observable<string | undefined>
+  res$: Observable<ImageResult>
+}) {
   const onDownloadClick = (e: MouseEvent) => {
-    e.preventDefault();
-    const res = res$.peek();
-    const fileName = fileName$.peek() ?? '';
-    if (res.status !== STATUS_SUCCESS || !res.payloadKey) return;
+    e.preventDefault()
+    const res = res$.peek()
+    const fileName = fileName$.peek() ?? ''
+    if (res.status !== STATUS_SUCCESS || !res.payloadKey) return
 
-    const dot = fileName.lastIndexOf('.');
-    const base = dot > 0 ? fileName.substring(0, dot) : fileName;
-    const downloadFilename = buildOptimizedDownloadFilename(base, res as ImageResult);
+    const dot = fileName.lastIndexOf('.')
+    const base = dot > 0 ? fileName.slice(0, Math.max(0, dot)) : fileName
+    const downloadFilename = buildOptimizedDownloadFilename(base, res as ImageResult)
 
-    void downloadStoredOutput(res.payloadKey, res.format, downloadFilename);
-  };
+    void downloadStoredOutput(res.payloadKey, res.format, downloadFilename)
+  }
 
   return (
     <Memo>
       {() => {
-        const res = res$.get();
-        if (!res) return null;
+        const res = res$.get()
+        if (!res) return null
 
         const chipClassName = cn(
           'flex shrink-0 items-center gap-1 p-2 rounded-xl border transition-colors duration-200 min-w-0',
           res.status === STATUS_SUCCESS
             ? 'bg-surface border-border shadow-sm hover:border-primary/50 hover:bg-primary/5 hover:shadow-md cursor-pointer'
-            : 'bg-muted/50 border-border opacity-60 cursor-default'
-        );
+            : 'bg-muted/50 border-border opacity-60 cursor-default',
+        )
 
         const chipTitle =
           res.variantLabel && res.variantLabel.length > 0
             ? `${(res.format ?? '').toUpperCase()} · ${res.variantLabel}`
-            : (res.label ?? res.format);
+            : (res.label ?? res.format)
 
         if (res.status === STATUS_SUCCESS) {
           return (
             <button
-              type="button"
-              onClick={onDownloadClick}
-              className={chipClassName}
               aria-label={`Download ${chipTitle}`}
+              className={chipClassName}
+              onClick={onDownloadClick}
+              type='button'
             >
-              <div className="flex flex-col text-left">
-                <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
+              <div className='flex flex-col text-left'>
+                <span className='text-muted-foreground mb-1 text-[9px] leading-none font-black tracking-wider uppercase'>
                   {chipTitle}
                 </span>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-bold text-foreground">
-                    {res.formattedSize ?? (res.size != null ? (res.size / BYTES_PER_KB).toFixed(1) : '—')} KB
+                <div className='flex items-center gap-1'>
+                  <span className='text-foreground text-xs font-bold'>
+                    {res.formattedSize ??
+                      (res.size == null ? '—' : (res.size / BYTES_PER_KB).toFixed(1))}{' '}
+                    KB
                   </span>
                   {res.savingsPercent != null && (
-                    <span className="text-[9px] font-black text-success bg-success/15 px-1.5 py-0.5 rounded-full">
+                    <span className='text-success bg-success/15 rounded-full px-1.5 py-0.5 text-[9px] font-black'>
                       -{res.savingsPercent}%
                     </span>
                   )}
                 </div>
               </div>
-              <Download size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
+              <Download
+                className='text-muted-foreground group-hover:text-primary transition-colors'
+                size={14}
+              />
             </button>
-          );
+          )
         }
 
         return (
           <div className={chipClassName}>
-            <div className="flex flex-col">
-              <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-wider">
+            <div className='flex flex-col'>
+              <span className='text-muted-foreground mb-1 text-[9px] leading-none font-black tracking-wider uppercase'>
                 {chipTitle}
               </span>
               {res.status === STATUS_ERROR ? (
-                <Badge variant="error" className="text-[9px] px-2 py-1 rounded-full italic">
+                <Badge
+                  className='rounded-full px-2 py-1 text-[9px] italic'
+                  variant='error'
+                >
                   Error
                 </Badge>
               ) : res.status === STATUS_PROCESSING ? (
-                <div className="w-12 h-1 bg-muted rounded-full overflow-hidden mt-1">
-                  <div className="w-full h-full bg-gradient-to-r from-transparent via-primary/60 to-transparent animate-shimmer" />
+                <div className='bg-muted mt-1 h-1 w-12 overflow-hidden rounded-full'>
+                  <div className='via-primary/60 animate-shimmer h-full w-full bg-gradient-to-r from-transparent to-transparent' />
                 </div>
               ) : (
-                <div className="w-12 h-1 bg-muted rounded-full overflow-hidden mt-1">
-                  <div className="h-full bg-primary/50 rounded-full" style={{ width: '40%' }} />
+                <div className='bg-muted mt-1 h-1 w-12 overflow-hidden rounded-full'>
+                  <div
+                    className='bg-primary/50 h-full rounded-full'
+                    style={{ width: '40%' }}
+                  />
                 </div>
               )}
             </div>
           </div>
-        );
+        )
       }}
     </Memo>
-  );
+  )
 }

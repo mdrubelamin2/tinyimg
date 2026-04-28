@@ -1,16 +1,8 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
-  testDir: './src/tests/e2e',
-  fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
-  use: {
-    baseURL: 'http://localhost:5174',
-    trace: 'on-first-retry',
-  },
+  fullyParallel: true,
   projects: [
     {
       name: 'chromium',
@@ -32,11 +24,10 @@ export default defineConfig({
       name: 'mobile-firefox',
       use: {
         browserName: 'firefox',
-        viewport: devices['Galaxy S8'].viewport,
         deviceScaleFactor: devices['Galaxy S8'].deviceScaleFactor,
         hasTouch: devices['Galaxy S8'].hasTouch,
-        userAgent:
-          'Mozilla/5.0 (Android 13; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
+        userAgent: 'Mozilla/5.0 (Android 13; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
+        viewport: devices['Galaxy S8'].viewport,
       },
     },
     {
@@ -44,9 +35,17 @@ export default defineConfig({
       use: { ...devices['iPhone 13'] },
     },
   ],
+  reporter: 'html',
+  retries: process.env.CI ? 2 : 0,
+  testDir: './src/tests/e2e',
+  use: {
+    baseURL: 'http://localhost:5174',
+    trace: 'on-first-retry',
+  },
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5174',
     reuseExistingServer: !process.env.CI,
+    url: 'http://localhost:5174',
   },
-});
+  workers: process.env.CI ? 1 : undefined,
+})

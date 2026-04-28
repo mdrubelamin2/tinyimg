@@ -2,56 +2,56 @@
  * Raster encode preset shape (matches historical raster-encode.ts interface).
  */
 
-export interface RasterEncodePreset {
-  avif: {
-    quality: number;
-    speed: number;
-    subsample: number;
-    enableSharpYUV: boolean;
-    tune: number;
-    chromaDeltaQ?: boolean;
-    sharpness?: number;
-  };
-  webp: {
-    quality: number;
-    method: number;
-    use_sharp_yuv: number;
-    sns_strength?: number;
-    filter_strength?: number;
-    filter_sharpness?: number;
-    autofilter?: number;
-    exact?: number;
-    near_lossless?: number;
-    alpha_quality?: number;
-  };
-  jpeg: {
-    quality: number;
-    progressive: boolean;
-    trellis_multipass: boolean;
-    trellis_opt_zero: boolean;
-    trellis_opt_table: boolean;
-    trellis_loops: number;
-    chroma_subsample: number;
-    separate_chroma_quality?: boolean;
-    chroma_quality?: number;
-  };
-  png: {
-    quantMin: number;
-    quantMax: number;
-    oxipngLevel: number;
-  };
-  heic: {
-    quality: number;
-    chroma: '420' | '422' | '444';
-    lossless?: boolean;
-  };
-}
+export type AllRasterFormat = 'heic' | 'heif' | RasterFormat
 
 export interface EncodeResult {
-  data: ArrayBuffer;
-  lossless: boolean;
+  data: ArrayBuffer
+  lossless: boolean
 }
 
-export type RasterFormat = 'avif' | 'webp' | 'jpeg' | 'png';
+export interface RasterEncodePreset {
+  avif: {
+    chromaDeltaQ?: boolean
+    enableSharpYUV: boolean
+    quality: number
+    sharpness?: number
+    speed: number
+    subsample: number
+    tune: number
+  }
+  heic: {
+    chroma: '420' | '422' | '444'
+    lossless?: boolean
+    quality: number
+  }
+  jpeg: {
+    chroma_quality?: number
+    chroma_subsample: number
+    progressive: boolean
+    quality: number
+    separate_chroma_quality?: boolean
+    trellis_loops: number
+    trellis_multipass: boolean
+    trellis_opt_table: boolean
+    trellis_opt_zero: boolean
+  }
+  png: {
+    oxipngLevel: number
+    quantMax: number
+    quantMin: number
+  }
+  webp: {
+    alpha_quality?: number
+    autofilter?: number
+    exact?: number
+    filter_sharpness?: number
+    filter_strength?: number
+    method: number
+    near_lossless?: number
+    quality: number
+    sns_strength?: number
+    use_sharp_yuv: number
+  }
+}
 
-export type AllRasterFormat = RasterFormat | 'heic' | 'heif';
+export type RasterFormat = 'avif' | 'jpeg' | 'png' | 'webp'

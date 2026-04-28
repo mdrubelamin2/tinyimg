@@ -1,20 +1,21 @@
-import { preview$ } from '@/store/preview-store';
-import { useValue } from '@legendapp/state/react';
-import { lazy, startTransition, Suspense, useEffect, useState } from 'react';
+import { useValue } from '@legendapp/state/react'
+import { lazy, startTransition, Suspense, useEffect, useState } from 'react'
 
-const ImagePreviewLazy = lazy(() => import('@/components/preview/ImagePreview'));
+import { preview$ } from '@/store/preview-store'
+
+const ImagePreviewLazy = lazy(() => import('@/components/preview/ImagePreview'))
 
 const PreviewPortal = () => {
-  const preview = useValue(preview$);
-  const [previewSt, setPreviewSt] = useState(preview);
+  const preview = useValue(preview$)
+  const [previewSt, setPreviewSt] = useState(preview)
 
   useEffect(() => {
     if (preview !== previewSt) {
       startTransition(() => {
-        setPreviewSt(preview);
-      });
+        setPreviewSt(preview)
+      })
     }
-  }, [preview, previewSt]);
+  }, [preview, previewSt])
 
   return (
     <div>
@@ -22,16 +23,16 @@ const PreviewPortal = () => {
         <Suspense>
           <ImagePreviewLazy
             itemId={previewSt.itemId}
-            selectedResultId={previewSt.selectedResultId}
-            onResultChange={(resultId) => {
-              preview$.selectedResultId.set(resultId);
-            }}
             onClose={() => preview$.set(null)}
+            onResultChange={(resultId) => {
+              preview$.selectedResultId.set(resultId)
+            }}
+            selectedResultId={previewSt.selectedResultId}
           />
         </Suspense>
       ) : null}
     </div>
-  );
+  )
 }
 
-export default PreviewPortal;
+export default PreviewPortal

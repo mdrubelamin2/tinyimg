@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { mimeForOutputFormat } from '@/constants';
+import { describe, expect, it } from 'vitest'
+
+import { mimeForOutputFormat } from '@/constants'
 
 describe('mimeForOutputFormat', () => {
   it.each([
@@ -13,6 +14,6 @@ describe('mimeForOutputFormat', () => {
     ['foo', 'application/octet-stream'],
     ['', 'application/octet-stream'],
   ])('%s -> %s', (format, expected) => {
-    expect(mimeForOutputFormat(format)).toBe(expected);
-  });
-});
+    expect(mimeForOutputFormat(format)).toBe(expected)
+  })
+})

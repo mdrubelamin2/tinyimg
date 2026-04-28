@@ -1,53 +1,61 @@
-import { AppHeader } from '@/components/AppHeader';
-import { ConfigPanel } from '@/components/ConfigPanel';
-import { Dropzone } from '@/components/Dropzone';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { FileDropOverlay } from '@/components/FileDropOverlay';
-import { ResultsTable } from '@/components/ResultsTable';
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { syncIntakeProgressToast } from '@/notifications/toast-emitter';
-import { queueStats$ } from '@/state/queue-stats';
-import { getImageStore, intake$ } from '@/store/image-store';
-import { useObserveEffect, useValue } from '@legendapp/state/react';
-import { Activity, lazy } from 'react';
-import { Toaster } from 'sonner';
-import PreviewPortal from './components/preview/PreviewPortal';
-import { useTheme } from './hooks/useTheme';
-import { preview$ } from './store/preview-store';
+import { useObserveEffect, useValue } from '@legendapp/state/react'
+import { Activity, lazy } from 'react'
+import { Toaster } from 'sonner'
+
+import { AppHeader } from '@/components/AppHeader'
+import { ConfigPanel } from '@/components/ConfigPanel'
+import { Dropzone } from '@/components/Dropzone'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { FileDropOverlay } from '@/components/FileDropOverlay'
+import { ResultsTable } from '@/components/ResultsTable'
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
+import { syncIntakeProgressToast } from '@/notifications/toast-emitter'
+import { queueStats$ } from '@/state/queue-stats'
+import { getImageStore, intake$ } from '@/store/image-store'
+
+import PreviewPortal from './components/preview/PreviewPortal'
+import { useTheme } from './hooks/use-theme'
+import { preview$ } from './store/preview-store'
 
 const AppFooterFaq = lazy(() =>
-  import('@/components/AppFooterFaq').then((m) => ({ default: m.AppFooterFaq }))
-);
+  import('@/components/AppFooterFaq').then((m) => ({ default: m.AppFooterFaq })),
+)
 
 export default function App() {
-  const { theme } = useTheme();
-  const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get());
+  const { theme } = useTheme()
+  const hasFinishedItems = useValue(() => queueStats$.hasFinishedItems.get())
   const hasItems = useValue(() => queueStats$.itemCount.get() > 0)
 
-  const downloadAll = getImageStore().downloadAll;
+  const downloadAll = getImageStore().downloadAll
 
   useObserveEffect(() => {
     syncIntakeProgressToast(
       intake$.active.get(),
       intake$.label.get(),
       intake$.processed.get(),
-      intake$.total.get()
-    );
-  });
+      intake$.total.get(),
+    )
+  })
 
   useKeyboardShortcuts({
     onDownload: hasFinishedItems ? downloadAll : undefined,
     onEscape: preview$.peek() ? () => preview$.set(null) : undefined,
-  });
+  })
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Toaster richColors closeButton expand position="bottom-right" theme={theme} />
+    <div className='bg-background text-foreground min-h-screen'>
+      <Toaster
+        closeButton
+        expand
+        position='bottom-right'
+        richColors
+        theme={theme}
+      />
       <ErrorBoundary>
         <AppHeader />
 
-        <main className="pt-28 md:pt-36 pb-12 px-4 md:px-8 max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-8 md:gap-10">
-          <div className="flex-1 space-y-8 md:space-y-10">
+        <main className='mx-auto flex max-w-[1600px] flex-col gap-8 px-4 pt-28 pb-12 md:gap-10 md:px-8 md:pt-36 lg:flex-row'>
+          <div className='flex-1 space-y-8 md:space-y-10'>
             <Dropzone />
 
             <Activity mode={hasItems ? 'visible' : 'hidden'}>
@@ -55,7 +63,7 @@ export default function App() {
             </Activity>
           </div>
 
-          <div className="lg:w-80 w-full shrink-0">
+          <div className='w-full shrink-0 lg:w-80'>
             <ConfigPanel />
           </div>
         </main>
@@ -66,5 +74,5 @@ export default function App() {
         <PreviewPortal />
       </ErrorBoundary>
     </div>
-  );
+  )
 }

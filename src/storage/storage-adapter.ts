@@ -4,20 +4,20 @@
  */
 
 export interface QuotaInfo {
-  usage: number;
-  quota: number;
+  quota: number
+  usage: number
 }
 
 export interface StorageAdapter {
-  set(key: string, data: ArrayBuffer): Promise<void>;
-  get(key: string): Promise<ArrayBuffer | null>;
+  clear(): Promise<void>
+  delete(key: string): Promise<void>
+  deleteByPrefix(prefix: string): Promise<number>
+  get(key: string): Promise<ArrayBuffer | null>
   /** File-backed read without copying the full payload into a JS ArrayBuffer when the backend supports it. */
-  getBackedFile(key: string): Promise<File | null>;
+  getBackedFile(key: string): Promise<File | null>
   /** For streaming writes (e.g. ZIP); same namespace as other keys. */
-  getWritableHandle(key: string): Promise<FileSystemFileHandle>;
-  delete(key: string): Promise<void>;
-  deleteByPrefix(prefix: string): Promise<number>;
-  has(key: string): Promise<boolean>;
-  quota(): Promise<QuotaInfo>;
-  clear(): Promise<void>;
+  getWritableHandle(key: string): Promise<FileSystemFileHandle>
+  has(key: string): Promise<boolean>
+  quota(): Promise<QuotaInfo>
+  set(key: string, data: ArrayBuffer): Promise<void>
 }

@@ -11,6 +11,8 @@
     "compiler:healthcheck": "react-compiler-healthcheck src",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "knip": "knip",
     "preview": "vite preview",
     "test": "vitest run",
@@ -24,7 +26,11 @@
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
+      "prettier --write",
       "eslint --fix"
+    ],
+    "*.{json,md,html,css}": [
+      "prettier --write"
     ]
   },
   "dependencies": {
@@ -70,7 +76,6 @@
     "@semantic-release/git": "^10.0.1",
     "@serwist/vite": "^9.5.7",
     "@tailwindcss/vite": "^4.2.1",
-    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -79,14 +84,21 @@
     "clsx": "^2.1.1",
     "conventional-changelog-conventionalcommits": "^9.3.0",
     "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-perfectionist": "^5.9.0",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-compiler": "^19.1.0-rc.2",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "eslint-plugin-unicorn": "^64.0.0",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
     "knip": "^6.4.1",
     "lint-staged": "^16.4.0",
     "lucide-react": "^0.577.0",
+    "prettier": "^3.8.3",
+    "prettier-plugin-tailwindcss": "^0.8.0",
     "react-compiler-healthcheck": "^1.0.0",
     "rollup-plugin-visualizer": "^7.0.1",
     "semantic-release": "^25.0.3",

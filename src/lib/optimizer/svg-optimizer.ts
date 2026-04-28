@@ -1,55 +1,53 @@
-import {
-  SVG_COMPLEXITY_NODE_THRESHOLD,
-  SVG_COMPLEXITY_SEGMENT_THRESHOLD,
-} from '@/constants';
-import type { Config, CustomPlugin } from 'svgo';
-import { Logger } from '@/workers/logger';
+import type { Config, CustomPlugin } from 'svgo'
+
+import { SVG_COMPLEXITY_NODE_THRESHOLD, SVG_COMPLEXITY_SEGMENT_THRESHOLD } from '@/constants'
+import { Logger } from '@/workers/logger'
 
 export interface SvgMetadata {
-  nodeCount: number;
-  segmentCount: number;
-  rasterBytes: number;
-  hasFilters: boolean;
-  type: 'SIMPLE' | 'COMPLEX' | 'HYBRID';
+  hasFilters: boolean
+  nodeCount: number
+  rasterBytes: number
+  segmentCount: number
+  type: 'COMPLEX' | 'HYBRID' | 'SIMPLE'
 }
 
 /**
  * Custom SVGO plugin to extract metadata while walking the AST.
  */
 const createMetadataPlugin = (metadata: SvgMetadata): CustomPlugin => ({
-  name: 'extract-metadata',
   fn: () => ({
     element: {
       enter: (node) => {
-        metadata.nodeCount++;
+        metadata.nodeCount++
 
         if (node.name === 'filter' || node.name === 'mask' || node.name === 'clipPath') {
-          metadata.hasFilters = true;
+          metadata.hasFilters = true
         }
 
         if (node.attributes['d']) {
-          const commands = node.attributes['d'].match(/[a-df-z]/gi);
+          const commands = node.attributes['d'].match(/[a-df-z]/gi)
           if (commands) {
-            metadata.segmentCount += commands.length;
+            metadata.segmentCount += commands.length
           }
         }
 
-        const href = node.attributes['href'] || node.attributes['xlink:href'];
+        const href = node.attributes['href'] || node.attributes['xlink:href']
         if (href?.startsWith('data:')) {
-          metadata.rasterBytes += href.length;
+          metadata.rasterBytes += href.length
         }
       },
     },
   }),
-});
+  name: 'extract-metadata',
+})
 
 /**
  * Ultimate 2026 SVGO Configuration
  * Replicates the full SVGOMG suite with industry-standard precision.
  */
 const getSvgoConfig = (metadata: SvgMetadata): Config => ({
-  multipass: true,
   floatPrecision: 3, // Global fallback
+  multipass: true,
   plugins: [
     // 1. Standard Cleanups
     'removeDoctype',
@@ -72,8 +70,8 @@ const getSvgoConfig = (metadata: SvgMetadata): Config => ({
     {
       name: 'convertPathData',
       params: {
-        floatPrecision: 3,
         applyTransforms: true,
+        floatPrecision: 3,
         makeArcs: {
           threshold: 2.5,
           tolerance: 0.5,
@@ -135,7 +133,7 @@ const getSvgoConfig = (metadata: SvgMetadata): Config => ({
     // 7. Custom Integrations
     createMetadataPlugin(metadata),
   ],
-});
+})
 
 /**
  * Optimized SVG pipeline using industry-standard SVGO v4+.
@@ -163,52 +161,60 @@ const getSvgoConfig = (metadata: SvgMetadata): Config => ({
  *   to prevent cumulative rounding errors during nested scale/rotate operations,
  *   which could otherwise lead to "visual drift" or misalignment.
  */
-export async function optimizeSvg(svgText: string): Promise<{ data: string; metadata: SvgMetadata }> {
+export async function optimizeSvg(
+  svgText: string,
+): Promise<{ data: string; metadata: SvgMetadata }> {
   const metadata: SvgMetadata = {
-    nodeCount: 0,
-    segmentCount: 0,
-    rasterBytes: 0,
     hasFilters: false,
+    nodeCount: 0,
+    rasterBytes: 0,
+    segmentCount: 0,
     type: 'SIMPLE',
-  };
+  }
 
   try {
-    const { optimize } = await import('svgo');
-    const result = optimize(svgText, getSvgoConfig(metadata));
+    const { optimize } = await import('svgo')
+    const result = optimize(svgText, getSvgoConfig(metadata))
 
     if (result.data && result.data.length > 0) {
       // Classification logic based on gathered metadata
       if (metadata.rasterBytes > 0) {
-        metadata.type = 'HYBRID';
-      } else if (metadata.nodeCount > SVG_COMPLEXITY_NODE_THRESHOLD || metadata.segmentCount > SVG_COMPLEXITY_SEGMENT_THRESHOLD) {
-        metadata.type = 'COMPLEX';
+        metadata.type = 'HYBRID'
+      } else if (
+        metadata.nodeCount > SVG_COMPLEXITY_NODE_THRESHOLD ||
+        metadata.segmentCount > SVG_COMPLEXITY_SEGMENT_THRESHOLD
+      ) {
+        metadata.type = 'COMPLEX'
       } else {
-        metadata.type = 'SIMPLE';
+        metadata.type = 'SIMPLE'
       }
 
       Logger.debug('SVGO optimization successful', {
         inputSize: svgText.length,
-        outputSize: result.data.length,
         metadata,
-      });
-      return { data: result.data, metadata };
+        outputSize: result.data.length,
+      })
+      return { data: result.data, metadata }
     }
   } catch (error) {
     Logger.error('SVGO optimization failed', {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-      } : error
-    });
+      error:
+        error instanceof Error
+          ? {
+              message: error.message,
+              name: error.name,
+              stack: error.stack,
+            }
+          : error,
+    })
   }
 
-  return { data: svgText, metadata };
+  return { data: svgText, metadata }
 }
 
 /**
  * Quick size comparison: returns bytes of a UTF-8 string.
  */
 export function svgByteLength(svg: string): number {
-  return new TextEncoder().encode(svg).length;
+  return new TextEncoder().encode(svg).length
 }

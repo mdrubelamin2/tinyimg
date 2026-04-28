@@ -104,22 +104,22 @@ Open `http://localhost:5174`.
 
 ## Scripts
 
-| Script | Description |
-| ------ | ----------- |
-| `dev` | Start local Vite dev server |
-| `build` | Production build (`tsc` + Vite) |
-| `build:analyze` | Production build with Rollup visualizer (`dist/stats.html`) |
-| `check:perf` | Check bundle size against `scripts/perf-budgets.json` |
-| `preview` | Preview production build locally |
-| `lint` | ESLint |
-| `typecheck` | TypeScript project checks |
-| `knip` | Find unused files, deps, and exports ([knip](https://github.com/webpro/knip)) |
-| `compiler:healthcheck` | React Compiler healthcheck on `src` |
-| `test` | Unit tests (Vitest) |
-| `test:e2e` | Playwright smoke (`basic.spec.ts`); `vite preview` on port 5174 |
-| `test:e2e:benchmark` | Full benchmarking E2E suite (same preview server) |
-| `test:quality` | Raster + SVG quality gates |
-| `test:full` | Unit + E2E smoke + quality gates |
+| Script                 | Description                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| `dev`                  | Start local Vite dev server                                                   |
+| `build`                | Production build (`tsc` + Vite)                                               |
+| `build:analyze`        | Production build with Rollup visualizer (`dist/stats.html`)                   |
+| `check:perf`           | Check bundle size against `scripts/perf-budgets.json`                         |
+| `preview`              | Preview production build locally                                              |
+| `lint`                 | ESLint                                                                        |
+| `typecheck`            | TypeScript project checks                                                     |
+| `knip`                 | Find unused files, deps, and exports ([knip](https://github.com/webpro/knip)) |
+| `compiler:healthcheck` | React Compiler healthcheck on `src`                                           |
+| `test`                 | Unit tests (Vitest)                                                           |
+| `test:e2e`             | Playwright smoke (`basic.spec.ts`); `vite preview` on port 5174               |
+| `test:e2e:benchmark`   | Full benchmarking E2E suite (same preview server)                             |
+| `test:quality`         | Raster + SVG quality gates                                                    |
+| `test:full`            | Unit + E2E smoke + quality gates                                              |
 
 ## Contributing
 

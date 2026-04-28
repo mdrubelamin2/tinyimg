@@ -28,48 +28,29 @@
  * Tuning: `SPATIAL_OCTAVES_BEFORE_QUALITY_BOOST`, `BOOST_K`, `BOOST_MAX`, per-codec clamps — no UI.
  */
 
-import type { ContentPreset } from '@/workers/classify';
-import type { RasterEncodePreset } from './types.ts';
-import { PNG_MILD_QUANT_MAX } from './presets.ts';
+import type { ContentPreset } from '@/workers/classify'
+
+import type { RasterEncodePreset } from './types.ts'
+
+import { PNG_MILD_QUANT_MAX } from './presets.ts'
 
 /** Treat ~1:1 as no downscale (avoid float noise). */
-export const DOWNSCALE_EPS = 1e-3;
+export const DOWNSCALE_EPS = 1e-3
 
 /** log2(s) multiplier before rounding and capping. */
-export const BOOST_K = 4;
+export const BOOST_K = 4
 
 /** Hard cap on quality boost units (shared across codecs before per-codec clamps). */
-export const BOOST_MAX = 12;
+export const BOOST_MAX = 12
 
 /**
  * Octaves of linear downscale on the **limiting axis** before any encoder boost.
  * `1` → factor `2` (one dyadic / octave step). Not a universal JND threshold; see file comment.
  */
-export const SPATIAL_OCTAVES_BEFORE_QUALITY_BOOST = 1;
+export const SPATIAL_OCTAVES_BEFORE_QUALITY_BOOST = 1
 
 /** `2 ** SPATIAL_OCTAVES_BEFORE_QUALITY_BOOST` — minimum `s` before `qualityBoostFromRatio` > 0. */
-export const MIN_DOWNSCALE_RATIO_FOR_BOOST = 2 ** SPATIAL_OCTAVES_BEFORE_QUALITY_BOOST;
-
-export function computeDownscaleRatio(
-  srcW: number,
-  srcH: number,
-  outW: number,
-  outH: number
-): number {
-  if (outW <= 0 || outH <= 0 || srcW <= 0 || srcH <= 0) return 1;
-  return Math.max(srcW / outW, srcH / outH);
-}
-
-export function qualityBoostFromRatio(s: number): number {
-  if (!Number.isFinite(s) || s <= 1 + DOWNSCALE_EPS) return 0;
-  if (s < MIN_DOWNSCALE_RATIO_FOR_BOOST) return 0;
-  const raw = BOOST_K * Math.log2(s);
-  return Math.min(BOOST_MAX, Math.max(0, Math.round(raw)));
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
+export const MIN_DOWNSCALE_RATIO_FOR_BOOST = 2 ** SPATIAL_OCTAVES_BEFORE_QUALITY_BOOST
 
 /**
  * Returns a deep clone of `preset` with format-specific fields raised by boost `b`.
@@ -77,52 +58,73 @@ function clamp(n: number, lo: number, hi: number): number {
  */
 export function applyScaleBoostToPreset(
   preset: RasterEncodePreset,
-  format: 'avif' | 'webp' | 'jpeg' | 'png' | 'heic' | 'heif',
+  format: 'avif' | 'heic' | 'heif' | 'jpeg' | 'png' | 'webp',
   b: number,
-  contentPreset: ContentPreset
+  contentPreset: ContentPreset,
 ): RasterEncodePreset {
-  const out = structuredClone(preset);
-  if (b <= 0) return out;
+  const out = structuredClone(preset)
+  if (b <= 0) return out
 
   switch (format) {
+    case 'avif': {
+      out.avif.quality = clamp(out.avif.quality + b, 28, 98)
+      break
+    }
     case 'heic':
     case 'heif': {
-      out.heic.quality = clamp(out.heic.quality + b, 30, 95);
-      break;
+      out.heic.quality = clamp(out.heic.quality + b, 30, 95)
+      break
     }
     case 'jpeg': {
-      out.jpeg.quality = clamp(out.jpeg.quality + b, 30, 95);
+      out.jpeg.quality = clamp(out.jpeg.quality + b, 30, 95)
       if (out.jpeg.separate_chroma_quality && out.jpeg.chroma_quality != null) {
-        out.jpeg.chroma_quality = clamp(out.jpeg.chroma_quality + b, 30, 95);
+        out.jpeg.chroma_quality = clamp(out.jpeg.chroma_quality + b, 30, 95)
       }
       if (contentPreset === 'graphic' && b >= 8) {
-        out.jpeg.chroma_subsample = 0;
+        out.jpeg.chroma_subsample = 0
       }
-      break;
-    }
-    case 'webp': {
-      out.webp.quality = clamp(out.webp.quality + b, 25, 100);
-      break;
-    }
-    case 'avif': {
-      out.avif.quality = clamp(out.avif.quality + b, 28, 98);
-      break;
+      break
     }
     case 'png': {
-      const d = Math.round(b / 2);
-      let qmin = out.png.quantMin + d;
-      let qmax = out.png.quantMax + d;
-      qmax = Math.min(qmax, PNG_MILD_QUANT_MAX);
-      qmin = Math.min(qmin, qmax);
-      qmin = Math.max(0, qmin);
-      out.png.quantMin = qmin;
-      out.png.quantMax = qmax;
+      const d = Math.round(b / 2)
+      let qmin = out.png.quantMin + d
+      let qmax = out.png.quantMax + d
+      qmax = Math.min(qmax, PNG_MILD_QUANT_MAX)
+      qmin = Math.min(qmin, qmax)
+      qmin = Math.max(0, qmin)
+      out.png.quantMin = qmin
+      out.png.quantMax = qmax
       if (b >= 6) {
-        out.png.oxipngLevel = Math.min(6, out.png.oxipngLevel + 1);
+        out.png.oxipngLevel = Math.min(6, out.png.oxipngLevel + 1)
       }
-      break;
+      break
+    }
+    case 'webp': {
+      out.webp.quality = clamp(out.webp.quality + b, 25, 100)
+      break
     }
   }
 
-  return out;
+  return out
+}
+
+export function computeDownscaleRatio(
+  srcW: number,
+  srcH: number,
+  outW: number,
+  outH: number,
+): number {
+  if (outW <= 0 || outH <= 0 || srcW <= 0 || srcH <= 0) return 1
+  return Math.max(srcW / outW, srcH / outH)
+}
+
+export function qualityBoostFromRatio(s: number): number {
+  if (!Number.isFinite(s) || s <= 1 + DOWNSCALE_EPS) return 0
+  if (s < MIN_DOWNSCALE_RATIO_FOR_BOOST) return 0
+  const raw = BOOST_K * Math.log2(s)
+  return Math.min(BOOST_MAX, Math.max(0, Math.round(raw)))
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n))
 }

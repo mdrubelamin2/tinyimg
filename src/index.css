@@ -74,7 +74,6 @@
 }
 
 @layer base {
-
   *,
   *::before,
   *::after {
@@ -134,7 +133,6 @@
 
   /* Accessibility: Reduced Motion */
   @media (prefers-reduced-motion: reduce) {
-
     *,
     *::before,
     *::after {
@@ -148,19 +146,19 @@
 
 @layer components {
   .glass {
-    @apply bg-surface/90 backdrop-blur-xl border border-border/70 shadow-xl shadow-primary/5;
+    @apply bg-surface/90 border-border/70 shadow-primary/5 border shadow-xl backdrop-blur-xl;
   }
 
   .glass-dark {
-    @apply bg-surface/90 backdrop-blur-xl border border-border/70 shadow-2xl shadow-primary/10;
+    @apply bg-surface/90 border-border/70 shadow-primary/10 border shadow-2xl backdrop-blur-xl;
   }
 
   .btn-primary {
-    @apply bg-primary text-primary-foreground px-6 py-2.5 rounded-lg font-medium transition-all duration-200 ease-out hover:opacity-90 active:scale-[0.98] shadow-lg shadow-primary/25 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40;
+    @apply bg-primary text-primary-foreground shadow-primary/25 focus-visible:ring-ring/40 cursor-pointer rounded-lg px-6 py-2.5 font-medium shadow-lg transition-all duration-200 ease-out hover:opacity-90 focus-visible:ring-2 focus-visible:outline-none active:scale-[0.98];
   }
 
   .config-block {
-    @apply p-4 rounded-xl border border-border bg-surface text-surface-foreground shadow-sm;
+    @apply border-border bg-surface text-surface-foreground rounded-xl border p-4 shadow-sm;
   }
 
   /* Animations */
@@ -195,7 +193,6 @@
   }
 
   @keyframes shake {
-
     10%,
     90% {
       transform: translate3d(-1px, 0, 0);
@@ -219,11 +216,10 @@
   }
 
   .animate-shake {
-    animation: shake 0.5s cubic-bezier(.36, .07, .19, .97) both;
+    animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
   }
 
   @keyframes pulse-subtle {
-
     0%,
     100% {
       opacity: 1;

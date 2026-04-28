@@ -1,223 +1,222 @@
-import { batch, observe } from '@legendapp/state';
-import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
-import {
-  STATUS_PROCESSING,
-  STATUS_SUCCESS,
-  STATUS_ERROR,
-  ERR_WORKER,
-} from '@/constants';
+import { batch, observe } from '@legendapp/state'
+
+import type { GlobalOptions } from '@/constants'
+import type { ImageItem, ImageResult, Task, WorkerOutbound } from '@/lib/queue/types'
+
+import { ERR_WORKER, STATUS_ERROR, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants'
+import { buildOutputSlots } from '@/lib/queue/output-slots'
+import { resolveOriginalSourceFile } from '@/storage/queue-binary'
 import {
   imageStore$,
-  poolStats$,
   inFlightTasks$,
-  pendingTasks$,
+  intake$,
   isLargeFileInFlight$,
-  intake$
-} from '@/store/queue-store';
-import { resolveOriginalSourceFile } from '@/storage/queue-binary';
-import { buildOutputSlots } from '@/lib/queue/output-slots';
-import type { Task, WorkerOutbound, ImageItem, ImageResult } from '@/lib/queue/types';
-import type { GlobalOptions } from '@/constants';
-import { schedulePersistWorkerResults } from './storage-sync';
-import { useSettingsStore } from '@/store/settings-store';
+  pendingTasks$,
+  poolStats$,
+} from '@/store/queue-store'
+import { useSettingsStore } from '@/store/settings-store'
+import { computeConcurrency, WorkerPool } from '@/workers/worker-pool-v2'
 
-let pool: WorkerPool | null = null;
-let responseBuffer: WorkerOutbound[] = [];
-let errorBuffer: (Task | null)[] = [];
-let flushScheduled = false;
-let isScheduling = false;
+import { schedulePersistWorkerResults } from './storage-sync'
 
-function isTerminal(item: ImageItem): boolean {
-  return !Object.values(item.results).some(
-    r => r.status === 'processing' || r.status === 'pending'
-  );
-}
+let pool: null | WorkerPool = null
+let responseBuffer: WorkerOutbound[] = []
+let errorBuffer: (null | Task)[] = []
+let flushScheduled = false
+let isScheduling = false
 
-export function getPool(): WorkerPool {
-  if (pool) return pool;
-  pool = new WorkerPool(computeConcurrency(), {
-    onMessage: (_workerIndex, data) => {
-      applyWorkerResult(data as WorkerOutbound);
-    },
-    onError: (_workerIndex, task) => {
-      applyWorkerError(task);
-    },
-    onActiveCountChange: (count) => {
-      batch(() => {
-        poolStats$.activeCount.set(count);
-        if (pool) {
-          poolStats$.limit.set(pool.concurrencyLimit);
-        }
-      });
-    }
-  });
-  return pool;
+export function applyWorkerError(task: null | Task): void {
+  errorBuffer.push(task)
+  if (!flushScheduled) {
+    flushScheduled = true
+    requestAnimationFrame(() => {
+      batchApplyResults()
+    })
+  }
 }
 
 export function applyWorkerResult(response: WorkerOutbound): void {
   if (response.type === 'RESULT') {
-    schedulePersistWorkerResults([response]);
-    return;
+    schedulePersistWorkerResults([response])
+    return
   }
 
-  responseBuffer.push(response);
+  responseBuffer.push(response)
   if (!flushScheduled) {
-    flushScheduled = true;
+    flushScheduled = true
     requestAnimationFrame(() => {
-      batchApplyResults();
-    });
-  }
-}
-
-export function applyWorkerError(task: Task | null): void {
-  errorBuffer.push(task);
-  if (!flushScheduled) {
-    flushScheduled = true;
-    requestAnimationFrame(() => {
-      batchApplyResults();
-    });
+      batchApplyResults()
+    })
   }
 }
 
 export function batchApplyResults(): void {
-  const responses = [...responseBuffer];
-  const errors = [...errorBuffer];
-  responseBuffer = [];
-  errorBuffer = [];
-  flushScheduled = false;
+  const responses = [...responseBuffer]
+  const errors = [...errorBuffer]
+  responseBuffer = []
+  errorBuffer = []
+  flushScheduled = false
 
-  if (responses.length === 0 && errors.length === 0) return;
+  if (responses.length === 0 && errors.length === 0) return
 
   batch(() => {
     for (const response of responses) {
       if (response.type === 'ERROR') {
-        const item = imageStore$.items[response.id]?.peek();
-        if (!item) continue;
+        const item = imageStore$.items[response.id]?.peek()
+        if (!item) continue
 
-        const rid = response.resultId;
-        const prev = item.results[rid];
-        const nextItem = { ...item };
+        const rid = response.resultId
+        const prev = item.results[rid]
+        const nextItem = { ...item }
         const merged: ImageResult = {
           ...(prev ?? {
-            resultId: rid,
             format: response.format,
-            variantLabel: '',
+            resultId: rid,
             status: STATUS_PROCESSING,
+            variantLabel: '',
           }),
-          resultId: rid,
-          format: response.format,
-          status: STATUS_ERROR,
           error: response.error,
-        };
+          format: response.format,
+          resultId: rid,
+          status: STATUS_ERROR,
+        }
         nextItem.results = {
           ...item.results,
           [rid]: merged,
-        };
-
-        if (isTerminal(nextItem)) {
-          nextItem.status = STATUS_ERROR;
-          nextItem.progress = 100;
         }
 
-        imageStore$.items[response.id]!.set(nextItem);
-        inFlightTasks$[`${response.id}:${rid}`]?.delete();
+        if (isTerminal(nextItem)) {
+          nextItem.status = STATUS_ERROR
+          nextItem.progress = 100
+        }
+
+        imageStore$.items[response.id]!.set(nextItem)
+        inFlightTasks$[`${response.id}:${rid}`]?.delete()
       }
     }
 
     for (const task of errors) {
-      if (!task) continue;
-      const item = imageStore$.items[task.id]?.peek();
-      if (!item) continue;
+      if (!task) continue
+      const item = imageStore$.items[task.id]?.peek()
+      if (!item) continue
 
-      const rid = task.resultId;
-      const prev = item.results[rid];
-      const nextItem = { ...item };
+      const rid = task.resultId
+      const prev = item.results[rid]
+      const nextItem = { ...item }
       const merged: ImageResult = {
         ...(prev ?? {
-          resultId: rid,
           format: task.format,
-          variantLabel: '',
+          resultId: rid,
           status: STATUS_PROCESSING,
+          variantLabel: '',
         }),
-        resultId: rid,
-        format: task.format,
-        status: STATUS_ERROR,
         error: ERR_WORKER,
-      };
+        format: task.format,
+        resultId: rid,
+        status: STATUS_ERROR,
+      }
       nextItem.results = {
         ...item.results,
         [rid]: merged,
-      };
-
-      if (isTerminal(nextItem)) {
-        nextItem.status = STATUS_ERROR;
-        nextItem.progress = 100;
       }
 
-      imageStore$.items[task.id]!.set(nextItem);
-      inFlightTasks$[`${task.id}:${rid}`]?.delete();
+      if (isTerminal(nextItem)) {
+        nextItem.status = STATUS_ERROR
+        nextItem.progress = 100
+      }
+
+      imageStore$.items[task.id]!.set(nextItem)
+      inFlightTasks$[`${task.id}:${rid}`]?.delete()
     }
-  });
+  })
+}
+
+export async function destroyPool() {
+  if (pool) {
+    await pool.destroy()
+    pool = null
+  }
+}
+
+export function getPool(): WorkerPool {
+  if (pool) return pool
+  pool = new WorkerPool(computeConcurrency(), {
+    onActiveCountChange: (count) => {
+      batch(() => {
+        poolStats$.activeCount.set(count)
+        if (pool) {
+          poolStats$.limit.set(pool.concurrencyLimit)
+        }
+      })
+    },
+    onError: (_workerIndex, task) => {
+      applyWorkerError(task)
+    },
+    onMessage: (_workerIndex, data) => {
+      applyWorkerResult(data as WorkerOutbound)
+    },
+  })
+  return pool
 }
 
 export async function processNextAsync(options: GlobalOptions): Promise<void> {
-  if (isScheduling) return;
-  isScheduling = true;
+  if (isScheduling) return
+  isScheduling = true
 
   try {
-    const currentPool = getPool();
-    const inFlightCount = Object.keys(inFlightTasks$.peek()).length;
-    const limit = poolStats$.limit.peek();
-    const remainingCapacity = limit - inFlightCount;
+    const currentPool = getPool()
+    const inFlightCount = Object.keys(inFlightTasks$.peek()).length
+    const limit = poolStats$.limit.peek()
+    const remainingCapacity = limit - inFlightCount
 
-    if (remainingCapacity <= 0) return;
+    if (remainingCapacity <= 0) return
 
-    const pending = pendingTasks$.peek();
-    if (pending.length === 0) return;
+    const pending = pendingTasks$.peek()
+    if (pending.length === 0) return
 
-    const isLargeBusy = isLargeFileInFlight$.peek();
-    if (isLargeBusy) return;
+    const isLargeBusy = isLargeFileInFlight$.peek()
+    if (isLargeBusy) return
 
-    const items = imageStore$.items.peek();
-    let capacity = remainingCapacity;
+    const items = imageStore$.items.peek()
+    let capacity = remainingCapacity
 
-    const tasksByItem = new Map<string, { resultIds: string[]; isLarge: boolean }>();
+    const tasksByItem = new Map<string, { isLarge: boolean; resultIds: string[] }>()
     for (const p of pending) {
       if (!tasksByItem.has(p.itemId)) {
-        tasksByItem.set(p.itemId, { resultIds: [], isLarge: p.isLarge });
+        tasksByItem.set(p.itemId, { isLarge: p.isLarge, resultIds: [] })
       }
-      tasksByItem.get(p.itemId)!.resultIds.push(p.resultId);
+      tasksByItem.get(p.itemId)!.resultIds.push(p.resultId)
     }
 
     for (const [itemId, info] of tasksByItem) {
-      if (capacity <= 0) break;
+      if (capacity <= 0) break
 
-      const item = items[itemId];
-      if (!item) continue;
+      const item = items[itemId]
+      if (!item) continue
 
       if (info.isLarge) {
         if (inFlightCount > 0 || capacity < remainingCapacity) {
-          break;
+          break
         }
-        const sourceFile = await resolveOriginalSourceFile(itemId, item);
-        if (!sourceFile) continue;
+        const sourceFile = await resolveOriginalSourceFile(itemId, item)
+        if (!sourceFile) continue
 
-        const toDispatch = info.resultIds.slice(0, Math.min(2, capacity));
-        const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch);
-        capacity -= count;
-        break;
+        const toDispatch = info.resultIds.slice(0, Math.min(2, capacity))
+        const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch)
+        capacity -= count
+        break
       }
 
-      const sourceFile = await resolveOriginalSourceFile(itemId, item);
-      if (!sourceFile) continue;
+      const sourceFile = await resolveOriginalSourceFile(itemId, item)
+      if (!sourceFile) continue
 
-      const toDispatch = info.resultIds.slice(0, capacity);
-      const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch);
+      const toDispatch = info.resultIds.slice(0, capacity)
+      const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch)
 
-      capacity -= count;
+      capacity -= count
     }
   } finally {
-    isScheduling = false;
+    isScheduling = false
   }
 }
 
@@ -227,89 +226,91 @@ function dispatchRowToPool(
   sourceFile: File,
   currentPool: WorkerPool,
   options: GlobalOptions,
-  resultIds: string[]
+  resultIds: string[],
 ): number {
-  const processingItem: ImageItem = { ...candidateItem, status: STATUS_PROCESSING };
-  let dispatchedCount = 0;
+  const processingItem: ImageItem = {
+    ...candidateItem,
+    status: STATUS_PROCESSING,
+  }
+  let dispatchedCount = 0
 
-  const slots = buildOutputSlots(processingItem, options);
+  const slots = buildOutputSlots(processingItem, options)
 
   batch(() => {
     for (const rid of resultIds) {
-      const res = processingItem.results[rid];
-      if (!res || res.status === STATUS_SUCCESS || res.status === STATUS_PROCESSING) continue;
+      const res = processingItem.results[rid]
+      if (!res || res.status === STATUS_SUCCESS || res.status === STATUS_PROCESSING) continue
 
-      const slot = slots.find(s => s.resultId === rid);
-      if (!slot) continue;
+      const slot = slots.find((s) => s.resultId === rid)
+      if (!slot) continue
 
       const task: Task = {
-        id: processingItem.id,
-        resultId: rid,
-        format: slot.format,
         file: sourceFile,
+        format: slot.format,
+        id: processingItem.id,
         options: {
-          resultId: rid,
           format: slot.format,
+          losslessEncoding: options.losslessEncoding,
           originalExtension: processingItem.originalFormat,
           originalSize: processingItem.originalSize,
-          svgInternalFormat: options.svgInternalFormat,
-          svgRasterizer: 'resvg' as const,
-          svgExportDensity: 'display' as const,
-          svgDisplayDpr: 2,
           qualityPercent: processingItem.qualityPercentOverride ?? options.qualityPercent,
           resizePreset: slot.resizePreset,
+          resultId: rid,
           stripMetadata: options.stripMetadata,
-          losslessEncoding: options.losslessEncoding,
+          svgDisplayDpr: 2,
+          svgExportDensity: 'display' as const,
+          svgInternalFormat: options.svgInternalFormat,
+          svgRasterizer: 'resvg' as const,
         },
-      };
+        resultId: rid,
+      }
 
-      currentPool.addTask(task);
+      currentPool.addTask(task)
       processingItem.results = {
         ...processingItem.results,
         [rid]: { ...res, status: STATUS_PROCESSING },
-      };
-      inFlightTasks$[`${id}:${rid}`]!.set(true);
-      dispatchedCount++;
+      }
+      inFlightTasks$[`${id}:${rid}`]!.set(true)
+      dispatchedCount++
     }
 
-    imageStore$.items[id]!.set(processingItem);
-  });
+    imageStore$.items[id]!.set(processingItem)
+  })
 
-  return dispatchedCount;
+  return dispatchedCount
 }
 
-export async function destroyPool() {
-  if (pool) {
-    await pool.destroy();
-    pool = null;
-  }
+function isTerminal(item: ImageItem): boolean {
+  return !Object.values(item.results).some(
+    (r) => r.status === 'processing' || r.status === 'pending',
+  )
 }
 
 // Reactive queue scheduler
 observe(() => {
-  const pending = pendingTasks$.get();
-  const inFlight = inFlightTasks$.get();
-  const inFlightCount = Object.keys(inFlight).length;
-  const limit = poolStats$.limit.get();
-  const isLargeBusy = isLargeFileInFlight$.get();
-  const isIntakeActive = intake$.active.get();
+  const pending = pendingTasks$.get()
+  const inFlight = inFlightTasks$.get()
+  const inFlightCount = Object.keys(inFlight).length
+  const limit = poolStats$.limit.get()
+  const isLargeBusy = isLargeFileInFlight$.get()
+  const isIntakeActive = intake$.active.get()
 
   if (inFlightCount > 0) {
-    const items = imageStore$.items;
+    const items = imageStore$.items
     batch(() => {
       for (const taskId in inFlight) {
-        if (!inFlight[taskId]) continue;
-        const [itemId, rid] = taskId.split(':') as [string, string];
-        const item = items[itemId]?.peek();
+        if (!inFlight[taskId]) continue
+        const [itemId, rid] = taskId.split(':') as [string, string]
+        const item = items[itemId]?.peek()
         if (!item || item.results[rid]?.status !== STATUS_PROCESSING) {
-          console.warn(`[Scheduler] Found zombie in-flight task ${taskId}, cleaning up`);
-          inFlightTasks$[taskId]?.delete();
+          console.warn(`[Scheduler] Found zombie in-flight task ${taskId}, cleaning up`)
+          inFlightTasks$[taskId]?.delete()
         }
       }
-    });
+    })
   }
 
   if (pending.length > 0 && inFlightCount < limit && !isLargeBusy && !isIntakeActive) {
-    void processNextAsync(useSettingsStore.getState().options);
+    void processNextAsync(useSettingsStore.getState().options)
   }
-});
+})
