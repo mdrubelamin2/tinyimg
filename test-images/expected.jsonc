@@ -7,5 +7,5 @@
   // Raster: quality-mode ceilings (update from reference run if needed)
   "png-1.png": { "png": "26KB", "webp": "26KB", "avif": "20KB", "jpeg": "42KB" },
   "png-2.png": { "png": "611KB", "webp": "90KB", "avif": "78KB", "jpeg": "160KB" },
-  "png-3.png": { "png": "2MB", "webp": "50KB", "avif": "29KB", "jpeg": "138KB" }
+  "png-3.png": { "png": "2MB", "webp": "50KB", "avif": "29KB", "jpeg": "138KB" },
 }
