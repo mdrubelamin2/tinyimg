@@ -12,7 +12,7 @@ const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 const PORT = Number.parseInt(process.env.PORT || '5173', 10)
 
 // Dynamic import for mkcert to avoid binary download side-effects in CI
-const mkcertPlugin = !isCI ? await import('vite-plugin-mkcert') : null
+const mkcertPlugin = !isCI ? await import('vite-plugin-mkcert').then((m) => m.default()) : null
 
 /** COOP + COEP — cross-origin isolation (SharedArrayBuffer / WASM); keep in sync with `public/_headers`. */
 const crossOriginIsolationHeaders = {
