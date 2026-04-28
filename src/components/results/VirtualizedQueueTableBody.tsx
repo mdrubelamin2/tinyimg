@@ -87,12 +87,17 @@ export function VirtualizedQueueTableBody({
 
   return (
     <div
-      className="w-full min-w-0 relative"
+      className="w-full h-full relative"
       style={{ height: `${totalSize}px` }}
     >
       <StickyTableHead ref={headerRef}>
         <QueueTableHeaderRow />
       </StickyTableHead>
+      <div className='absolute top-0 left-0 w-full will-change-transform'
+      style={{
+        transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+      }}
+      >
       {virtualItems.map((virtualRow) => {
         const rowId = deferredItemIds[virtualRow.index];
         if (!rowId) return null;
@@ -102,12 +107,13 @@ export function VirtualizedQueueTableBody({
             key={virtualRow.key}
             id={rowId}
             index={virtualRow.index}
-            start={virtualRow.start}
+            ref={rowVirtualizer.measureElement}
           >
             <ResultRowCells id={rowId} />
           </QueueTableRow>
         );
       })}
+      </div>
     </div>
   );
 }

@@ -10,7 +10,7 @@ export const ResultsTable = () => {
     <Card className="glass rounded-3xl overflow-hidden border border-border/70 shadow-2xl shadow-primary/5 animate-slide-up delay-100">
       <QueueResultsToolbar />
       <CardContent className="p-0">
-        <div ref={scrollParent} className="max-h-150 min-h-35 overflow-auto">
+        <div ref={scrollParent} className="max-h-150 min-h-35 overflow-y-auto contain-content">
           <VirtualizedQueueTableBody
             scrollParent={scrollParent}
           />
