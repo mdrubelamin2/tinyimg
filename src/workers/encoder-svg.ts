@@ -3,7 +3,7 @@ import type { AllRasterFormat } from '@/lib/codecs/raster/types'
 import { encodeSvgRasterForOutput } from '@/lib/codecs/raster/output-encode'
 import { resizeImageDataHighQuality } from '@/lib/codecs/raster/resize-jsquash'
 
-import type { EncoderResult, EncoderStrategy, OptimizeTaskInput } from './encoder-types'
+import type { EncoderResult, EncoderStrategy, StrategyInput } from './encoder-types'
 
 import { svgPipelineOptionsFromWorker } from './encoder-types'
 import { checkPixelLimit } from './raster-encode'
@@ -16,7 +16,7 @@ import {
 } from './svg-pipeline'
 
 export class SvgEncoderStrategy implements EncoderStrategy {
-  async encode(input: OptimizeTaskInput): Promise<EncoderResult> {
+  async encode(input: StrategyInput): Promise<EncoderResult> {
     const { buffer, options } = input
     const requestedFormat = options.format
 

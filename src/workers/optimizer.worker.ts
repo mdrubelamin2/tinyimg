@@ -22,7 +22,7 @@ const optimizer: OptimizerAPI = {
   async optimize(payload: OptimizePayload): Promise<WorkerOutbound> {
     await wasmReady
     const result = await runOptimizeTask({
-      buffer: payload.buffer,
+      file: payload.file,
       id: payload.id,
       options: payload.options,
     })

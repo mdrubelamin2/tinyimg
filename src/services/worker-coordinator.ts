@@ -37,7 +37,30 @@ export function applyWorkerError(task: null | Task): void {
 
 export function applyWorkerResult(response: WorkerOutbound): void {
   if (response.type === 'RESULT') {
-    schedulePersistWorkerResults([response])
+    batch(() => {
+      // 1. Mark success in the store immediately (UI response)
+      const item = imageStore$.items[response.id]?.peek()
+      if (item) {
+        const rid = response.resultId
+        const prev = item.results[rid]
+        const nextItem = {
+          ...item,
+          results: {
+            ...item.results,
+            [rid]: {
+              ...(prev ?? { format: response.format, resultId: rid, variantLabel: '' }),
+              formattedSize: response.formattedSize,
+              size: response.size,
+              status: STATUS_SUCCESS,
+            },
+          },
+        }
+        imageStore$.items[response.id]!.set(nextItem)
+      }
+
+      // 2. Schedule the heavy binary persistence
+      schedulePersistWorkerResults([response])
+    })
     return
   }
 
@@ -289,26 +312,10 @@ function isTerminal(item: ImageItem): boolean {
 // Reactive queue scheduler
 observe(() => {
   const pending = pendingTasks$.get()
-  const inFlight = inFlightTasks$.get()
-  const inFlightCount = Object.keys(inFlight).length
+  const inFlightCount = Object.keys(inFlightTasks$.get()).length
   const limit = poolStats$.limit.get()
   const isLargeBusy = isLargeFileInFlight$.get()
   const isIntakeActive = intake$.active.get()
-
-  if (inFlightCount > 0) {
-    const items = imageStore$.items
-    batch(() => {
-      for (const taskId in inFlight) {
-        if (!inFlight[taskId]) continue
-        const [itemId, rid] = taskId.split(':') as [string, string]
-        const item = items[itemId]?.peek()
-        if (!item || item.results[rid]?.status !== STATUS_PROCESSING) {
-          console.warn(`[Scheduler] Found zombie in-flight task ${taskId}, cleaning up`)
-          inFlightTasks$[taskId]?.delete()
-        }
-      }
-    })
-  }
 
   if (pending.length > 0 && inFlightCount < limit && !isLargeBusy && !isIntakeActive) {
     void processNextAsync(useSettingsStore.getState().options)

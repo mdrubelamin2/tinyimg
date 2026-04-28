@@ -9,7 +9,7 @@ import { encodeBitmapRasterForOutput } from '@/lib/codecs/raster/output-encode'
 import { PRESETS } from '@/lib/codecs/raster/presets'
 import { resizeImageDataHighQuality } from '@/lib/codecs/raster/resize-jsquash'
 
-import type { EncoderResult, EncoderStrategy, OptimizeTaskInput } from './encoder-types'
+import type { EncoderResult, EncoderStrategy, StrategyInput } from './encoder-types'
 
 import { decodeHeic } from '../lib/codecs/raster/decode-heic'
 import { classifyContent } from './classify'
@@ -17,7 +17,7 @@ import { checkPixelLimit, getImageData, normalizeOutputFormat } from './raster-e
 import { resolveResizeTarget } from './resize-preset'
 
 export class BitmapEncoderStrategy implements EncoderStrategy {
-  async encode(input: OptimizeTaskInput): Promise<EncoderResult> {
+  async encode(input: StrategyInput): Promise<EncoderResult> {
     const { buffer, options } = input
     const finalFormat = normalizeOutputFormat(options.format, options.originalExtension)
 

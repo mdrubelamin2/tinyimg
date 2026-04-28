@@ -9,7 +9,7 @@ export interface EncoderResult {
 }
 
 export interface EncoderStrategy {
-  encode(input: OptimizeTaskInput): Promise<EncoderResult>
+  encode(input: StrategyInput): Promise<EncoderResult>
 }
 
 export interface OptimizeOptions {
@@ -21,9 +21,13 @@ export interface OptimizeOptions {
 }
 
 export interface OptimizeTaskInput {
-  buffer: ArrayBuffer
+  file: File
   id: string
   options: TaskOptions
+}
+
+export interface StrategyInput extends OptimizeTaskInput {
+  buffer: ArrayBuffer
 }
 
 export function svgPipelineOptionsFromWorker(options: TaskOptions) {

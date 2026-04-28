@@ -19,7 +19,7 @@ import {
 import optimizerWorkerUrl from './optimizer.worker.ts?worker&url'
 
 export interface OptimizePayload {
-  buffer: ArrayBuffer
+  file: File
   id: string
   options: TaskOptions
 }
@@ -243,14 +243,13 @@ export class WorkerPool {
       workerEntry.worker.postMessage({ port: port2, type: 'TASK_START' }, [port2])
       const proxy = Comlink.wrap<OptimizerAPI>(port1)
 
-      const buffer = await task.file.arrayBuffer()
       const payload: OptimizePayload = {
-        buffer: buffer,
+        file: task.file,
         id: task.id,
         options: task.options,
       }
 
-      const result = await proxy.optimize(Comlink.transfer(payload, [buffer]))
+      const result = await proxy.optimize(payload)
       proxy[Comlink.releaseProxy]()
       port1.close()
 

@@ -17,7 +17,7 @@ import { toErrorMessage } from './raster-encode'
  * Runs one optimization job and returns the wire message (RESULT or ERROR).
  */
 export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerOutbound> {
-  const { id, options } = input
+  const { file, id, options } = input
   const requestedFormat = options.format
   const resultId = options.resultId
   const originalExtension = options.originalExtension ?? ''
@@ -44,12 +44,15 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
   }, TASK_TIMEOUT_MS)
 
   try {
+    const buffer = await file.arrayBuffer()
+    const taskInput = { ...input, buffer }
+
     const strategy: EncoderStrategy =
       originalExtension === 'svg' || options.format === 'svg'
         ? new SvgEncoderStrategy()
         : new BitmapEncoderStrategy()
 
-    const { encodedBytes, isLossless, label, mimeType } = await strategy.encode(input)
+    const { encodedBytes, isLossless, label, mimeType } = await strategy.encode(taskInput)
 
     const outSize = encodedBytes.byteLength
     finish({
