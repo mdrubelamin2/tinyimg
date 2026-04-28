@@ -9,6 +9,7 @@ import topLevelAwait from 'vite-plugin-top-level-await'
 import wasm from 'vite-plugin-wasm'
 
 const analyze = process.env.ANALYZE === 'true'
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 
 /** COOP + COEP — cross-origin isolation (SharedArrayBuffer / WASM); keep in sync with `public/_headers`. */
 const crossOriginIsolationHeaders = {
@@ -48,7 +49,7 @@ export default defineConfig({
     exclude: ['@resvg/resvg-wasm'],
   },
   plugins: [
-    mkcert(),
+    ...(!isCI ? [mkcert()] : []),
     wasm(),
     topLevelAwait(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

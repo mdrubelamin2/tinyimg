@@ -39,13 +39,13 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   testDir: './src/tests/e2e',
   use: {
-    baseURL: 'http://localhost:5174',
+    baseURL: 'http://127.0.0.1:5174',
     trace: 'on-first-retry',
   },
   webServer: {
     command: 'npm run dev',
     reuseExistingServer: !process.env.CI,
-    url: 'http://localhost:5174',
+    url: 'http://127.0.0.1:5174',
   },
   workers: process.env.CI ? 1 : undefined,
 })
