@@ -4,12 +4,13 @@ import react from '@vitejs/plugin-react'
 import path from 'node:path'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { defineConfig } from 'vite'
-import mkcert from 'vite-plugin-mkcert'
 import topLevelAwait from 'vite-plugin-top-level-await'
 import wasm from 'vite-plugin-wasm'
 
 const analyze = process.env.ANALYZE === 'true'
 const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
+
+const mkcertPlugin = !isCI ? await import('vite-plugin-mkcert') : null
 
 /** COOP + COEP — cross-origin isolation (SharedArrayBuffer / WASM); keep in sync with `public/_headers`. */
 const crossOriginIsolationHeaders = {
@@ -49,7 +50,7 @@ export default defineConfig({
     exclude: ['@resvg/resvg-wasm'],
   },
   plugins: [
-    ...(!isCI ? [mkcert()] : []),
+    ...(mkcertPlugin ? [mkcertPlugin] : []),
     wasm(),
     topLevelAwait(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
