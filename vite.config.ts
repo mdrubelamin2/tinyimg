@@ -9,7 +9,9 @@ import wasm from 'vite-plugin-wasm'
 
 const analyze = process.env.ANALYZE === 'true'
 const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
+const PORT = Number.parseInt(process.env.PORT || '5173', 10)
 
+// Dynamic import for mkcert to avoid binary download side-effects in CI
 const mkcertPlugin = !isCI ? await import('vite-plugin-mkcert') : null
 
 /** COOP + COEP — cross-origin isolation (SharedArrayBuffer / WASM); keep in sync with `public/_headers`. */
@@ -97,6 +99,9 @@ export default defineConfig({
   server: {
     cors: true,
     headers: crossOriginIsolationHeaders,
+    host: '127.0.0.1',
+    port: PORT,
+    strictPort: true,
   },
   worker: {
     format: 'es',
