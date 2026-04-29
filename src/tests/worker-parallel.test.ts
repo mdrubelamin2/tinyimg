@@ -50,9 +50,7 @@ describe('WorkerPool Parallel Dispatch', () => {
     ;(pool as any).idleWorkers.push(...(pool as any).allWorkers)
 
     const task1 = {
-      file: {
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(10)),
-      } as unknown as File,
+      file: new File([], 'item1.webp'),
       format: 'webp',
       id: 'item1',
       options: { ...MOCK_OPTIONS, resultId: 'res1' },
@@ -60,9 +58,7 @@ describe('WorkerPool Parallel Dispatch', () => {
     }
 
     const task2 = {
-      file: {
-        arrayBuffer: () => Promise.resolve(new ArrayBuffer(10)),
-      } as unknown as File,
+      file: new File([], 'item2.webp'),
       format: 'webp',
       id: 'item2',
       options: { ...MOCK_OPTIONS, resultId: 'res2' },
