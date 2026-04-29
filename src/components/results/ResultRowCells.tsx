@@ -1,3 +1,5 @@
+import { memo } from 'react'
+
 import type { ImageItem } from '@/lib/queue/types'
 
 import { preview$ } from '@/store/preview-store'
@@ -7,11 +9,11 @@ import { FormatChipsCellTable } from './cells/FormatChipsCellTable'
 import { OriginalSizeCellTable } from './cells/OriginalSizeCellTable'
 import { RowActionsCellTable } from './cells/RowActionsCellTable'
 
-export interface ResultRowCellsProps {
+interface ResultRowCellsProps {
   id: string
 }
 
-export function ResultRowCells({ id }: ResultRowCellsProps) {
+const ResultRowCells = memo(({ id }: ResultRowCellsProps) => {
   const handlePreview = (item: ImageItem) => {
     const resultIds = Object.keys(item.results)
     const firstResultId = resultIds[0]
@@ -36,4 +38,8 @@ export function ResultRowCells({ id }: ResultRowCellsProps) {
       />
     </>
   )
-}
+})
+
+ResultRowCells.displayName = 'ResultRowCells'
+
+export default ResultRowCells

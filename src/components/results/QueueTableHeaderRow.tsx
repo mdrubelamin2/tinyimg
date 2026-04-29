@@ -11,7 +11,7 @@ export function QueueTableHeaderRow() {
       </div>
       <div className='p-2 text-right align-middle font-bold md:px-6 md:py-4'>
         <span className='md:hidden'>Act.</span>
-        <span className='hidden md:inline'>Remove</span>
+        <span className='hidden md:inline'>Action</span>
       </div>
     </div>
   )
