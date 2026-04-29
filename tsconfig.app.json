@@ -7,9 +7,9 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "ES2023",
     "useDefineForClassFields": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "webworker"],
     "module": "ESNext",
-    "types": ["vite/client", "node", "bun", "@webgpu/types"],
+    "types": ["vite/client", "node", "vitest/globals", "@serwist/vite/typings", "react/canary"],
     "skipLibCheck": true,
 
     /* Bundler mode */
@@ -34,5 +34,6 @@
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/tests/**"]
 }

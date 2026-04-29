@@ -27,6 +27,9 @@ playwright-report/
 test-output/
 .vitest.result.json
 
+# --- Editor / tool backups ---
+*.backup
+
 # --- Editors & OS ---
 .vscode/*
 !.vscode/extensions.json
@@ -39,3 +42,7 @@ test-output/
 .next/
 .vercel/
 .turbo/
+
+# --- Serwist ---
+public/sw*
+public/swe-worker*

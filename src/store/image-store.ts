@@ -1,541 +1,369 @@
 /**
- * Image store: Zustand-based queue state management.
- * Replaces the QueueProcessor God Class with composable actions.
+ * Unified Image Store: Delegating logic to services while maintaining a legacy-compatible API.
  */
 
-import { create } from 'zustand';
-import { startTransition } from 'react';
-import type { ImageItem, ImageResult, Task, WorkerOutbound } from '@/lib/queue/types';
-import type { GlobalOptions } from '@/constants';
+import { batch } from '@legendapp/state'
+import { useValue } from '@legendapp/state/react'
+
+import type { GlobalOptions } from '@/constants'
+import type { ImageItem } from '@/lib/queue/types'
+
 import {
-  STATUS_PENDING,
-  STATUS_PROCESSING,
-  STATUS_SUCCESS,
-  STATUS_ERROR,
-  ERR_WORKER,
   OUTPUT_QUALITY_MAX,
   OUTPUT_QUALITY_MIN,
-  UPDATE_OPTIONS_DEBOUNCE_MS,
-} from '@/constants/index';
-import { WorkerPool, computeConcurrency } from '@/workers/worker-pool-v2';
-import { collectItemsFromFiles } from '@/lib/queue/queue-intake';
+  STATUS_PENDING,
+  STATUS_PROCESSING,
+} from '@/constants'
+import { buildAndDownloadZip, revokeResultUrls } from '@/lib/download'
+import { buildOutputSlots } from '@/lib/queue/output-slots'
+import { resetItemResultsForOptions } from '@/lib/queue/queue-item'
+import { addFiles as addFilesService } from '@/services/intake-service'
+import { resetPersistChain } from '@/services/storage-sync'
 import {
-  createQueueItem,
-  getFormatsToProcess,
-  resetItemResultsForOptions,
-} from '@/lib/queue/queue-item';
-import { revokeResultUrls, buildAndDownloadZip } from '@/lib/download';
-import OptimizerWorkerUrl from '@/workers/optimizer.worker.ts?worker&url';
-import { useSettingsStore } from './settings-store';
+  applyWorkerError,
+  applyWorkerResult,
+  batchApplyResults,
+  destroyPool,
+  getPool,
+  processNextAsync,
+} from '@/services/worker-coordinator'
+import {
+  clearDirectDropOriginals,
+  releaseDirectDropOriginal,
+} from '@/storage/dropped-original-files'
+import { deleteItemPayloads } from '@/storage/queue-binary'
+import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache'
+import { cancelThumbnail, destroyThumbnailWorker } from '@/thumbnails/thumbnail-generator'
 
-/**
- * Image store state definition.
- * Extracted constants for magic values to ensure clean, maintainable code.
- */
-interface ImageStoreState {
-  items: Map<string, ImageItem>;
-  itemOrder: string[];
-  pendingIds: Set<string>;
-  visibleItemIds: Set<string>;
-}
+import { imageStore$, inFlightTasks$, intake$ } from './queue-store'
 
-interface ImageStoreActions {
-  addFiles: (files: FileList | File[] | DataTransferItemList | DataTransferItem[], options: GlobalOptions) => Promise<void>;
-  removeItem: (id: string) => void;
-  clearFinished: () => void;
-  clearAll: () => void;
-  reorderItems: (fromIndex: number, toIndex: number) => void;
-  setItemOutputFormats: (id: string, formats: string[] | null, options: GlobalOptions) => void;
-  setItemQualityPercent: (id: string, percent: number | null, options: GlobalOptions) => void;
-  setVisibleItems: (ids: string[]) => void;
-  downloadAll: () => Promise<void>;
-
-  /** Called when global options change (debounced). Re-enqueues items. 
-   * @param forceAll - If true, resets ALL items. If false, only resets pending/processing items.
-   */
-  applyGlobalOptions: (options: GlobalOptions, forceAll?: boolean) => void;
-
-  /** Internal: called by worker pool */
-  _applyWorkerResult: (response: WorkerOutbound) => void;
-  _applyWorkerError: (task: Task | null) => void;
-  _batchApplyResults: () => void;
-  _getPool: () => WorkerPool;
-  _processNext: (options: GlobalOptions) => void;
-}
-
-export type ImageStore = ImageStoreState & ImageStoreActions;
-
-// --- Worker pool singleton (initialized lazily) ---
-let pool: WorkerPool | null = null;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingForceAll = false;
-
-// Update batching buffers
-let responseBuffer: WorkerOutbound[] = [];
-let errorBuffer: (Task | null)[] = [];
-let flushScheduled = false;
-
-function getPool(storeApi: { getState: () => ImageStore }): WorkerPool {
-  if (pool) return pool;
-  const workerUrl = new URL(OptimizerWorkerUrl, import.meta.url);
-  pool = new WorkerPool(workerUrl, computeConcurrency(), {
-    onMessage: (_workerIndex, data) => {
-      // Use WorkerOutbound directly - no legacy bridge needed
-      storeApi.getState()._applyWorkerResult(data as WorkerOutbound);
-    },
-    onError: (_workerIndex, task) => {
-      storeApi.getState()._applyWorkerError(task);
-    },
-  });
-  return pool;
-}
-
-// --- Helpers ---
-
-/**
- * Checks if all results for an item are in a terminal state (Success or Error).
- */
 function isTerminal(item: ImageItem): boolean {
   return !Object.values(item.results).some(
-    r => r.status === STATUS_PROCESSING || r.status === STATUS_PENDING
-  );
+    (r) => r.status === 'processing' || r.status === 'pending',
+  )
 }
 
-let cachedItemsRef: Map<string, ImageItem> | null = null;
-let cachedOrderRef: string[] | null = null;
-let cachedOrderedItems: ImageItem[] = [];
+let cachedItemsRef: null | Record<string, ImageItem | undefined> = null
+let cachedOrderRef: null | string[] = null
+let cachedOrderedItems: ImageItem[] = []
 
-/**
- * Efficiently converts the items map to an ordered array using memoization.
- */
-function itemsToArray(items: Map<string, ImageItem>, order: string[]): ImageItem[] {
+function itemsToArray(items: Record<string, ImageItem | undefined>, order: string[]): ImageItem[] {
   if (items === cachedItemsRef && order === cachedOrderRef) {
-    return cachedOrderedItems;
+    return cachedOrderedItems
   }
-
-  cachedItemsRef = items;
-  cachedOrderRef = order;
-  cachedOrderedItems = order.map(id => items.get(id)).filter((i): i is ImageItem => i != null);
-  return cachedOrderedItems;
+  cachedItemsRef = items
+  cachedOrderRef = order
+  cachedOrderedItems = order.map((id) => items[id]).filter((i): i is ImageItem => i != null)
+  return cachedOrderedItems
 }
 
-/**
- * The main image store. Using Zustand for buttery-smooth performance and clean state management.
- * Strictly adheres to DRY, KISS, and SOLID principles.
- */
-export const useImageStore = create<ImageStore>()((set, get, api) => ({
-  items: new Map(),
-  itemOrder: [],
-  pendingIds: new Set(),
-  visibleItemIds: new Set(),
+let memoKey: null | {
+  itemsRef: Record<string, ImageItem | undefined>
+  orderRef: string[]
+} = null
+let memoMap: Map<string, ImageItem> | null = null
 
-  addFiles: async (files, options) => {
-    const newItems = await collectItemsFromFiles(files, {
-      createItem: (file: File) => {
-        const item = createQueueItem(file, options);
-        // item.formattedOriginalSize = (item.originalSize / BYTES_PER_KB).toFixed(1);
-        return item;
-      },
-    });
+export const imageStoreSingleton = {
+  _applyWorkerError: applyWorkerError,
+  _applyWorkerResult: applyWorkerResult,
+  _batchApplyResults: batchApplyResults,
+  _getPool: getPool,
 
-    set((state) => {
-      const nextItems = new Map(state.items);
-      const nextOrder = [...state.itemOrder];
-      const nextPending = new Set(state.pendingIds);
-      for (const item of newItems) {
-        nextItems.set(item.id, item);
-        nextOrder.push(item.id);
-        nextPending.add(item.id);
+  _processNext: (options: GlobalOptions) => {
+    void processNextAsync(options)
+  },
+
+  _processNextAsync: processNextAsync,
+
+  addFiles: addFilesService,
+
+  applyGlobalOptions(options: GlobalOptions) {
+    batch(() => {
+      const itemTasksToCancel: { itemId: string; resultId: string }[] = []
+      const items = imageStore$.items.peek()
+      const p = getPool()
+
+      for (const id of imageStore$.itemOrder.peek()) {
+        const item = items[id]
+        if (!item) continue
+
+        p.removeTasksForItem(id) // Clear queued tasks with old options
+        const result = resetItemResultsForOptions(item, options)
+        itemTasksToCancel.push(
+          ...result.resultIdsToCancel.map((rid) => ({
+            itemId: id,
+            resultId: rid,
+          })),
+        )
+        imageStore$.items[id]!.set(result.nextItem)
       }
-      return { items: nextItems, itemOrder: nextOrder, pendingIds: nextPending };
-    });
 
-    get()._processNext(options);
+      if (itemTasksToCancel.length > 0) {
+        for (const { itemId, resultId } of itemTasksToCancel) {
+          p.cancelTask(`${itemId}:${resultId}`)
+          inFlightTasks$[`${itemId}:${resultId}`]?.delete()
+        }
+      }
+    })
   },
 
-  removeItem: (id) => {
-    const item = get().items.get(id);
-    if (!item) return;
+  async clearAll() {
+    inFlightTasks$.set({})
+    resetPersistChain()
+    destroyThumbnailWorker()
+    thumbnailCacheClear()
 
-    getPool(api).abortInFlightForItem(id);
-    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-    revokeResultUrls(item);
+    const items = imageStore$.items.peek()
+    for (const id of imageStore$.itemOrder.peek()) {
+      const item = items[id]
+      if (!item) continue
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      revokeResultUrls(item)
+      void deleteItemPayloads(id)
+    }
+    clearDirectDropOriginals()
+    await destroyPool()
 
-    set((state) => {
-      const nextItems = new Map(state.items);
-      nextItems.delete(id);
-      const nextPending = new Set(state.pendingIds);
-      nextPending.delete(id);
-      return {
-        items: nextItems,
-        itemOrder: state.itemOrder.filter(i => i !== id),
-        pendingIds: nextPending,
-      };
-    });
+    batch(() => {
+      imageStore$.items.set({})
+      imageStore$.itemOrder.set([])
+      imageStore$.visibleItemIds.set([])
+      intake$.set({
+        active: false,
+        label: '',
+        phase: 'idle',
+        processed: 0,
+        total: 0,
+      })
+    })
   },
 
-  clearFinished: () => {
-    set((state) => {
-      const nextItems = new Map<string, ImageItem>();
-      const nextOrder: string[] = [];
-      const nextPending = new Set<string>();
-      for (const id of state.itemOrder) {
-        const item = state.items.get(id);
-        if (!item) continue;
+  clearFinished() {
+    batch(() => {
+      const prevOrder = [...imageStore$.itemOrder.peek()]
+      const nextOrder: string[] = []
+      const items = imageStore$.items.peek()
+
+      for (const id of prevOrder) {
+        const item = items[id]
+        if (!item) continue
         if (item.status === STATUS_PROCESSING || item.status === STATUS_PENDING) {
-          nextItems.set(id, item);
-          nextOrder.push(id);
-          if (item.status === STATUS_PENDING) {
-            nextPending.add(id);
-          }
-          continue;
+          nextOrder.push(id)
+          continue
         }
-        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-        revokeResultUrls(item);
+        cancelThumbnail(id)
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+        revokeResultUrls(item)
+        releaseDirectDropOriginal(id)
+        void deleteItemPayloads(id)
+        imageStore$.items[id]?.delete()
       }
-      return { items: nextItems, itemOrder: nextOrder, pendingIds: nextPending };
-    });
+      imageStore$.itemOrder.set(nextOrder)
+    })
   },
 
-  clearAll: () => {
-    const { items } = get();
-    for (const item of items.values()) {
-      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-      revokeResultUrls(item);
+  async downloadAll() {
+    const items = imageStore$.items.peek()
+    const order = imageStore$.itemOrder.peek()
+    const arr = order.map((id) => items[id]).filter((i): i is ImageItem => i != null)
+    await buildAndDownloadZip(arr)
+  },
+
+  get itemOrder() {
+    return [...imageStore$.itemOrder.peek()]
+  },
+
+  get items() {
+    const items = imageStore$.items.get()
+    const order = imageStore$.itemOrder.get()
+    if (memoKey && memoKey.orderRef === order && memoKey.itemsRef === items) {
+      return memoMap!
     }
-    if (pool) pool.destroy();
-    pool = null;
-    set({ items: new Map(), itemOrder: [], pendingIds: new Set() });
+    const map = new Map<string, ImageItem>()
+    for (const id of order) {
+      const it = items[id]
+      if (it) map.set(id, it)
+    }
+    memoKey = { itemsRef: items, orderRef: order }
+    memoMap = map
+    return map
   },
 
-  reorderItems: (fromIndex, toIndex) => {
-    set((state) => {
+  get pendingIds() {
+    const items = imageStore$.items.get()
+    const order = imageStore$.itemOrder.get()
+    const pending = new Set<string>()
+    for (const id of order) {
+      const item = items[id]
       if (
-        fromIndex < 0 || toIndex < 0 ||
-        fromIndex >= state.itemOrder.length || toIndex >= state.itemOrder.length ||
-        fromIndex === toIndex
-      ) return state;
-
-      const nextOrder = [...state.itemOrder];
-      const [removed] = nextOrder.splice(fromIndex, 1);
-      nextOrder.splice(toIndex, 0, removed!);
-
-      return { itemOrder: nextOrder };
-    });
-  },
-
-  setItemOutputFormats: (id, formats, options) => {
-    const currentPool = getPool(api);
-    currentPool.abortInFlightForItem(id);
-    currentPool.removeTasksForItem(id);
-
-    set((state) => {
-      const item = state.items.get(id);
-      if (!item) return state;
-
-      revokeResultUrls(item);
-      const nextItem: ImageItem = {
-        ...item,
-        outputFormatsOverride: formats != null && formats.length > 0 ? formats : null,
-        status: STATUS_PENDING,
-        progress: 0,
-        error: undefined,
-      };
-
-      const fmts = getFormatsToProcess(nextItem, options);
-      const results: Record<string, ImageResult> = {};
-      for (const f of fmts) {
-        results[f] = { format: f, status: STATUS_PENDING };
+        item &&
+        (!isTerminal(item) || Object.values(item.results).some((r) => r.status === STATUS_PENDING))
+      ) {
+        pending.add(id)
       }
-      nextItem.results = results;
-
-      const nextItems = new Map(state.items);
-      nextItems.set(id, nextItem);
-      const nextPending = new Set(state.pendingIds);
-      nextPending.add(id);
-      return {
-        items: nextItems,
-        pendingIds: nextPending,
-      };
-    });
-
-    get()._processNext(options);
-  },
-
-  setItemQualityPercent: (id, percent, options) => {
-    const clamped = percent == null
-      ? null
-      : Math.min(OUTPUT_QUALITY_MAX, Math.max(OUTPUT_QUALITY_MIN, Math.round(percent)));
-
-    const currentPool = getPool(api);
-    currentPool.abortInFlightForItem(id);
-    currentPool.removeTasksForItem(id);
-
-    set((state) => {
-      const item = state.items.get(id);
-      if (!item) return state;
-
-      revokeResultUrls(item);
-      const nextItem: ImageItem = {
-        ...item,
-        qualityPercentOverride: clamped,
-        status: STATUS_PENDING,
-        progress: 0,
-        error: undefined,
-      };
-
-      const fmts = getFormatsToProcess(nextItem, options);
-      const results: Record<string, ImageResult> = {};
-      for (const f of fmts) {
-        results[f] = { format: f, status: STATUS_PENDING };
-      }
-      nextItem.results = results;
-
-      const nextItems = new Map(state.items);
-      nextItems.set(id, nextItem);
-      const nextPending = new Set(state.pendingIds);
-      nextPending.add(id);
-      return {
-        items: nextItems,
-        pendingIds: nextPending,
-      };
-    });
-
-    get()._processNext(options);
-  },
-
-  setVisibleItems: (ids) => {
-    set({ visibleItemIds: new Set(ids) });
-  },
-
-  downloadAll: async () => {
-    const { items, itemOrder } = get();
-    const arr = itemsToArray(items, itemOrder);
-    await buildAndDownloadZip(arr);
-  },
-
-  applyGlobalOptions: (options, forceAll = false) => {
-    if (forceAll) pendingForceAll = true;
-
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      const isForced = pendingForceAll;
-      pendingForceAll = false;
-      debounceTimer = null;
-
-      set((state) => {
-        const nextItems = new Map<string, ImageItem>();
-        const nextPending = new Set<string>();
-        for (const [id, item] of state.items) {
-          if (isForced || item.status === STATUS_PENDING || item.status === STATUS_PROCESSING) {
-            const nextItem = resetItemResultsForOptions(item, options);
-            nextItems.set(id, nextItem);
-            nextPending.add(id);
-          } else {
-            nextItems.set(id, item);
-          }
-        }
-        return { items: nextItems, pendingIds: nextPending };
-      });
-
-      get()._processNext(options);
-    }, UPDATE_OPTIONS_DEBOUNCE_MS);
-  },
-
-  _applyWorkerResult: (response: WorkerOutbound) => {
-    responseBuffer.push(response);
-    if (!flushScheduled) {
-      flushScheduled = true;
-      requestAnimationFrame(() => {
-        get()._batchApplyResults();
-      });
     }
+    return pending
   },
 
-  _applyWorkerError: (task: Task | null) => {
-    errorBuffer.push(task);
-    if (!flushScheduled) {
-      flushScheduled = true;
-      requestAnimationFrame(() => {
-        get()._batchApplyResults();
-      });
+  removeItem(id: string) {
+    const item = imageStore$.items[id]?.peek()
+    if (!item) return
+
+    getPool().abortInFlightForItem(id)
+    cancelThumbnail(id)
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+    revokeResultUrls(item)
+    releaseDirectDropOriginal(id)
+    void deleteItemPayloads(id)
+
+    batch(() => {
+      imageStore$.items[id]?.delete()
+      imageStore$.itemOrder.set(imageStore$.itemOrder.peek().filter((i) => i !== id))
+      for (const rid in item.results) {
+        inFlightTasks$[`${id}:${rid}`]?.delete()
+      }
+    })
+  },
+  reorderItems(fromIndex: number, toIndex: number) {
+    const order = [...imageStore$.itemOrder.peek()]
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= order.length ||
+      toIndex >= order.length ||
+      fromIndex === toIndex
+    ) {
+      return
     }
+    const nextOrder = [...order]
+    const [removed] = nextOrder.splice(fromIndex, 1)
+    nextOrder.splice(toIndex, 0, removed!)
+    imageStore$.itemOrder.set(nextOrder)
   },
+  setItemOutputFormats(id: string, formats: null | string[], options: GlobalOptions) {
+    getPool().abortInFlightForItem(id)
+    const item = imageStore$.items[id]?.peek()
+    if (!item) return
 
-  _batchApplyResults: () => {
-    const responses = [...responseBuffer] as WorkerOutbound[];
-    const errors = [...errorBuffer];
-    responseBuffer = [];
-    errorBuffer = [];
-    flushScheduled = false;
+    revokeResultUrls(item)
+    const nextItem: ImageItem = {
+      ...item,
+      error: undefined,
+      outputFormatsOverride: formats != null && formats.length > 0 ? formats : null,
+      progress: 0,
+      status: STATUS_PENDING,
+    }
 
-    if (responses.length === 0 && errors.length === 0) return;
-
-    let shouldProcessNext = false;
-
-    startTransition(() => {
-      set((state) => {
-        const nextItems = new Map(state.items);
-        const nextPending = new Set(state.pendingIds);
-
-        // Process successful results
-        for (const response of responses) {
-          if (response.type === 'RESULT') {
-            const item = nextItems.get(response.id);
-            if (!item) continue;
-
-            const format = response.format;
-            const result = item.results[format];
-            if (!result) continue;
-
-            const nextItem = { ...item };
-            if (result.downloadUrl) URL.revokeObjectURL(result.downloadUrl);
-            const downloadUrl = URL.createObjectURL(response.blob);
-
-            nextItem.results = {
-              ...item.results,
-              [format]: {
-                ...result,
-                status: STATUS_SUCCESS,
-                size: response.size,
-                formattedSize: response.formattedSize,
-                savingsPercent: response.savingsPercent,
-                blob: response.blob,
-                label: response.label,
-                downloadUrl,
-                timing: response.timing,
-              },
-            };
-
-            if (isTerminal(nextItem)) {
-              const anyError = Object.values(nextItem.results).some(r => r.status === STATUS_ERROR);
-              nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS;
-              nextItem.progress = 100;
-              nextPending.delete(response.id);
-              shouldProcessNext = true;
-            }
-
-            nextItems.set(response.id, nextItem);
-          }
-        }
-
-        // Process errors
-        for (const task of errors) {
-          if (!task) continue;
-          const item = nextItems.get(task.id);
-          if (!item) continue;
-
-          const result = item.results[task.format];
-          const nextItem = { ...item };
-          if (result) {
-            nextItem.results = {
-              ...item.results,
-              [task.format]: { ...result, status: STATUS_ERROR, error: ERR_WORKER },
-            };
-          }
-
-          if (isTerminal(nextItem)) {
-            nextItem.status = STATUS_ERROR;
-            nextItem.progress = 100;
-            nextPending.delete(task.id);
-            shouldProcessNext = true;
-          }
-
-          nextItems.set(task.id, nextItem);
-        }
-
-        return { items: nextItems, pendingIds: nextPending };
-      });
-
-      if (shouldProcessNext) {
-        get()._processNext(useSettingsStore.getState().options);
-      }
-    });
-  },
-
-  _getPool: () => getPool(api),
-
-  _processNext: (options) => {
-    const { items, itemOrder, pendingIds, visibleItemIds } = get();
-
-    if (pendingIds.size === 0) return;
-
-    // Use pendingIds to avoid O(N) filtering of itemOrder
-    const currentPendingArray = itemOrder.filter(id => pendingIds.has(id));
-
-    if (currentPendingArray.length === 0) return;
-
-    // Sort by priority: Visible items first, then small files if enabled
-    const sortedIds = [...currentPendingArray].sort((a, b) => {
-      const aVisible = visibleItemIds.has(a);
-      const bVisible = visibleItemIds.has(b);
-
-      if (aVisible && !bVisible) return -1;
-      if (!aVisible && bVisible) return 1;
-
-      if (options.smallFilesFirst) {
-        const itemA = items.get(a);
-        const itemB = items.get(b);
-        if (!itemA || !itemB) return 0;
-        return itemA.originalSize - itemB.originalSize;
-      }
-
-      return 0;
-    });
-
-    const nextId = sortedIds[0];
-    if (!nextId) return;
-    const nextItem = items.get(nextId);
-    if (!nextItem || nextItem.status !== STATUS_PENDING) return;
-
-    // Mark as processing
-    const processingItem: ImageItem = { ...nextItem, status: STATUS_PROCESSING };
-    const fmts = getFormatsToProcess(processingItem, options);
-    const currentPool = getPool(api);
-
-    for (const format of fmts) {
-      if (!processingItem.results[format]) continue;
-      processingItem.results = {
-        ...processingItem.results,
-        [format]: { ...processingItem.results[format]!, status: STATUS_PROCESSING },
-      };
-      currentPool.addTask({
-        id: processingItem.id,
-        format,
-        file: processingItem.file,
-        options: {
-          format,
-          svgInternalFormat: options.svgInternalFormat,
-          svgRasterizer: 'resvg' as const,
-          svgExportDensity: 'display' as const,
-          svgDisplayDpr: 2,
-          qualityPercent: processingItem.qualityPercentOverride ?? 100,
-          resizeMaxEdge: 0,
-          stripMetadata: options.stripMetadata,
+    const slots = buildOutputSlots(nextItem, options)
+    nextItem.results = Object.fromEntries(
+      slots.map((slot) => [
+        slot.resultId,
+        {
+          format: slot.format,
+          resultId: slot.resultId,
+          status: STATUS_PENDING,
+          variantLabel: slot.variantLabel,
         },
-      });
+      ]),
+    )
+
+    batch(() => {
+      imageStore$.items[id]!.set(nextItem)
+      for (const rid in item.results) {
+        inFlightTasks$[`${id}:${rid}`]?.delete()
+      }
+    })
+  },
+  setItemQualityPercent(id: string, percent: null | number, options: GlobalOptions) {
+    const clamped =
+      percent == null
+        ? null
+        : Math.min(OUTPUT_QUALITY_MAX, Math.max(OUTPUT_QUALITY_MIN, Math.round(percent)))
+
+    getPool().abortInFlightForItem(id)
+    const item = imageStore$.items[id]?.peek()
+    if (!item) return
+
+    revokeResultUrls(item)
+    const nextItem: ImageItem = {
+      ...item,
+      error: undefined,
+      progress: 0,
+      qualityPercentOverride: clamped,
+      status: STATUS_PENDING,
     }
 
-    set((state) => {
-      const nextItems = new Map(state.items);
-      const nextPending = new Set(state.pendingIds);
-      nextItems.set(nextId, processingItem);
-      nextPending.delete(nextId);
-      return { items: nextItems, pendingIds: nextPending };
-    });
+    const slots = buildOutputSlots(nextItem, options)
+    nextItem.results = Object.fromEntries(
+      slots.map((slot) => [
+        slot.resultId,
+        {
+          format: slot.format,
+          resultId: slot.resultId,
+          status: STATUS_PENDING,
+          variantLabel: slot.variantLabel,
+        },
+      ]),
+    )
+
+    batch(() => {
+      imageStore$.items[id]!.set(nextItem)
+      for (const rid in item.results) {
+        inFlightTasks$[`${id}:${rid}`]?.delete()
+      }
+    })
   },
-}));
-
-// --- Selector helpers for components ---
-
-export function selectItemById(id: string) {
-  return (state: ImageStore) => state.items.get(id);
+  setVisibleItems(ids: string[]) {
+    imageStore$.visibleItemIds.set([...ids])
+  },
+  get visibleItemIds() {
+    return new Set(imageStore$.visibleItemIds.peek() as string[])
+  },
 }
 
-export function selectOrderedItems(state: ImageStore): ImageItem[] {
-  return itemsToArray(state.items, state.itemOrder);
+export const getImageStore = () => imageStoreSingleton
+
+export const useImageStore = Object.assign(
+  <T>(selector: (state: typeof imageStoreSingleton) => T): T => {
+    return useValue(() => selector(imageStoreSingleton))
+  },
+  {
+    getState: () => imageStoreSingleton,
+    setState: (partial: Record<string, unknown>) => {
+      batch(() => {
+        if (partial['items']) {
+          const nextItems: Record<string, ImageItem | undefined> = {}
+          if (partial['items'] instanceof Map) {
+            for (const [id, item] of partial['items']) {
+              nextItems[id] = item as ImageItem
+            }
+          } else {
+            Object.assign(nextItems, partial['items'])
+          }
+          imageStore$.items.set(nextItems)
+        }
+        if (partial['itemOrder']) {
+          imageStore$.itemOrder.set([...(partial['itemOrder'] as string[])])
+        }
+      })
+    },
+  },
+)
+
+export const selectOrderedItems = (state: typeof imageStoreSingleton): ImageItem[] => {
+  const itemsObj: Record<string, ImageItem | undefined> = {}
+  if (state.items instanceof Map) {
+    for (const [id, item] of state.items) {
+      itemsObj[id] = item
+    }
+  } else {
+    Object.assign(itemsObj, state.items)
+  }
+  return itemsToArray(itemsObj, state.itemOrder)
 }
 
-export function selectItemCount(state: ImageStore): number {
-  return state.itemOrder.length;
+export const selectItemCount = (): number => {
+  return imageStore$.itemOrder.get().length
 }
+
+export { imageStore$, inFlightTasks$, intake$ } from './queue-store'

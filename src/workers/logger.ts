@@ -3,20 +3,20 @@
  * Supports metadata, error causes, and dev-only verbosity.
  */
 export const Logger = {
-  error(message: string, meta?: Record<string, unknown>) {
-    console.error(`[Worker ERROR] ${message}`, meta);
+  debug(message: string, meta?: Record<string, unknown>) {
+    if (import.meta.env.DEV) {
+      console.info(`[Worker DEBUG] ${message}`, meta)
+    }
   },
-  warn(message: string, meta?: Record<string, unknown>) {
-    console.warn(`[Worker WARN] ${message}`, meta);
+  error(message: string, meta?: Record<string, unknown>) {
+    console.error(`[Worker ERROR] ${message}`, meta)
   },
   info(message: string, meta?: Record<string, unknown>) {
     if (import.meta.env.DEV) {
-      console.info(`[Worker INFO] ${message}`, meta);
+      console.info(`[Worker INFO] ${message}`, meta)
     }
   },
-  debug(message: string, meta?: Record<string, unknown>) {
-    if (import.meta.env.DEV) {
-      console.info(`[Worker DEBUG] ${message}`, meta);
-    }
-  }
-};
+  warn(message: string, meta?: Record<string, unknown>) {
+    console.warn(`[Worker WARN] ${message}`, meta)
+  },
+}
