@@ -1,5 +1,5 @@
 import { useObserveEffect, useValue } from '@legendapp/state/react'
-import { Activity, lazy } from 'react'
+import { Activity, lazy, Suspense } from 'react'
 import { Toaster } from 'sonner'
 
 import { AppHeader } from '@/components/AppHeader'
@@ -7,7 +7,6 @@ import { ConfigPanel } from '@/components/ConfigPanel'
 import { Dropzone } from '@/components/Dropzone'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { FileDropOverlay } from '@/components/FileDropOverlay'
-import { ResultsTable } from '@/components/ResultsTable'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
 import { syncIntakeProgressToast } from '@/notifications/toast-emitter'
 import { queueStats$ } from '@/state/queue-stats'
@@ -16,6 +15,8 @@ import { getImageStore, intake$ } from '@/store/image-store'
 import PreviewPortal from './components/preview/PreviewPortal'
 import { useTheme } from './hooks/use-theme'
 import { preview$ } from './store/preview-store'
+
+const ResultsTable = lazy(() => import('@/components/ResultsTable'))
 
 const AppFooterFaq = lazy(() =>
   import('@/components/AppFooterFaq').then((m) => ({ default: m.AppFooterFaq })),
@@ -59,7 +60,9 @@ export default function App() {
             <Dropzone />
 
             <Activity mode={hasItems ? 'visible' : 'hidden'}>
-              <ResultsTable />
+              <Suspense fallback={null}>
+                <ResultsTable />
+              </Suspense>
             </Activity>
           </div>
 
@@ -68,7 +71,9 @@ export default function App() {
           </div>
         </main>
 
-        <AppFooterFaq />
+        <Suspense fallback={null}>
+          <AppFooterFaq />
+        </Suspense>
 
         <FileDropOverlay />
         <PreviewPortal />
