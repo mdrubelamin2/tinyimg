@@ -59,6 +59,7 @@ async function encodePngQuantized(
   try {
     q.setQuality(qMin, qMax)
     const res = q.quantizeImage(imageData.data, imageData.width, imageData.height)
+    res.setDithering(1)
     try {
       const qPng = encode_palette_to_png(
         res.getPaletteIndices(imageData.data, imageData.width, imageData.height),
