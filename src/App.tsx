@@ -1,4 +1,4 @@
-import { useObserveEffect, useValue } from '@legendapp/state/react'
+import { useValue } from '@legendapp/state/react'
 import { Activity, lazy, Suspense } from 'react'
 import { Toaster } from 'sonner'
 
@@ -8,9 +8,8 @@ import { Dropzone } from '@/components/Dropzone'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { FileDropOverlay } from '@/components/FileDropOverlay'
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts'
-import { syncIntakeProgressToast } from '@/notifications/toast-emitter'
 import { queueStats$ } from '@/state/queue-stats'
-import { getImageStore, intake$ } from '@/store/image-store'
+import { getImageStore } from '@/store/image-store'
 
 import PreviewPortal from './components/preview/PreviewPortal'
 import { useTheme } from './hooks/use-theme'
@@ -28,15 +27,6 @@ export default function App() {
   const hasItems = useValue(() => queueStats$.itemCount.get() > 0)
 
   const downloadAll = getImageStore().downloadAll
-
-  useObserveEffect(() => {
-    syncIntakeProgressToast(
-      intake$.active.get(),
-      intake$.label.get(),
-      intake$.processed.get(),
-      intake$.total.get(),
-    )
-  })
 
   useKeyboardShortcuts({
     onDownload: hasFinishedItems ? downloadAll : undefined,

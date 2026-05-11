@@ -1,12 +1,7 @@
 import { useValue } from '@legendapp/state/react'
-import {
-  elementScroll,
-  type ReactVirtualizerOptions,
-  useVirtualizer,
-} from '@tanstack/react-virtual'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { debounce, isEqual } from 'es-toolkit'
 import {
-  type RefObject,
   startTransition,
   useCallback,
   useDeferredValue,
@@ -15,7 +10,6 @@ import {
   useState,
 } from 'react'
 
-import { easeInOutQuint } from '@/lib/utils'
 import { getImageStore } from '@/store/image-store'
 import { imageStore$ } from '@/store/queue-store'
 import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator'
@@ -23,17 +17,12 @@ import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator'
 import { QUEUE_OVERSCAN, QUEUE_ROW_HEIGHT_PX } from './constants'
 import { QueueTableHeaderRow } from './QueueTableHeaderRow'
 import QueueTableRow from './QueueTableRow'
-import ResultRowCells from './ResultRowCells'
 import { StickyTableHead } from './StickyTableHead'
 
-interface VirtualizedQueueTableBodyProps {
-  scrollParent: RefObject<HTMLDivElement | null>
-}
-
-export function VirtualizedQueueTableBody({ scrollParent }: VirtualizedQueueTableBodyProps) {
+export function VirtualizedQueueTableBody() {
+  const scrollParent = useRef<HTMLDivElement | null>(null)
   const itemIds = useValue(() => imageStore$.itemOrder.get())
   const deferredItemIds = useDeferredValue(itemIds)
-  const scrollingRef = useRef<number>(0)
   const headerRef = useRef<HTMLDivElement>(null)
   const [headerHeight, setHeaderHeight] = useState(0)
 
@@ -69,33 +58,6 @@ export function VirtualizedQueueTableBody({ scrollParent }: VirtualizedQueueTabl
     return debouncedUpdateRef.current(ids)
   }, [])
 
-  const scrollToFn: ReactVirtualizerOptions<HTMLDivElement, Element>['scrollToFn'] = useCallback(
-    (offset, canSmooth, instance) => {
-      const duration = 1000
-      const start = scrollParent.current?.scrollTop || 0
-      const startTime = Date.now()
-      scrollingRef.current = startTime
-
-      const run = () => {
-        if (scrollingRef.current !== startTime) return
-        const now = Date.now()
-        const elapsed = now - startTime
-        const progress = easeInOutQuint(Math.min(elapsed / duration, 1))
-        const interpolated = start + (offset - start) * progress
-
-        if (elapsed < duration) {
-          elementScroll(interpolated, canSmooth, instance)
-          requestAnimationFrame(run)
-        } else {
-          elementScroll(interpolated, canSmooth, instance)
-        }
-      }
-
-      requestAnimationFrame(run)
-    },
-    [scrollParent],
-  )
-
   const { getTotalSize, getVirtualItems, measureElement } = useVirtualizer({
     count: deferredItemIds.length,
     estimateSize: () => QUEUE_ROW_HEIGHT_PX,
@@ -116,7 +78,7 @@ export function VirtualizedQueueTableBody({ scrollParent }: VirtualizedQueueTabl
     },
     overscan: QUEUE_OVERSCAN,
     scrollMargin: headerHeight,
-    scrollToFn,
+    useAnimationFrameWithResizeObserver: true,
     useFlushSync: false,
   })
 
@@ -125,36 +87,39 @@ export function VirtualizedQueueTableBody({ scrollParent }: VirtualizedQueueTabl
 
   return (
     <div
-      className='relative h-full w-full'
-      style={{ height: totalSize }}
+      className='max-h-150 min-h-35 overflow-y-auto contain-content'
+      ref={scrollParent}
     >
-      <StickyTableHead ref={headerRef}>
-        <QueueTableHeaderRow />
-      </StickyTableHead>
       <div
-        className='absolute top-0 left-0 w-full will-change-transform'
-        style={{
-          transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
-        }}
+        className='relative h-full w-full'
+        style={{ height: totalSize + headerHeight }}
       >
-        {virtualItems.map((virtualRow) => {
-          const rowId = deferredItemIds[virtualRow.index]
-          if (!rowId) return null
+        <StickyTableHead ref={headerRef}>
+          <QueueTableHeaderRow />
+        </StickyTableHead>
+        <div
+          className='absolute top-0 left-0 w-full will-change-transform'
+          style={{
+            transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+          }}
+        >
+          {virtualItems.map((virtualRow) => {
+            const rowId = deferredItemIds[virtualRow.index]
+            if (!rowId) return null
 
-          return (
-            <QueueTableRow
-              id={rowId}
-              index={virtualRow.index}
-              key={virtualRow.key}
-              ref={measureElement}
-              style={{
-                height: virtualRow.size,
-              }}
-            >
-              <ResultRowCells id={rowId} />
-            </QueueTableRow>
-          )
-        })}
+            return (
+              <QueueTableRow
+                id={rowId}
+                index={virtualRow.index}
+                key={virtualRow.key}
+                ref={measureElement}
+                style={{
+                  height: virtualRow.size,
+                }}
+              />
+            )
+          })}
+        </div>
       </div>
     </div>
   )
