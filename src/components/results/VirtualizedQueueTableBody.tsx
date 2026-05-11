@@ -113,9 +113,6 @@ export function VirtualizedQueueTableBody() {
                 index={virtualRow.index}
                 key={virtualRow.key}
                 ref={measureElement}
-                style={{
-                  height: virtualRow.size,
-                }}
               />
             )
           })}
