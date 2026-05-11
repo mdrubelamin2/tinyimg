@@ -20,26 +20,29 @@ const wasmReady = Promise.all([
 
 const optimizer: OptimizerAPI = {
   async optimize(payload: OptimizePayload): Promise<WorkerOutbound> {
-    await wasmReady
     const result = await runOptimizeTask({
       file: payload.file,
       id: payload.id,
       options: payload.options,
     })
 
-    if (result.type === 'RESULT' && result.encodedBytes instanceof ArrayBuffer) {
+    if (
+      result.type === 'RESULT' &&
+      result.encodedBytes instanceof ArrayBuffer &&
+      result.encodedBytes.byteLength > 0
+    ) {
       return Comlink.transfer(result, [result.encodedBytes])
     }
     return result
   },
+
+  async preloadWasm() {
+    await wasmReady
+  },
 }
 
 globalThis.onmessage = (event: MessageEvent<{ port: MessagePort; type: string }>) => {
-  if (event.data?.type === 'INIT') {
-    const port = event.data.port
-    Comlink.expose(optimizer, port)
-    port.start()
-  } else if (event.data?.type === 'TASK_START') {
+  if (event.data?.type === 'TASK_START') {
     const port = event.data.port
     Comlink.expose(optimizer, port)
     port.start()

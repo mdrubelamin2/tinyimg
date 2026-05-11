@@ -83,12 +83,7 @@ let sharedCanvas: null | OffscreenCanvas = null
 let sharedCtx: null | OffscreenCanvasRenderingContext2D = null
 
 export interface ThumbnailAPI {
-  generate(
-    id: string,
-    buffer: ArrayBuffer,
-    type: string,
-    maxEdge?: number,
-  ): Promise<ThumbnailWorkerOutbound>
+  generate(id: string, file: File, type: string, maxEdge?: number): Promise<ThumbnailWorkerOutbound>
 }
 
 function getCanvasForSize(
@@ -108,11 +103,12 @@ function getCanvasForSize(
 const api: ThumbnailAPI = {
   async generate(
     id: string,
-    buffer: ArrayBuffer,
+    file: File,
     type: string,
     maxEdge = MAX_EDGE_PX,
   ): Promise<ThumbnailWorkerOutbound> {
     try {
+      const buffer = await file.arrayBuffer()
       const bmp = await decodeSourceToBitmap(buffer, type, maxEdge)
       const w = bmp.width
       const h = bmp.height

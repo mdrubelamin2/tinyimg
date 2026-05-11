@@ -5,7 +5,7 @@ import type { ImageItem } from '@/lib/queue/types'
 import type { ThumbnailAPI } from '@/workers/thumbnail.worker'
 
 import { resolveOriginalSourceFile } from '@/storage/queue-binary'
-import { imageStore$ } from '@/store/image-store'
+import { imageStore$ } from '@/store/queue-store'
 import {
   setThumbnailEvictionHandler,
   setThumbnailVisibleIdsGetter,
@@ -22,6 +22,7 @@ interface QueueEntry {
 
 let worker: null | Worker = null
 let proxy: Comlink.Remote<ThumbnailAPI> | null = null
+let workerPreload: null | Promise<void> = null
 const queue: QueueEntry[] = []
 const queuedId = new Set<string>()
 let busy = false
@@ -38,6 +39,8 @@ export function destroyThumbnailWorker(): void {
     worker.terminate()
     worker = null
   }
+  proxy = null
+  workerPreload = null
   queue.length = 0
   queuedId.clear()
   busy = false
@@ -66,7 +69,13 @@ export function enqueueThumbnails(ids: readonly string[]): void {
   })()
 }
 
-/** Prioritize visible ids (Virtuoso range); others keep FIFO order. */
+export function preloadThumbnailWorker(): Promise<void> {
+  if (!workerPreload) {
+    workerPreload = ensureWorker().then(() => {})
+  }
+  return workerPreload
+}
+
 export function prioritizeThumbnails(visibleIds: readonly string[]): void {
   if (visibleIds.length === 0) return
   const want = new Set(visibleIds)
@@ -99,8 +108,7 @@ async function pump(): Promise<void> {
 
   try {
     const api = await ensureWorker()
-    const buffer = await next.file.arrayBuffer()
-    const data = await api.generate(next.id, Comlink.transfer(buffer, [buffer]), next.file.type)
+    const data = await api.generate(next.id, next.file, next.file.type)
 
     if (data.type === 'THUMB_OK') {
       const urlStr = URL.createObjectURL(data.blob)

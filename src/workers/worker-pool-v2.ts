@@ -26,6 +26,7 @@ export interface OptimizePayload {
 
 export interface OptimizerAPI {
   optimize(payload: OptimizePayload): Promise<WorkerOutbound>
+  preloadWasm(): Promise<void>
 }
 
 export interface WorkerPoolCallbacks {
@@ -60,7 +61,7 @@ export class WorkerPool {
   private idleWorkers: WorkerEntry[] = []
   private isPumping = false
 
-  private lastWorkerCreatedMs = 0
+  private lastWorkerCreatedMs = Date.now()
   private maxConcurrent: number
   private minConcurrent: number
 
@@ -141,8 +142,40 @@ export class WorkerPool {
     this.callbacks.onActiveCountChange?.(this.activeCount)
   }
 
+  async warmup(): Promise<void> {
+    for (let i = 0; i < this.minConcurrent; i++) {
+      this.primeWasmIdleWorker()
+    }
+  }
+
   private notifyActiveChange() {
     this.callbacks.onActiveCountChange?.(this.activeCount)
+  }
+
+  private async primeWasmIdleWorker(): Promise<void> {
+    this.lastWorkerCreatedMs = Date.now()
+    const worker = new Worker(optimizerWorkerUrl, { type: 'module' })
+    const workerEntry: WorkerEntry = { worker }
+    this.allWorkers.add(workerEntry)
+
+    const channel = new MessageChannel()
+    const port1 = channel.port1
+    const port2 = channel.port2
+
+    try {
+      worker.postMessage({ port: port2, type: 'TASK_START' }, [port2])
+      const proxy = Comlink.wrap<OptimizerAPI>(port1)
+      await proxy.preloadWasm()
+      proxy[Comlink.releaseProxy]()
+    } catch (error) {
+      worker.terminate()
+      this.allWorkers.delete(workerEntry)
+      throw error
+    } finally {
+      port1.close()
+    }
+
+    this.releaseWorker(workerEntry)
   }
 
   private async pump(): Promise<void> {
@@ -151,26 +184,35 @@ export class WorkerPool {
 
     try {
       while (this.active.size < this.maxConcurrent && this.pending.length > 0) {
-        if (this.idleWorkers.length === 0) {
-          const now = Date.now()
-          const elapsed = now - this.lastWorkerCreatedMs
-          if (this.allWorkers.size < this.minConcurrent) {
-            const delay = MIN_WORKER_STAGGER_MS - elapsed
-            if (delay > 0) {
-              this.pumpTimeoutId = setTimeout(() => {
-                void this.pump()
-              }, delay)
-              return
-            }
-          } else if (this.allWorkers.size < this.maxConcurrent) {
-            const delay = DYNAMIC_SCALE_DELAY_MS - elapsed
-            if (delay > 0) {
-              this.pumpTimeoutId = setTimeout(() => {
-                void this.pump()
-              }, delay)
-              return
-            }
-          }
+        if (this.idleWorkers.length > 0) {
+          const workerEntry = this.idleWorkers.pop()!
+          clearTimeout(workerEntry.idleTimeoutId)
+          const task = this.pending.shift()!
+          const key = taskKey(task)
+          const controller = new AbortController()
+          this.active.set(key, { controller, task })
+          this.activeWorkers.set(key, workerEntry)
+          this.notifyActiveChange()
+          void this.runTask(key, task, workerEntry)
+          continue
+        }
+
+        const now = Date.now()
+        const elapsed = now - this.lastWorkerCreatedMs
+
+        let targetDelay: null | number = null
+        if (this.allWorkers.size < this.minConcurrent) {
+          targetDelay = MIN_WORKER_STAGGER_MS
+        } else if (this.allWorkers.size < this.maxConcurrent) {
+          targetDelay = DYNAMIC_SCALE_DELAY_MS
+        }
+
+        if (targetDelay !== null && elapsed < targetDelay) {
+          const delay = targetDelay - elapsed
+          this.pumpTimeoutId = setTimeout(() => {
+            void this.pump()
+          }, delay)
+          return
         }
 
         if (this.pending.length === 0) break
@@ -179,21 +221,14 @@ export class WorkerPool {
         const key = taskKey(task)
         const controller = new AbortController()
 
-        let workerEntry: WorkerEntry
-        if (this.idleWorkers.length > 0) {
-          workerEntry = this.idleWorkers.pop()!
-          clearTimeout(workerEntry.idleTimeoutId)
-        } else {
-          this.lastWorkerCreatedMs = Date.now()
-          const worker = new Worker(optimizerWorkerUrl, { type: 'module' })
-          workerEntry = { worker }
-          this.allWorkers.add(workerEntry)
-        }
+        this.lastWorkerCreatedMs = Date.now()
+        const worker = new Worker(optimizerWorkerUrl, { type: 'module' })
+        const workerEntry: WorkerEntry = { worker }
+        this.allWorkers.add(workerEntry)
 
         this.active.set(key, { controller, task })
         this.activeWorkers.set(key, workerEntry)
         this.notifyActiveChange()
-
         void this.runTask(key, task, workerEntry)
       }
     } finally {
