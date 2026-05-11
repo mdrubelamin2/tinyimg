@@ -1,6 +1,9 @@
 /** Number of items to process before yielding to the UI thread during intake. */
 export const INTAKE_UI_CHUNK = 40
 
+/** First merged batch size after cold start (smaller so UI can paint before larger batches). */
+export const INTAKE_UI_CHUNK_FIRST = 12
+
 /** Number of original files to persist to storage in parallel. */
 export const INTAKE_PERSIST_CONCURRENCY = 6
 

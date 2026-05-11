@@ -4,7 +4,8 @@ import { toast } from 'sonner'
 import type { ImageItem } from '@/lib/queue/types'
 
 import { STATUS_ERROR, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants'
-import { imageStore$ } from '@/store/image-store'
+import { syncIntakeProgressToast } from '@/notifications/toast-emitter'
+import { imageStore$, intake$ } from '@/store/image-store'
 
 /** Heuristic typical savings % by MIME for pre-result estimate (instant feedback). */
 const SAVINGS_TYPICAL_BY_MIME: Record<string, number> = {
@@ -211,4 +212,13 @@ observe(() => {
 observe(() => {
   const stats = queueStats$.get()
   showStatToast(stats)
+})
+
+observe(() => {
+  syncIntakeProgressToast(
+    intake$.active.get(),
+    intake$.label.get(),
+    intake$.processed.get(),
+    intake$.total.get(),
+  )
 })

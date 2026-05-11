@@ -2,7 +2,11 @@ import { computed, observable } from '@legendapp/state'
 
 import type { ImageItem } from '@/lib/queue/types'
 
-import { LARGE_FILE_SERIAL_THRESHOLD_BYTES, LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS } from '@/constants'
+import {
+  LARGE_FILE_SERIAL_THRESHOLD_BYTES,
+  LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS,
+  STATUS_PENDING,
+} from '@/constants'
 import { computeConcurrency } from '@/workers/worker-pool-v2'
 
 /**
@@ -38,7 +42,6 @@ export const intake$ = observable({
 export const pendingTasks$ = computed(() => {
   const items = imageStore$.items.get()
   const order = imageStore$.itemOrder.get()
-  const visible = new Set(imageStore$.visibleItemIds.get())
 
   const pending: { isLarge: boolean; itemId: string; resultId: string }[] = []
 
@@ -51,22 +54,17 @@ export const pendingTasks$ = computed(() => {
       (!!item.width &&
         !!item.height &&
         item.width * item.height >= LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS)
-    for (const rid in item.results) {
-      if (item.results[rid]?.status === 'pending') {
-        // console.log(`Item ${id} isLarge: ${isLarge}`);
+
+    const results = item.results
+    for (const rid in results) {
+      const result = results[rid]
+      if (result?.status === STATUS_PENDING) {
         pending.push({ isLarge, itemId: id, resultId: rid })
       }
     }
   }
 
-  // Sort by visibility first
-  return pending.sort((a, b) => {
-    const aVisible = visible.has(a.itemId)
-    const bVisible = visible.has(b.itemId)
-    if (aVisible && !bVisible) return -1
-    if (!aVisible && bVisible) return 1
-    return 0
-  })
+  return pending
 })
 
 export const isLargeFileInFlight$ = computed(() => {

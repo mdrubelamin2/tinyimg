@@ -174,8 +174,8 @@ export const imageStoreSingleton = {
   },
 
   get items() {
-    const items = imageStore$.items.get()
-    const order = imageStore$.itemOrder.get()
+    const items = imageStore$.items.peek()
+    const order = imageStore$.itemOrder.peek()
     if (memoKey && memoKey.orderRef === order && memoKey.itemsRef === items) {
       return memoMap!
     }
@@ -190,8 +190,8 @@ export const imageStoreSingleton = {
   },
 
   get pendingIds() {
-    const items = imageStore$.items.get()
-    const order = imageStore$.itemOrder.get()
+    const items = imageStore$.items.peek()
+    const order = imageStore$.itemOrder.peek()
     const pending = new Set<string>()
     for (const id of order) {
       const item = items[id]
@@ -363,7 +363,7 @@ export const selectOrderedItems = (state: typeof imageStoreSingleton): ImageItem
 }
 
 export const selectItemCount = (): number => {
-  return imageStore$.itemOrder.get().length
+  return imageStore$.itemOrder.peek().length
 }
 
 export { imageStore$, inFlightTasks$, intake$ } from './queue-store'

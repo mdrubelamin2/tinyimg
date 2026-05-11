@@ -15,13 +15,14 @@ import {
   poolStats$,
 } from '@/store/queue-store'
 import { useSettingsStore } from '@/store/settings-store'
+import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator'
 import { computeConcurrency, WorkerPool } from '@/workers/worker-pool-v2'
 
 import { schedulePersistWorkerResults } from './storage-sync'
 
 let pool: null | WorkerPool = null
-let responseBuffer: WorkerOutbound[] = []
-let errorBuffer: (null | Task)[] = []
+const responseBuffer: WorkerOutbound[] = []
+const errorBuffer: (null | Task)[] = []
 let flushScheduled = false
 let isScheduling = false
 
@@ -76,8 +77,8 @@ export function applyWorkerResult(response: WorkerOutbound): void {
 export function batchApplyResults(): void {
   const responses = [...responseBuffer]
   const errors = [...errorBuffer]
-  responseBuffer = []
-  errorBuffer = []
+  responseBuffer.length = 0
+  errorBuffer.length = 0
   flushScheduled = false
 
   if (responses.length === 0 && errors.length === 0) return
@@ -194,8 +195,21 @@ export async function processNextAsync(options: GlobalOptions): Promise<void> {
 
     if (remainingCapacity <= 0) return
 
-    const pending = pendingTasks$.peek()
-    if (pending.length === 0) return
+    const rawPending = pendingTasks$.peek()
+    if (rawPending.length === 0) return
+
+    const visibleSet = new Set(imageStore$.visibleItemIds.get())
+    const prioritized: typeof rawPending = []
+    const deferred: typeof rawPending = []
+
+    for (const p of rawPending) {
+      if (visibleSet.has(p.itemId)) {
+        prioritized.push(p)
+      } else {
+        deferred.push(p)
+      }
+    }
+    const pending = [...prioritized, ...deferred]
 
     const isLargeBusy = isLargeFileInFlight$.peek()
     if (isLargeBusy) return
@@ -317,7 +331,13 @@ observe(() => {
   const isLargeBusy = isLargeFileInFlight$.get()
   const isIntakeActive = intake$.active.get()
 
-  if (pending.length > 0 && inFlightCount < limit && !isLargeBusy && !isIntakeActive) {
+  if (pending && pending.length > 0 && inFlightCount < limit && !isLargeBusy && !isIntakeActive) {
     void processNextAsync(useSettingsStore.getState().options)
   }
+})
+
+// Reactive thumbnail prioritizer
+observe(() => {
+  const visibleIds = imageStore$.visibleItemIds.get()
+  prioritizeThumbnails(visibleIds)
 })

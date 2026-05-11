@@ -8,6 +8,7 @@ import {
   ERR_ZIP_EXCEEDS_LIMIT,
   INTAKE_PERSIST_CONCURRENCY,
   INTAKE_UI_CHUNK,
+  INTAKE_UI_CHUNK_FIRST,
 } from '@/constants'
 import {
   type CollectIntakeEntry,
@@ -40,6 +41,25 @@ async function persistIntakeOriginalsParallel(chunk: CollectIntakeEntry[]): Prom
   }
 }
 
+/** Macrotask yield so the browser can paint between persist and large store updates. */
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    const run = (): void => {
+      resolve()
+    }
+    const sched = (
+      globalThis as typeof globalThis & {
+        scheduler?: { postTask: (cb: () => void, opts?: { priority: string }) => void }
+      }
+    ).scheduler
+    if (sched?.postTask) {
+      sched.postTask(run, { priority: 'user-visible' })
+    } else {
+      setTimeout(run, 0)
+    }
+  })
+}
+
 const mergeChunkToStore = (chunk: CollectIntakeEntry[]) => {
   batch(() => {
     const order = [...imageStore$.itemOrder.peek()]
@@ -53,6 +73,11 @@ const mergeChunkToStore = (chunk: CollectIntakeEntry[]) => {
       }
     }
     imageStore$.itemOrder.set(order)
+
+    const visible = imageStore$.visibleItemIds.peek() as string[]
+    if (visible.length === 0 && order.length > 0) {
+      imageStore$.visibleItemIds.set(order.slice(0, Math.min(order.length, 32)))
+    }
   })
   enqueueThumbnails(chunk.map((e) => e.item.id))
 }
@@ -115,12 +140,15 @@ export async function addFiles(
     }
 
     const buffer: CollectIntakeEntry[] = []
+    let uiChunkLimit = INTAKE_UI_CHUNK_FIRST
 
     const flushBuffer = async () => {
       if (buffer.length === 0) return
       const chunk = buffer.splice(0)
       await persistIntakeOriginalsParallel(chunk)
+      await yieldToMain()
       mergeChunkToStore(chunk)
+      uiChunkLimit = INTAKE_UI_CHUNK
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve())
       })
@@ -135,13 +163,14 @@ export async function addFiles(
       for await (const ent of iterateIntakeEntries(source, ctx)) {
         if (zipIntakeState.depth > 0) {
           await persistIntakeOriginalsParallel([ent])
+          await yieldToMain()
           mergeChunkToStore([ent])
           await new Promise<void>((resolve) => {
             requestAnimationFrame(() => resolve())
           })
         } else {
           buffer.push(ent)
-          if (buffer.length >= INTAKE_UI_CHUNK) {
+          if (buffer.length >= uiChunkLimit) {
             await flushBuffer()
           }
         }
