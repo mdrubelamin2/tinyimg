@@ -2,6 +2,7 @@ import { useImageStore } from '@/store/image-store'
 import { computeConcurrency } from '@/workers/worker-pool-v2'
 
 const PRESSURE_SAMPLE_MS = 10_000
+const OBSERVE_PRESSURE = false
 
 type PressureObserverCtor = new (
   callback: (records: PressureRecord[]) => void,
@@ -20,7 +21,7 @@ interface PressureRecord {
  */
 export function subscribeCpuPressureToast(): () => void {
   const PO = (globalThis as unknown as { PressureObserver?: PressureObserverCtor }).PressureObserver
-  if (!PO) {
+  if (!PO || !OBSERVE_PRESSURE) {
     return () => {}
   }
   let last: null | string = null
