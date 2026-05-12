@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { TaskOptions } from '../lib/queue/types'
+import type { Task, TaskOptions } from '../lib/queue/types'
 
 import { WorkerPool, type WorkerPoolCallbacks } from '../workers/worker-pool-v2'
 
@@ -49,7 +49,7 @@ describe('WorkerPool Parallel Dispatch', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(pool as any).idleWorkers.push(...(pool as any).allWorkers)
 
-    const task1 = {
+    const task1: Task = {
       file: new File([], 'item1.webp'),
       format: 'webp',
       id: 'item1',
@@ -57,7 +57,7 @@ describe('WorkerPool Parallel Dispatch', () => {
       resultId: 'res1',
     }
 
-    const task2 = {
+    const task2: Task = {
       file: new File([], 'item2.webp'),
       format: 'webp',
       id: 'item2',

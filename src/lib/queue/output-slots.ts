@@ -4,13 +4,18 @@
 
 import type { ImageItem, TaskResizePreset } from '@/lib/queue/types'
 
-import { type GlobalOptions, type OutputSizePreset, RESIZE_MAX_EDGE_MAX } from '@/constants'
+import {
+  type GlobalOptions,
+  type OutputFormat,
+  type OutputSizePreset,
+  RESIZE_MAX_EDGE_MAX,
+} from '@/constants'
 import { getFormatsToProcess } from '@/lib/queue/formats-to-process'
 
 import { shouldUseLosslessRasterEncode } from '../codecs/raster/output-encode'
 
 export interface OutputSlot {
-  format: string
+  format: OutputFormat
   lossless?: boolean
   originalExtension?: string
   originalSize: number

@@ -3,7 +3,7 @@
  * This is the single source of truth for data shapes across main thread and workers.
  */
 
-import type { ItemStatus, LosslessEncoding, SvgInternalFormat } from '@/constants'
+import type { ItemStatus, LosslessEncoding, OutputFormat, SvgInternalFormat } from '@/constants'
 
 // ---------------------------------------------------------------------------
 // Queue item (one per uploaded file)
@@ -73,7 +73,7 @@ export type PipelineStage =
 // ---------------------------------------------------------------------------
 export interface Task {
   file: File
-  format: string
+  format: OutputFormat
   id: string
   options: TaskOptions
   resultId: string
@@ -83,7 +83,7 @@ export interface Task {
 // Task options (sent to the worker for each encode job)
 // ---------------------------------------------------------------------------
 export interface TaskOptions {
-  format: string
+  format: OutputFormat
   losslessEncoding: LosslessEncoding
   originalExtension?: string
   originalSize: number
