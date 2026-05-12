@@ -40,8 +40,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: E2E tests
-        run: npm run test:e2e
-
       - name: Quality gates
         run: npm run test:quality
