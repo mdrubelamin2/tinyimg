@@ -209,6 +209,8 @@ export class WorkerPool {
 
         if (targetDelay !== null && elapsed < targetDelay) {
           const delay = targetDelay - elapsed
+          clearTimeout(this.pumpTimeoutId)
+          this.isPumping = false
           this.pumpTimeoutId = setTimeout(() => {
             void this.pump()
           }, delay)
