@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie'
+import { Dexie, type EntityTable } from 'dexie'
 
 import type { QuotaInfo, StorageAdapter } from '@/storage/storage-adapter'
 
@@ -7,18 +7,18 @@ interface FileEntry {
   key: string
 }
 
-class TinyImgDatabase extends Dexie {
-  files!: EntityTable<FileEntry, 'key'>
-
-  constructor(dbName = 'tinyimg-db') {
-    super(dbName)
-    this.version(1).stores({
-      files: 'key',
-    })
-  }
-}
-
 export function createDexieAdapter(dbName?: string): StorageAdapter {
+  class TinyImgDatabase extends Dexie {
+    files!: EntityTable<FileEntry, 'key'>
+
+    constructor(dbName = 'tinyimg-db') {
+      super(dbName)
+      this.version(1).stores({
+        files: 'key',
+      })
+    }
+  }
+
   const db = new TinyImgDatabase(dbName)
   db.open().catch((error) => console.error('[DexieAdapter] db.open failed', error))
 

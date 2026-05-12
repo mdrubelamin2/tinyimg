@@ -85,18 +85,12 @@ export default defineConfig({
       },
       filename: 'sw.ts',
       injectManifest: {
-        globIgnores: [
-          'assets/*.js',
-          'assets/*.css',
-          'assets/*.wasm',
-          'assets/*.woff',
-          'assets/*.woff2',
-        ],
+        globIgnores: ['assets/*.wasm'],
         globPatterns: ['**/*.{html,webmanifest,svg,png,ico}'],
         injectionPoint: 'self.__WB_MANIFEST',
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
-        rollupFormat: 'es',
       },
+      injectRegister: false,
       manifest: {
         background_color: '#000000',
         description: 'Blazing fast, privacy-first image optimizer for modern web formats.',

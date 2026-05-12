@@ -10,7 +10,6 @@ import '@fontsource/space-grotesk/700.css'
 import './index.css'
 
 import { createRoot } from 'react-dom/client'
-import { registerSW } from 'virtual:pwa-register'
 
 import { registerGlobalFileIntake } from '@/bootstrap/global-file-intake'
 import { bootstrapSession } from '@/bootstrap/session-bootstrap'
@@ -28,15 +27,15 @@ void (async () => {
 
   // Register the Service Worker for ZIP streaming and PWA features
   if ('serviceWorker' in navigator) {
-    registerSW({
-      immediate: true,
-      onRegisteredSW(_url, registration) {
+    const swUrl = '/sw.js'
+    navigator.serviceWorker
+      .register(swUrl, { type: 'module' })
+      .then((registration) => {
         console.info('Service Worker registered!', registration)
-      },
-      onRegisterError(error) {
+      })
+      .catch((error) => {
         console.error('Service Worker registration failed:', error)
-      },
-    })
+      })
   }
 
   applyThemeFromStorage()

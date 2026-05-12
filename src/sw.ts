@@ -1,7 +1,5 @@
 import { downloadZip } from 'client-zip'
 import { precacheAndRoute } from 'workbox-precaching'
-import { setDefaultHandler } from 'workbox-routing'
-import { NetworkOnly } from 'workbox-strategies'
 
 import { createNfsaAdapter } from './storage/nfsa-adapter'
 
@@ -39,114 +37,107 @@ self.addEventListener('message', (event) => {
 
 // Register our custom fetch handler BEFORE Serwist to intercept ZIP downloads
 // Use capture phase to ensure we run before Serwist
-self.addEventListener(
-  'fetch',
-  (event) => {
-    const url = new URL(event.request.url)
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
 
-    if (!url.pathname.startsWith('/_/download-zip/')) {
-      return
-    }
+  if (!url.pathname.startsWith('/_/download-zip/')) {
+    return
+  }
 
-    // Prevent Serwist's fetch handler from running
-    event.respondWith(
-      (async () => {
-        // Drain preload response
-        if ('preloadResponse' in event && event.preloadResponse) {
-          await event.preloadResponse
-        }
+  // Prevent Serwist's fetch handler from running
+  event.respondWith(
+    (async () => {
+      // Drain preload response
+      if ('preloadResponse' in event && event.preloadResponse) {
+        await event.preloadResponse
+      }
 
-        const parts = url.pathname.split('/')
-        const batchId = parts[3] ?? ''
-        const filename = parts.slice(4).join('/') || 'images.zip'
+      const parts = url.pathname.split('/')
+      const batchId = parts[3] ?? ''
+      const filename = parts.slice(4).join('/') || 'images.zip'
 
-        const manifest = zipManifests.get(batchId)
-        if (!manifest) {
-          console.error(`[SW] Manifest not found for batchId: ${batchId}`)
-          return new Response('Not Found', { status: 404 })
-        }
-        zipManifests.delete(batchId)
+      const manifest = zipManifests.get(batchId)
+      if (!manifest) {
+        console.error(`[SW] Manifest not found for batchId: ${batchId}`)
+        return new Response('Not Found', { status: 404 })
+      }
+      zipManifests.delete(batchId)
 
-        try {
-          const storage = await createNfsaAdapter()
+      try {
+        const storage = await createNfsaAdapter()
 
-          // Send diagnostic info to all clients
-          const clients = await self.clients.matchAll()
-          for (const client of clients) {
-            client.postMessage({
-              message: `Starting ZIP with ${manifest.length} files`,
-              type: 'SW_DIAGNOSTIC',
-            })
-          }
-
-          // Create async generator that yields files as they're retrieved
-          async function* fileSource() {
-            if (!manifest) {
-              console.error('[SW] Manifest is undefined in fileSource')
-              return
-            }
-
-            let filesYielded = 0
-
-            for (const entry of manifest) {
-              const fileData = await storage.getBackedFile(entry.payloadKey)
-
-              if (fileData) {
-                yield { input: fileData, name: entry.path }
-                filesYielded++
-
-                // Send progress to clients
-                const clients = await self.clients.matchAll()
-                for (const client of clients) {
-                  client.postMessage({
-                    message: `Added ${filesYielded}/${manifest.length} files`,
-                    type: 'SW_DIAGNOSTIC',
-                  })
-                }
-              } else {
-                console.warn(`[SW] Missing file: ${entry.path}`)
-              }
-            }
-
-            // Send final stats to clients
-            const clients = await self.clients.matchAll()
-            for (const client of clients) {
-              client.postMessage({
-                message: `Complete - ${filesYielded} files zipped`,
-                type: 'SW_DIAGNOSTIC',
-              })
-            }
-          }
-
-          const zipOutput = downloadZip(fileSource())
-
-          return new Response(zipOutput.body, {
-            headers: {
-              'Content-Disposition': `attachment; filename="${filename}"`,
-              'Content-Type': 'application/zip',
-            },
+        // Send diagnostic info to all clients
+        const clients = await self.clients.matchAll()
+        for (const client of clients) {
+          client.postMessage({
+            message: `Starting ZIP with ${manifest.length} files`,
+            type: 'SW_DIAGNOSTIC',
           })
-        } catch (error) {
-          // Send error to clients
+        }
+
+        // Create async generator that yields files as they're retrieved
+        async function* fileSource() {
+          if (!manifest) {
+            console.error('[SW] Manifest is undefined in fileSource')
+            return
+          }
+
+          let filesYielded = 0
+
+          for (const entry of manifest) {
+            const fileData = await storage.getBackedFile(entry.payloadKey)
+
+            if (fileData) {
+              yield { input: fileData, name: entry.path }
+              filesYielded++
+
+              // Send progress to clients
+              const clients = await self.clients.matchAll()
+              for (const client of clients) {
+                client.postMessage({
+                  message: `Added ${filesYielded}/${manifest.length} files`,
+                  type: 'SW_DIAGNOSTIC',
+                })
+              }
+            } else {
+              console.warn(`[SW] Missing file: ${entry.path}`)
+            }
+          }
+
+          // Send final stats to clients
           const clients = await self.clients.matchAll()
-          const errMsg = error instanceof Error ? error.message : String(error)
           for (const client of clients) {
             client.postMessage({
-              message: `SW: ERROR - ${errMsg}`,
+              message: `Complete - ${filesYielded} files zipped`,
               type: 'SW_DIAGNOSTIC',
             })
           }
-
-          return new Response('Streaming Failed', { status: 500 })
         }
-      })(),
-    )
-  },
-  true,
-)
+
+        const zipOutput = downloadZip(fileSource())
+
+        return new Response(zipOutput.body, {
+          headers: {
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Content-Type': 'application/zip',
+          },
+        })
+      } catch (error) {
+        // Send error to clients
+        const clients = await self.clients.matchAll()
+        const errMsg = error instanceof Error ? error.message : String(error)
+        for (const client of clients) {
+          client.postMessage({
+            message: `SW: ERROR - ${errMsg}`,
+            type: 'SW_DIAGNOSTIC',
+          })
+        }
+
+        return new Response('Streaming Failed', { status: 500 })
+      }
+    })(),
+  )
+})
 
 // Precache all assets generated by Vite
 precacheAndRoute(self.__WB_MANIFEST)
-
-// Default to network for anything not precached
-setDefaultHandler(new NetworkOnly())
