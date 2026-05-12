@@ -12,14 +12,26 @@ import { ensureHeicDecoder, ensureHeicEncoder, ensureQuant, ensureResvg } from '
  * Triggers loading as soon as the worker script is parsed.
  */
 const wasmReady = Promise.all([
-  ensureResvg().catch((error) => console.warn('Pre-init Resvg failed', error)),
-  ensureQuant().catch((error) => console.warn('Pre-init Quant failed', error)),
-  ensureHeicDecoder().catch((error) => console.warn('Pre-init Heic Decoder failed', error)),
-  ensureHeicEncoder().catch((error) => console.warn('Pre-init Heic Encoder failed', error)),
+  ensureResvg(),
+  ensureQuant(),
+  ensureHeicDecoder(),
+  ensureHeicEncoder(),
 ])
 
 const optimizer: OptimizerAPI = {
   async optimize(payload: OptimizePayload): Promise<WorkerOutbound> {
+    try {
+      await wasmReady
+    } catch (error) {
+      return {
+        error: `WASM Initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+        format: payload.options.format,
+        id: payload.id,
+        resultId: payload.options.resultId,
+        type: 'ERROR',
+      }
+    }
+
     const result = await runOptimizeTask({
       file: payload.file,
       id: payload.id,
