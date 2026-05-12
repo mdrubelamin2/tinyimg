@@ -49,6 +49,9 @@ export default defineConfig({
       },
     },
   },
+  define: {
+    __BUILD_TIME__: new Date().toISOString(),
+  },
   optimizeDeps: {
     exclude: ['@resvg/resvg-wasm'],
   },

@@ -28,10 +28,17 @@ void (async () => {
   // Register the Service Worker for ZIP streaming and PWA features
   if ('serviceWorker' in navigator) {
     const swUrl = '/sw.js'
+
+    // The controllerchange event fires when a new service worker takes over
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      globalThis.location.reload()
+    })
+
     navigator.serviceWorker
-      .register(swUrl, { type: 'module' })
+      .register(swUrl, { type: 'module', updateViaCache: 'none' })
       .then((registration) => {
         console.info('Service Worker registered!', registration)
+        void registration.update()
       })
       .catch((error) => {
         console.error('Service Worker registration failed:', error)
