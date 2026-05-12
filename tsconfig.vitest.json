@@ -2,7 +2,7 @@
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo",
-    "types": ["vite/client", "node", "vitest/globals", "@serwist/vite/typings", "react/canary"]
+    "types": ["vite/client", "node", "vitest/globals", "vite-plugin-pwa/client", "react/canary"]
   },
   "include": [
     "src/tests/**/*.ts",

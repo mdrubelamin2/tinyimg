@@ -9,8 +9,8 @@ import '@fontsource/space-grotesk/700.css'
 
 import './index.css'
 
-import ReactDOM from 'react-dom/client'
-import { getSerwist } from 'virtual:serwist'
+import { createRoot } from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
 
 import { registerGlobalFileIntake } from '@/bootstrap/global-file-intake'
 import { bootstrapSession } from '@/bootstrap/session-bootstrap'
@@ -28,20 +28,15 @@ void (async () => {
 
   // Register the Service Worker for ZIP streaming and PWA features
   if ('serviceWorker' in navigator) {
-    const serwist = await getSerwist()
-
-    serwist?.addEventListener('installed', () => {
-      console.info('Serwist installed!')
+    registerSW({
+      immediate: true,
+      onRegisteredSW(_url, registration) {
+        console.info('Service Worker registered!', registration)
+      },
+      onRegisterError(error) {
+        console.error('Service Worker registration failed:', error)
+      },
     })
-
-    void serwist
-      ?.register({ immediate: true })
-      .then(() => {
-        console.info('Serwist registration successful!')
-      })
-      .catch((error) => {
-        console.error('Serwist registration failed:', error)
-      })
   }
 
   applyThemeFromStorage()
@@ -57,7 +52,7 @@ void (async () => {
     })
   }
 
-  const root = ReactDOM.createRoot(document.querySelector('#root')!, {
+  const root = createRoot(document.querySelector('#root')!, {
     onCaughtError: (error, errorInfo) => {
       console.error('Caught error:', error, errorInfo)
     },

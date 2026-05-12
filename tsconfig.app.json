@@ -9,7 +9,7 @@
     "useDefineForClassFields": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable", "webworker"],
     "module": "ESNext",
-    "types": ["vite/client", "node", "vitest/globals", "@serwist/vite/typings", "react/canary"],
+    "types": ["vite/client", "node", "vitest/globals", "vite-plugin-pwa/client", "react/canary"],
     "skipLibCheck": true,
 
     /* Bundler mode */

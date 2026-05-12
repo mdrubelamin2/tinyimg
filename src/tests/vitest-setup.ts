@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import 'fake-indexeddb/auto'
 
 /**
  * poolifier-web-worker selects runtime at import time (`window` + `navigator` ⇒ browser).

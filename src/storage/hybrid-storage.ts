@@ -19,3 +19,7 @@ export async function getSessionBinaryStorage(): Promise<StorageAdapter> {
   cached = await createNfsaAdapter()
   return cached
 }
+
+export function resetSessionStorage(): void {
+  cached = null
+}

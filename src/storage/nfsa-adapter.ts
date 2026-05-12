@@ -2,6 +2,7 @@ import { getOriginPrivateDirectory } from 'native-file-system-adapter'
 
 import type { QuotaInfo, StorageAdapter } from '@/storage/storage-adapter'
 
+import { createDexieAdapter } from '@/storage/dexie-adapter'
 import { fileNameToKey, toFileName } from '@/storage/nfsa-storage-filename'
 
 /** `entries()` exists at runtime; DOM typings may lag behind. */
@@ -10,7 +11,11 @@ type RootDir = FileSystemDirectoryHandle & {
 }
 
 export async function createNfsaAdapter(): Promise<StorageAdapter> {
-  const root = await resolveRoot()
+  const root = await resolveOpfsRoot()
+
+  if (!root) {
+    return createDexieAdapter()
+  }
 
   const index = new Map<string, string>()
 
@@ -125,23 +130,12 @@ export async function createNfsaAdapter(): Promise<StorageAdapter> {
   }
 }
 
-async function resolveRoot(): Promise<RootDir> {
+async function resolveOpfsRoot(): Promise<null | RootDir> {
   try {
     const r = await getOriginPrivateDirectory()
     if (r) return r as unknown as RootDir
   } catch {
-    /* fall through */
+    return null
   }
-  try {
-    const r = await getOriginPrivateDirectory(
-      import('native-file-system-adapter/src/adapters/indexeddb.js'),
-    )
-    if (r) return r as unknown as RootDir
-  } catch {
-    /* fall through */
-  }
-  const r = await getOriginPrivateDirectory(
-    import('native-file-system-adapter/src/adapters/memory.js'),
-  )
-  return r as unknown as RootDir
+  return null
 }

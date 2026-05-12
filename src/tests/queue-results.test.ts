@@ -9,7 +9,7 @@ import {
   STATUS_PROCESSING,
   STATUS_SUCCESS,
 } from '@/constants'
-import { getSessionBinaryStorage } from '@/storage/hybrid-storage'
+import { getSessionBinaryStorage, resetSessionStorage } from '@/storage/hybrid-storage'
 import * as queueBinary from '@/storage/queue-binary'
 import { useImageStore } from '@/store/image-store'
 
@@ -80,6 +80,7 @@ describe('queue worker results via image-store', () => {
       })),
     )
     useImageStore.getState().clearAll()
+    resetSessionStorage()
     await getSessionBinaryStorage()
   })
 
@@ -90,9 +91,10 @@ describe('queue worker results via image-store', () => {
   })
 
   async function flushAsyncWork(): Promise<void> {
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 500; i++) {
       await Promise.resolve()
     }
+    await new Promise((r) => setTimeout(r, 20))
   }
 
   it('applies worker RESULT and marks item success with persisted output', async () => {
