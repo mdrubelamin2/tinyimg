@@ -23,7 +23,7 @@ export function AppHeader() {
             TinyIMG
           </h1>
           <p className='text-muted-foreground mt-0.5 text-[9px] font-semibold tracking-widest uppercase md:text-[10px]'>
-            Industrial Optimizer
+            Professional Image Optimizer
           </p>
         </div>
       </div>

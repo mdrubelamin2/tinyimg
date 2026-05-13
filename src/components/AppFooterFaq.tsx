@@ -1,4 +1,4 @@
-import { Zap } from 'lucide-react'
+import { Heart, Zap } from 'lucide-react'
 
 import {
   Accordion,
@@ -10,23 +10,23 @@ import {
 const FAQ_DATA = [
   {
     answer:
-      'Input: SVG, PNG, JPG, WebP, AVIF, HEIC (Safari), GIF, BMP, TIFF. Output: WebP, AVIF, JPEG, PNG, JXL. SVGs can be optimized or rasterized at display density.',
-    question: 'What formats are supported?',
+      'We support major formats like SVG, PNG, JPG, WebP, AVIF, and HEIC. We also handle GIF (static first-frame only), BMP, and TIFF (support varies by browser). You can export to WebP, AVIF, JPEG, PNG, or HEIC.',
+    question: 'What image formats can I use?',
   },
   {
     answer:
-      'No. Optimization runs entirely in your browser using WebAssembly. Your files never leave your device.',
-    question: 'Is my data sent to a server?',
+      'Yes. All processing happens locally in your browser using secure sandboxed technology. Your images are never uploaded or sent to any server.',
+    question: 'Is my data private and secure?',
   },
   {
     answer:
-      '25MB per image file; ZIP archives up to 2GB. Batch download is capped to avoid memory issues.',
-    question: 'What is the file size limit?',
+      'You can process individual images up to 25MB, or upload ZIP archives up to 2GB. Large batch processing is handled efficiently to save your device memory.',
+    question: 'Are there any file size limits?',
   },
   {
     answer:
-      "Download managers (IDM, FDM, etc.) intercept downloads before our streaming system can handle them. Please temporarily disable your download manager extension and use your browser's built-in downloader. This allows us to stream files directly from storage without loading everything into memory, which is essential for handling large batches on low-memory devices.",
-    question: 'Why does "Download All" fail with my download manager?',
+      "Some download managers (like IDM or FDM) can interfere with our secure streaming system. If you experience issues, please temporarily disable them and use your browser's default downloader. This ensures smooth, fast, and memory-efficient downloads for large batches.",
+    question: 'Why is "Download All" not working for me?',
   },
 ]
 
@@ -41,19 +41,19 @@ export function AppFooterFaq() {
             fill='currentColor'
             size={14}
           />{' '}
-          Powered by WASM Engines
+          Secure Browser-Native Engine
         </div>
         <h2 className='text-foreground text-2xl font-extrabold tracking-tight text-balance md:text-3xl'>
-          Industrial grade optimization.{' '}
-          <span className='text-primary italic'>Browser native.</span>
+          Professional-grade optimization.{' '}
+          <span className='text-primary italic'>100% Private.</span>
         </h2>
         <p className='text-muted-foreground mx-auto max-w-2xl text-sm leading-relaxed text-balance md:text-base'>
-          The definitive alternative to TinyPNG. Recursive folder support, intelligent SVG
-          rasterization, before/after preview, and zero data leakage.
+          A powerful, private alternative to TinyPNG. Supports recursive folders, intelligent SVG
+          rasterization, and live previews—all while keeping your data strictly on your device.
         </p>
       </section>
       <section className='border-border/50 mx-auto max-w-2xl border-t px-4 py-10 md:px-8'>
-        <h3 className='text-muted-foreground mb-6 text-center text-xs font-black tracking-widest uppercase'>
+        <h3 className='text-muted-foreground mb-6 text-xs font-black tracking-widest uppercase'>
           FAQ
         </h3>
         <Accordion
@@ -72,9 +72,26 @@ export function AppFooterFaq() {
           ))}
         </Accordion>
       </section>
-      <p className='text-muted-foreground/60 border-border/50 border-t py-6 text-center text-[10px] font-bold tracking-widest uppercase'>
-        &copy; 2026 TinyIMG &bull; Industrial Strength &bull; Pure WASM
-      </p>
+      <div className='text-muted-foreground/60 border-border/50 border-t py-8 text-center text-[10px] font-bold tracking-widest uppercase'>
+        <p>&copy; 2026 TinyIMG &bull; Privacy First</p>
+        <p className='mt-2 inline-flex items-center gap-1.5 text-[9px] opacity-80'>
+          Crafted with{' '}
+          <Heart
+            className='text-destructive'
+            fill='currentColor'
+            size={10}
+          />{' '}
+          by{' '}
+          <a
+            className='text-primary decoration-primary/50 hover:decoration-primary underline underline-offset-4 transition-all hover:opacity-80'
+            href='https://www.linkedin.com/in/mdrubelamin2/'
+            rel='noopener noreferrer'
+            target='_blank'
+          >
+            Md Rubel Amin
+          </a>
+        </p>
+      </div>
     </footer>
   )
 }

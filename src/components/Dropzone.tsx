@@ -110,14 +110,14 @@ export const Dropzone = () => {
             )}
           </div>
           <h3 className='text-foreground text-2xl font-bold tracking-tight md:text-3xl'>
-            {dropDisabled ? 'Adding to queue…' : 'Drop anywhere on the page or paste (Ctrl+V)'}
+            {dropDisabled ? 'Adding to queue…' : 'Drop images or folders here'}
           </h3>
           <p className='text-muted-foreground max-w-md text-sm leading-relaxed font-medium'>
-            SVG, PNG, JPG, WebP, AVIF, GIF, BMP, TIFF, HEIC (Safari), ZIPs. Folders: drag from your
-            desktop.
+            Supports PNG, JPG, WebP, AVIF, SVG, HEIC, and more. Paste directly or drag entire
+            folders.
             <br />
-            <span className='text-muted-foreground/80'>Highly private.</span>{' '}
-            <span className='text-primary font-bold'>Images max 25MB · ZIP max 2GB.</span>
+            <span className='text-muted-foreground/80'>100% Secure &amp; Private.</span>{' '}
+            <span className='text-primary font-bold'>Max 25MB per image · ZIPs up to 2GB.</span>
           </p>
           <div className='bg-primary/5 border-primary/10 text-primary inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-bold tracking-widest uppercase'>
             <span
@@ -126,7 +126,7 @@ export const Dropzone = () => {
                 !dropDisabled && 'animate-pulse-subtle',
               )}
             />
-            {dropDisabled ? 'Working' : 'Click to browse'}
+            {dropDisabled ? 'Processing' : 'Click to browse'}
           </div>
         </div>
 

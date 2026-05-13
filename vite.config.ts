@@ -96,7 +96,7 @@ export default defineConfig({
       injectRegister: false,
       manifest: {
         background_color: '#000000',
-        description: 'Blazing fast, privacy-first image optimizer for modern web formats.',
+        description: 'Professional-grade, privacy-first image optimizer. 100% browser-native.',
         display: 'standalone',
         icons: [
           {
@@ -106,7 +106,7 @@ export default defineConfig({
             type: 'image/svg+xml',
           },
         ],
-        name: 'TinyIMG - Pro Image Optimizer',
+        name: 'TinyIMG - Professional Image Optimizer',
         orientation: 'any',
         scope: '/',
         short_name: 'TinyIMG',

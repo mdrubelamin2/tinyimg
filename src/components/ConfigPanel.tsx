@@ -286,7 +286,7 @@ export function ConfigPanel() {
         <div className=''>
           <div className='mb-3 flex items-center justify-between'>
             <span className='text-muted-foreground text-[10px] font-black tracking-[0.2em] uppercase'>
-              Output sizes
+              Target Dimensions
             </span>
             <div className='border-border bg-muted inline-flex rounded-lg border p-0.5 shadow-sm'>
               <button
@@ -368,8 +368,8 @@ export function ConfigPanel() {
 
               {showSlotExplosion && (
                 <p className='rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[10px] leading-relaxed font-bold text-amber-600 dark:text-amber-400'>
-                  Up to ~{slotProductEstimate} files per image ({formatCountEstimate} formats ×{' '}
-                  {sizeCountEstimate} sizes). Large batches use more memory and time.
+                  Caution: This configuration will generate ~{slotProductEstimate} files per image.
+                  Large batches may slow down your browser or use excessive memory.
                 </p>
               )}
             </>
@@ -539,12 +539,12 @@ export function ConfigPanel() {
               className='text-muted-foreground text-[10px] font-black tracking-[0.2em] uppercase'
               htmlFor='lossless-encoding'
             >
-              Lossless encoding
+              Preserve Quality (Lossless)
             </label>
           </div>
           <p className='text-muted-foreground mb-3 text-[10px] leading-relaxed'>
-            Often increases file size but offers zero compression overhead. None (lossy, default) is
-            recommended for most use cases.
+            Enable this to maintain 100% original quality. Note that this often results in larger
+            file sizes. Recommended: None (lossy).
           </p>
           <Select
             onValueChange={(value) => updateDraft('losslessEncoding', value as LosslessEncoding)}
@@ -575,12 +575,12 @@ export function ConfigPanel() {
               className='text-muted-foreground text-[10px] font-black tracking-[0.2em] uppercase'
               htmlFor='svg-internal-format'
             >
-              SVG Internal Data
+              SVG Processing Format
             </label>
           </div>
           <p className='text-muted-foreground mb-3 text-[10px] leading-relaxed'>
-            Controls the internal raster format used when processing SVGs. The SVG is rendered to
-            this format before optimization and export.
+            Choose the intermediate format used when converting SVGs to raster images. This affects
+            the quality and compatibility of the final output.
           </p>
           <Select
             onValueChange={(value) =>
