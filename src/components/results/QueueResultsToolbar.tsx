@@ -1,5 +1,5 @@
 import { Show, useValue } from '@legendapp/state/react'
-import { CheckCircle2, Download, Trash2 } from 'lucide-react'
+import { BrushCleaning, Download, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -64,11 +64,12 @@ export function QueueResultsToolbar() {
                 title='Clear Optimized'
                 variant='secondary'
               >
-                <CheckCircle2
+                <BrushCleaning
                   className='shrink-0'
-                  size={16}
+                  size={14}
                 />
-                <span className='hidden xl:inline'>Clear Optimized</span>
+                <span className='hidden sm:inline'>Clear Optimized</span>
+                <span className='sm:hidden'>Clear</span>
               </Button>
             </Show>
             <Button

@@ -248,30 +248,36 @@ const ImagePreview = ({ itemId, onClose, onResultChange, selectedResultId }: Ima
             <div className='absolute inset-0 min-h-0 overflow-hidden'>
               {!originalUrl && !optimizedUrl && (
                 <div className='flex h-full flex-col items-center justify-center gap-2'>
-                  <p className='text-muted-foreground text-sm'>Image Preview not available</p>
+                  <div className='border-primary h-6 w-6 animate-spin rounded-full border-2 border-t-transparent' />
+                  <p className='text-muted-foreground text-[10px] font-bold tracking-widest uppercase'>
+                    Loading Preview…
+                  </p>
                 </div>
               )}
-              {originalUrl && !optimizedUrl && (
-                <img
-                  alt={`Original ${item.fileName}`}
-                  className='h-full w-full object-contain'
-                  src={originalUrl}
-                />
-              )}
-              {!originalUrl && optimizedUrl && (
-                <img
-                  alt={`Optimized ${item.fileName}`}
-                  className='h-full w-full object-contain'
-                  src={optimizedUrl}
-                />
-              )}
-              {originalUrl && optimizedUrl && (
+              {originalUrl && optimizedUrl ? (
                 <ImageCompareViewer
                   className='!rounded-none border-0 bg-transparent'
                   initialPositionPercent={90}
                   optimizedUrl={optimizedUrl}
                   originalUrl={originalUrl}
                 />
+              ) : (
+                <>
+                  {originalUrl && (
+                    <img
+                      alt={`Original ${item.fileName}`}
+                      className='animate-in fade-in h-full w-full object-contain duration-300'
+                      src={originalUrl}
+                    />
+                  )}
+                  {!originalUrl && optimizedUrl && (
+                    <img
+                      alt={`Optimized ${item.fileName}`}
+                      className='animate-in fade-in h-full w-full object-contain duration-300'
+                      src={optimizedUrl}
+                    />
+                  )}
+                </>
               )}
             </div>
           </div>
