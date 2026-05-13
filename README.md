@@ -1,87 +1,78 @@
 # TinyIMG
 
-Browser-native image optimizer built with React + Vite + WASM codecs.
-All optimization runs on-device.
+**Professional, browser-native image optimization. Zero server-side overhead. 100% Privacy.**
 
-## Stack
+TinyIMG is a performance-first engine designed to handle complex vector and raster workloads entirely in the browser using modern WASM codecs and a unique SW-streamed download pipeline.
 
-- React 19 + TypeScript
-- Vite 8
-- Tailwind CSS 4
-- WASM/image pipeline: `@jsquash/*` (incl. JPEG XL encode), `libimagequant-wasm`, `@resvg/resvg-wasm`, `svgo`
-- UI primitives aligned to shadcn patterns (`src/components/ui/*`)
+---
 
-## SVG Optimization Engine (2026 Standard)
+## 🛠 Tech Stack & Strategic Decisions
 
-TinyIMG uses a high-IQ, single-pass pipeline for SVG optimization that balances file size, visual fidelity, and browser rendering performance.
+We chose these libraries to solve specific architectural bottlenecks in high-throughput browser-based image processing.
 
-### 1. Adaptive Output Strategy
-The engine automatically classifies incoming SVGs into two output paths based on expert-approved 2026 thresholds:
+| Library                | Role              | Strategic Decision                                                                                                                                  |
+| :--------------------- | :---------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **React 19 + Vite 8**  | Core Framework    | Using Canary React for stabilized UI patterns; Vite for native WASM and Worker thread orchestration.                                                |
+| **@jsquash/\* (WASM)** | Codec Engine      | Production-grade C++ codecs (AVIF, WebP, MozJPEG) and **OxiPNG** for post-processing.                                                               |
+| **Libimagequant**      | PNG Quantization  | Expert 8-bit palette reduction with **Floyd-Steinberg dithering**. Turns heavy PNG-24s into light PNG-8s with near-zero visual loss.                |
+| **Legend State**       | State Management  | High-performance, fine-grained observables. Keeps the UI 60fps even when thousands of queue updates fire per second.                                |
+| **@resvg/resvg-wasm**  | SVG Rasterization | The gold standard for SVG spec compliance. Picked over browser `Canvas` for pixel-perfect, deterministic rendering.                                 |
+| **Dexie (IndexedDB)**  | Binary Storage    | Reliable storage for results. Acts as a high-performance fallback when OPFS is unavailable.                                                         |
+| **Native File System** | OPFS Engine       | Uses the **Origin Private File System** via a specialized adapter for near-native disk I/O on large assets.                                         |
+| **Service Worker**     | Streaming Zip     | Instead of zipping in-memory (which risks OOM), we stream bytes directly to the browser's download manager via a Service Worker fetch interception. |
 
-- **Path A: Optimized Vector (Standard)**
-  - Used for icons, logos, and simple illustrations.
-  - Keeps the file as a sharp, scalable XML vector.
-  - **Force-Vector Rule**: Files < 4KB always remain vectors to ensure zero-latency rendering.
+---
 
-- **Path B: Rasterized SVG Wrapper (Performance-First)**
-  - Used for extremely complex vectors (e.g., architectural maps, traced photos) that would cause browser "jank" (GPU/CPU lag).
-  - Rasterizes the SVG into a high-fidelity **AVIF/WebP** bitmap and wraps it in a responsive SVG container.
-  - **Complexity Threshold**: Triggered if nodes > 1,500 OR path segments > 5,000.
-  - **Hybrid Threshold**: Triggered if embedded raster data > 32KB, or > 4KB while accounting for > 50% of the total file size.
+## 🚀 The Journey: From Drop to Download
 
-### 2. Unified AST Pipeline
-Unlike standard tools that run multiple passes, TinyIMG uses a **Unified AST Visitor**. During the SVGO optimization pass, a custom plugin walks the Abstract Syntax Tree once to extract perfect metadata (node counts, raster bytes, filter depth) with zero additional CPU overhead.
+TinyIMG uses a non-blocking, multi-threaded pipeline to ensure your machine stays responsive under load.
 
-### 3. Professional Suite (SVGOMG-Grade)
-The engine implements 40+ professional-grade optimization flags, including:
-- **Smart Geometry**: Path merging, group collapsing, and redundant attribute stripping.
-- **Precision Decision**: Precision 3 for paths (high fidelity) and Precision 5 for transforms (layout stability).
-- **Collision Protection**: Automatic ID prefixing to prevent broken masks when multiple SVGs are inlined on a page.
-- **Accessibility**: Explicitly preserves `viewBox` and `title` tags for perfect responsiveness and screen-reader support.
+### 1. The Intake (Dropzone)
 
-## Supported formats
+When you drop an image, we perform local-first validation.
 
-- **Input:** PNG, JPEG/JPG, WebP, AVIF, SVG, GIF (first frame), BMP, TIFF (if the browser decodes it), HEIC/HEIF (Safari / iOS WebKit); folder/ZIP intake
-- **Output:** WebP, AVIF, JPEG, PNG, **JPEG XL (experimental)**, original-preserving mode
-- **SVG path:** optimized SVG or rasterized pipeline based on config and size heuristics
+- **Magic Byte Check**: We verify file signatures to ensure corrupt or mislabeled files don't hit the workers.
+- **Storage Hand-off**: Originals are persisted to **OPFS (Origin Private File System)** or IndexedDB immediately, preventing "Main Thread Memory Pressure."
 
-Files are validated by extension + magic bytes before processing.
+### 2. The Queue (State Orchestration)
 
-### SVG export density (Global Config)
+The image enters the **Legend State** store.
 
-- **Display (default):** Raster is approximately **logical width × DPR** by **logical height × DPR** pixels (DPR 1–3, default 2). The SVG wrapper still declares **logical** `width`/`height`/`viewBox`, so on-screen size matches the original SVG while the embedded bitmap stays sharp on high-DPI displays (similar idea to Playwright `device_scale_factor`). Flat WebP/AVIF/PNG/JPEG/JXL exports use the **same** bitmap dimensions as the wrapper payload.
-- **Legacy:** Bitmap is exactly **intrinsic W×H** after internal supersampling and high-quality downscale (previous default behavior).
-- **Raster engine (display mode):** **Auto** tries the **browser** (`createImageBitmap` + `OffscreenCanvas`) first for Chromium-like results, then **resvg**. **Browser only** / **resvg only** pin one engine. Output can differ slightly between browsers; resvg is deterministic but may not match Chrome pixel-for-pixel.
+- **Immediate Feedback**: A dedicated `thumbnail.worker` generates a low-res preview instantly.
+- **Batched UI Updates**: Results are batched to prevent React from choking on high-frequency worker messages.
 
-If `W×H×DPR²` would exceed the **256 MP** pixel guard, DPR is **reduced automatically** (minimum 1).
+### 3. The Worker Pool (Heavy Lifting)
 
-## Performance notes
+We utilize a **Worker Pool v2** architecture for maximum concurrency.
 
-- **SharedArrayBuffer:** Full zero-copy shared memory between threads usually requires cross-origin isolation headers (`Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy`). The app uses **transferable buffers** and a worker pool without requiring those headers for static hosting.
-- **Codec warm-up:** In production/preview builds, the app may preload the WebP WASM module on the main thread to shave cold latency (skipped in Vite dev to avoid Wasm ESM transform issues).
-- **WASM streaming:** Resvg and libimagequant use `compileStreaming` with an `arrayBuffer` fallback where needed. jSquash packages typically select SIMD-capable WASM when the browser supports it; use a current evergreen browser for best speed.
+- **Smart Classification**: On intake, a heuristic engine analyzes color density and luminance entropy to classify images as **Graphic** or **Photo**. This automatically switches encoding presets for optimal quality (e.g., opting for stronger quantization on graphics).
+- **Dynamic Threading**: Worker count is automatically tuned based on your CPU core count and current pressure.
+- **Transferable Buffers**: Binary data is "transferred" between threads rather than copied, eliminating the CPU cost of data serialization.
+- **Adaptive SVG Pipeline**: Complex SVGs are analyzed by a **Unified AST Visitor**. Large vectors are adaptively rasterized into high-DPI AVIF/WebP wrappers to ensure smooth rendering in browsers.
 
-## Non-goals (v1)
+### 4. The Exit (SW Streamed Download)
 
-- No **animated** GIF / WebP / AVIF output (first-frame GIF decode only).
-- No server-side processing or uploads.
-- **JPEG XL:** experimental output; see [JPEG XL support](https://caniuse.com/jpeg-xl) in browsers. JPEG sources at **100% quality** → **lossless JXL** for a practical recompression path.
+- **Zero-Memory Zipping**: When you click "Download All," the app sends a manifest to our Service Worker.
+- **Streaming Fetch**: The SW intercepts a virtual download URL and "pulls" bytes from IndexedDB as the browser's download stream requests them. This allows zipping 1GB+ batches without using an extra 1GB of RAM.
 
-## Encoder notes
+---
 
-- **JPEG:** MozJPEG via `@jsquash/jpeg` (Jpegli deferred — see [docs/JPEGLI.md](docs/JPEGLI.md)).
-- **SVG:** Unified SVGO v4+ AST Pipeline (SVGOMG-grade) — see [docs/SVG-BENCHMARK.md](docs/SVG-BENCHMARK.md).
+## 🧠 Architecture: Beyond "AI Slop"
 
-## Limits
+TinyIMG is built on **Deterministic Performance Patterns**, not just generic wrappers:
 
-- Per file: 25 MB
-- ZIP upload: 25 MB max (in-memory)
-- ZIP extraction: 1000 files max, 200 MB uncompressed total
-- Pixel guard: 256 MP max
-- Batch download guard: 200 files and 80 MB
-- Queue cleanup: Automatic URL revocation on clear/remove
+- **Browser Context Isolation**: We use COOP/COEP headers to enable `SharedArrayBuffer`, unlocking advanced threading for codecs.
+- **Pixel Guard Protection**: A 256MP guard prevents your browser's GPU from crashing on massive print-res assets.
+- **AST-Based SVG Logic**: Our SVG optimization is "SVGOMG-grade," using a single-pass visitor to extract complexity metadata during the optimization pass.
+- **Privacy by Design**: No data ever leaves your machine. The "Download" is just a stream from your local storage to your local filesystem.
 
-## Quick start
+---
+
+## ⚡ Development
+
+For a deep dive into architecture, state management, and worker orchestration, see the [Detailed Developer Guide](docs/DEVELOPER_GUIDE.md).
+
+### Quick Start
 
 ```bash
 npm install
@@ -90,36 +81,24 @@ npm run dev
 
 Open `http://localhost:5174`.
 
-## Scripts
+### Scripts
 
-| Script | Description |
-|---|---|
-| `dev` | Start local Vite dev server |
-| `build` | Production build (`tsc` + Vite) |
-| `preview` | Preview production build locally |
-| `lint` | ESLint checks |
-| `typecheck` | TypeScript project checks |
-| `test` | Unit tests (Vitest) |
-| `test:e2e` | Playwright smoke (`basic.spec.ts`); serves **`vite preview`** on port 5174 (builds first locally; CI reuses the prior `build` step) |
-| `test:e2e:benchmark` | Full benchmarking E2E suite (same preview server) |
-| `test:quality` | Raster + SVG quality gates |
-| `test:full` | Unit + E2E smoke + quality gates |
+| Script                 | Description                            |
+| :--------------------- | :------------------------------------- |
+| `npm run build`        | Production build (`tsc` + Vite).       |
+| `npm run test`         | Run unit tests (Vitest).               |
+| `npm run test:e2e`     | Run Playwright smoke tests.            |
+| `npm run test:quality` | Run raster + SVG quality gates (SSIM). |
+| `npm run lint`         | ESLint + Prettier check.               |
+| `npm run knip`         | Find unused files/deps.                |
 
-## Architecture and docs
+### Creating a Pull Request
 
-- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Implementation map: [docs/IMPLEMENTATION-MAP.md](docs/IMPLEMENTATION-MAP.md)
-- Acceptance criteria: [docs/ACCEPTANCE-CRITERIA.md](docs/ACCEPTANCE-CRITERIA.md)
-- Cloudflare deployment runbook: [docs/CLOUDFLARE-DEPLOYMENT.md](docs/CLOUDFLARE-DEPLOYMENT.md)
-- Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+1. **Branch**: Create a feature branch from `main`.
+2. **Quality**: Ensure `npm run test:full` passes (Unit + E2E + Quality Gates).
+3. **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org/).
+4. **Push**: Open PR against `main`. CI will verify linting, types, and quality gates.
 
-## CI
+---
 
-GitHub Actions workflow runs:
-
-1. `lint`
-2. `typecheck`
-3. `test`
-4. `build`
-5. `test:e2e`
-6. `test:quality`
+**Built for developers who care about the bytes.**

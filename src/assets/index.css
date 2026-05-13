@@ -1,10 +1,10 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
-  --color-primary: #0F172A;
+  --color-primary: #0f172a;
   --color-secondary: #334155;
-  --color-cta: #0369A1;
-  --color-background: #F8FAFC;
+  --color-cta: #0369a1;
+  --color-background: #f8fafc;
   --color-text: #020617;
 }
 
@@ -17,20 +17,18 @@
 
 @layer components {
   .glass {
-    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+    @apply border border-white/20 bg-white/70 shadow-xl backdrop-blur-md;
   }
-  
+
   .glass-dark {
-    @apply bg-slate-900/70 backdrop-blur-md border border-slate-700/30 shadow-2xl;
+    @apply border border-slate-700/30 bg-slate-900/70 shadow-2xl backdrop-blur-md;
   }
 
   .btn-primary {
-    @apply bg-cta text-white px-6 py-2.5 rounded-lg font-medium 
-           transition-all duration-200 hover:opacity-90 hover:scale-[1.02] active:scale-95
-           shadow-lg shadow-cta/20 cursor-pointer;
+    @apply bg-cta shadow-cta/20 cursor-pointer rounded-lg px-6 py-2.5 font-medium text-white shadow-lg transition-all duration-200 hover:scale-[1.02] hover:opacity-90 active:scale-95;
   }
 
   .config-block {
-    @apply p-4 rounded-xl border border-slate-200 bg-white shadow-sm;
+    @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm;
   }
 }

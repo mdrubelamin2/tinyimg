@@ -6,30 +6,22 @@ All notable changes to this project are documented here.
 
 ### Added
 
-- Queue domain modularization support files:
-  - `src/lib/queue/queue-item.ts`
-  - `src/lib/queue/queue-intake.ts`
-  - `src/lib/queue/queue-results.ts`
-- Implementation mapping doc: `docs/IMPLEMENTATION-MAP.md`
-- Vitest setup and config (`vitest.config.ts`) with queue-result coverage.
-- GitHub Actions CI workflow at `.github/workflows/ci.yml`.
-- shadcn-style UI primitives:
-  - `src/components/ui/button.tsx`
-  - `src/components/ui/card.tsx`
-  - `src/components/ui/table.tsx`
-  - `src/components/ui/checkbox.tsx`
-  - `src/components/ui/select.tsx`
-  - `src/components/ui/badge.tsx`
-- `CONTRIBUTING.md` and Cloudflare deployment runbook.
+- Hybrid storage layer (OPFS / IndexedDB / in-memory) for queue payloads and outputs (`src/storage/`, `src/lib/storage/`).
+- Raster encode pipeline under `src/lib/codecs/raster/` with shared zip.js configuration (`src/lib/zip-js-config.ts`).
+- Worker pool v2 with dedicated thumbnail worker and optimize task core; CPU / offscreen resize (no WebGPU resize path).
+- Virtualized results queue (`react-virtuoso`), sticky header, and split result cells under `src/components/results/`.
+- Capability probes (`src/capabilities/`) and queue stats helpers (`src/state/`).
+- Toast notifications (`src/notifications/`), thumbnail cache/generator (`src/thumbnails/`).
+- Knip unused-code check, bundle perf budget script (`scripts/check-perf-budgets.mjs`, `scripts/perf-budgets.json`).
+- Tests: raster codec parity, MIME/output format, zip.js assets, offscreen resize integration.
 
 ### Changed
 
-- `QueueProcessor` now delegates intake/result lifecycle logic to queue domain modules while keeping the same public API.
-- Directory-drop intake now applies magic-byte validation parity with direct file intake.
-- Unit tests migrated from Bun test runner to Vitest.
-- Added `typecheck` and `test` scripts; `test:full` now includes unit tests.
-- Playwright smoke selectors updated for current UI.
-- E2E scripts split into smoke (`test:e2e`) and benchmark (`test:e2e:benchmark`).
-- `ConfigPanel`, `ResultsTable`, and `Dropzone` aligned with shared UI primitives.
-- `App` reset action now restores default queue options.
+- Image store integrates storage adapters, thumbnails, and updated queue intake/validation.
+- Package manager lockfile: npm (`package-lock.json`); removed Bun lockfile.
+- CI: npm cache, Knip step, existing lint/typecheck/test/build/e2e/quality gates.
 
+### Removed
+
+- WebGPU resize pipeline, GPU worker, and related benchmarks/tests.
+- Legacy per-codec modules under `src/lib/codecs/*.codec.ts` in favor of the raster pipeline.

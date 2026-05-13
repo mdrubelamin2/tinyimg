@@ -1,250 +1,579 @@
-import {
-  MAX_FILE_SIZE_BYTES,
-  MAX_ZIP_FILE_SIZE_BYTES,
-  MAX_ZIP_EXTRACTED_FILES,
-  MAX_ZIP_EXTRACTED_TOTAL_BYTES,
-} from '@/constants/limits';
+import type { ZipEntry } from 'unzipit'
+
+import { imageDimensionsFromStream } from 'image-dimensions'
+import { nanoid } from 'nanoid'
+import { unzip } from 'unzipit'
+
+import type { ImageItem } from '@/lib/queue/types'
+import type { StorageAdapter } from '@/storage/storage-adapter'
+
 import {
   ERR_FILE_EXCEEDS_LIMIT,
-  ERR_ZIP_EXCEEDS_LIMIT,
   ERR_INVALID_FILE,
-  ERR_HEIC_BROWSER,
+  ID_RANDOM_LENGTH,
   isValidImageExtension,
-} from '@/constants';
-import {
-  checkMagicBytes,
-  checkMagicBytesFromBufferExport,
-  getMimeType,
-  DEFAULT_MIME,
-  isHeicDecodeLikelySupported,
-} from '@/lib/validation';
-import type { ImageItem } from '@/lib/queue/types';
+  MAX_FILE_SIZE_BYTES,
+  MAX_PIXELS,
+  MAX_ZIP_EXTRACTED_FILES,
+  MAX_ZIP_EXTRACTED_TOTAL_BYTES,
+  MAX_ZIP_FILE_SIZE_BYTES,
+  STATUS_ERROR,
+} from '@/constants'
+import { DEFAULT_MIME, getMimeType, mimeByFormat } from '@/lib/validation'
+import { getSessionBinaryStorage } from '@/storage/hybrid-storage'
+import { srcKey } from '@/storage/keys'
 
-const ZIP_PATH_IGNORE = '__MACOSX';
-
-interface IntakeContext {
-  createItem: (file: File) => ImageItem;
+type FileSystemDirectoryHandleWithEntries = FileSystemDirectoryHandle & {
+  entries(): AsyncIterableIterator<[string, FileSystemHandle]>
 }
 
-function isDataTransferItemArray(files: File[] | DataTransferItem[]): files is DataTransferItem[] {
-  return files.length > 0 && 'getAsFile' in files[0]!;
+const ZIP_PATH_IGNORE = '__MACOSX'
+
+const DETECTION_TIMEOUT = Symbol('detection-timeout')
+
+export type DropSnapshot =
+  | { entry: FileSystemEntry; kind: 'fs-entry' }
+  | { file: File; kind: 'file' }
+  | { handle: FileSystemDirectoryHandle; kind: 'fs-directory-handle' }
+
+export type IntakeUploadSource = DropSnapshot[] | File[]
+
+type DataTransferItemWithHandle = DataTransferItem & {
+  getAsFileSystemHandle?: () => Promise<FileSystemHandle>
 }
 
-function createErrorItem(
+type SnapshotSlot =
+  | { item: DataTransferItem; kind: 'pending' }
+  | { kind: 'done'; snap: DropSnapshot }
+
+export function isZipArchive(fileName: string): boolean {
+  return /\.zip$/i.test(fileName)
+}
+
+export async function snapshotDataTransferItemsAsync(
+  items: DataTransferItem[],
+): Promise<DropSnapshot[]> {
+  const slots: SnapshotSlot[] = []
+
+  for (const item of items) {
+    if (item.kind !== 'file') continue
+
+    const wk = item as DataTransferItem & {
+      webkitGetAsEntry?: () => FileSystemEntry | null
+    }
+    const webkitEntry = wk.webkitGetAsEntry?.() ?? null
+
+    if (webkitEntry?.isDirectory) {
+      slots.push({
+        kind: 'done',
+        snap: { entry: webkitEntry, kind: 'fs-entry' },
+      })
+      continue
+    }
+
+    // Entries API must be consumed synchronously (multi-file drop); do not await before this.
+    if (webkitEntry?.isFile) {
+      slots.push({
+        kind: 'done',
+        snap: { entry: webkitEntry, kind: 'fs-entry' },
+      })
+      continue
+    }
+
+    slots.push({ item, kind: 'pending' })
+  }
+
+  const pending = slots.filter(
+    (s): s is { item: DataTransferItem; kind: 'pending' } => s.kind === 'pending',
+  )
+
+  const handlePromises = pending.map(({ item }) => {
+    const getHandle = (item as DataTransferItemWithHandle).getAsFileSystemHandle
+    if (typeof getHandle !== 'function') {
+      return Promise.resolve(null as FileSystemHandle | null)
+    }
+    return getHandle.call(item).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return null
+      if (error instanceof Error && error.name === 'AbortError') return null
+      return null
+    })
+  })
+
+  const handles = await Promise.all(handlePromises)
+
+  const fileFromHandlePromises = handles.map((h) => {
+    if (h?.kind === 'file') {
+      return (h as FileSystemFileHandle).getFile().catch(() => null)
+    }
+    return Promise.resolve(null as File | null)
+  })
+  const filesFromHandles = await Promise.all(fileFromHandlePromises)
+
+  const out: DropSnapshot[] = []
+  let pi = 0
+  for (const slot of slots) {
+    if (slot.kind === 'done') {
+      out.push(slot.snap)
+      continue
+    }
+
+    const h = handles[pi]
+    const fileFromHandle = filesFromHandles[pi]
+    pi += 1
+
+    if (!h) {
+      const f = slot.item.getAsFile()
+      if (f) out.push({ file: f, kind: 'file' })
+      continue
+    }
+    if (h.kind === 'directory') {
+      out.push({
+        handle: h as FileSystemDirectoryHandle,
+        kind: 'fs-directory-handle',
+      })
+      continue
+    }
+    if (h.kind === 'file') {
+      if (fileFromHandle) {
+        out.push({ file: fileFromHandle, kind: 'file' })
+      } else {
+        const f = slot.item.getAsFile()
+        if (f) out.push({ file: f, kind: 'file' })
+      }
+      continue
+    }
+
+    const f = slot.item.getAsFile()
+    if (f) out.push({ file: f, kind: 'file' })
+  }
+
+  return out
+}
+
+function dataTransferItemsToArray(list: DataTransferItemList): DataTransferItem[] {
+  return Array.from({ length: list.length }, (_, i) => list[i]).filter(
+    (item): item is DataTransferItem => item != null,
+  )
+}
+
+function dedupeDropSnapshots(snaps: DropSnapshot[]): DropSnapshot[] {
+  const zipNamesFromFs = new Set<string>()
+  for (const s of snaps) {
+    if (s.kind === 'fs-entry' && s.entry.isFile && isZipArchive(s.entry.name)) {
+      zipNamesFromFs.add(s.entry.name.toLowerCase())
+    }
+  }
+  return snaps.filter((s) => {
+    if (s.kind !== 'file') return true
+    if (isZipArchive(s.file.name) && zipNamesFromFs.has(s.file.name.toLowerCase())) {
+      return false
+    }
+    return true
+  })
+}
+
+async function readZipEntryAsBlob(entry: ZipEntry): Promise<Blob> {
+  return await entry.blob()
+}
+
+async function streamZipEntryToStorageKey(
+  entry: ZipEntry,
+  storage: StorageAdapter,
+  key: string,
+): Promise<void> {
+  const handle = await storage.getWritableHandle(key)
+  const writable = await handle.createWritable()
+  try {
+    const arrayBuffer = await entry.arrayBuffer()
+    await writable.write(arrayBuffer)
+    await writable.close()
+  } catch (error) {
+    await writable.close().catch(() => {})
+    throw error
+  }
+}
+
+const HAS_FILELIST = typeof FileList !== 'undefined'
+
+export interface CollectIntakeEntry {
+  intakeOriginal?: IntakeOriginalRef | undefined
+  item: ImageItem
+}
+
+export interface CollectIntakeResult {
+  entries: CollectIntakeEntry[]
+}
+
+export interface IntakeContext {
+  createItem: (
+    file: File,
+    intakeKind: IntakeOriginalKind,
+    dimensions?: { height: number; width: number },
+  ) => ImageItem
+  onExtractingArchive?: (archiveFileName: string) => void
+  onZipArchiveOversized?: (fileName: string) => void
+  onZipManifest?: (archiveFileName: string, entryCount: number) => void
+  onZipProgress?: (processed: number, total: number) => void
+  onZipStreamEnd?: () => void
+}
+
+export type IntakeOriginalKind = 'buffered' | 'direct'
+
+export type IntakeOriginalRef =
+  | { file: File; kind: IntakeOriginalKind }
+  | { itemId: string; kind: 'buffered-session' }
+
+export async function collectItemsFromFiles(
+  source: IntakeUploadSource,
+  ctx: IntakeContext,
+): Promise<CollectIntakeResult> {
+  const entries: CollectIntakeEntry[] = []
+  for await (const ent of iterateIntakeEntries(source, ctx)) {
+    entries.push(ent)
+  }
+  return { entries }
+}
+
+export function intakeEntriesToItems(entries: CollectIntakeEntry[]): ImageItem[] {
+  return entries.map((e) => e.item)
+}
+
+export async function* iterateIntakeEntries(
+  source: IntakeUploadSource,
+  ctx: IntakeContext,
+): AsyncGenerator<CollectIntakeEntry> {
+  if (!isFileUploadSource(source)) {
+    for (const snap of source) {
+      if (snap.kind === 'fs-entry') {
+        yield* traverseYield(snap.entry, ctx)
+      } else if (snap.kind === 'fs-directory-handle') {
+        yield* traverseDirectoryHandleYield(snap.handle, ctx)
+      } else {
+        yield* collectPlainFileYield(snap.file, ctx)
+      }
+    }
+    return
+  }
+
+  for (const file of source) {
+    yield* collectPlainFileYield(file, ctx)
+  }
+}
+
+export async function normalizeIntakeSources(
+  files: DataTransferItem[] | DataTransferItemList | File[] | FileList,
+): Promise<IntakeUploadSource> {
+  if (HAS_FILELIST && files instanceof FileList) {
+    return [...files]
+  }
+  if (Array.isArray(files)) {
+    if (files.length === 0) return []
+    if (files[0] instanceof File) {
+      return files as File[]
+    }
+    return dedupeDropSnapshots(await snapshotDataTransferItemsAsync(files as DataTransferItem[]))
+  }
+  return dedupeDropSnapshots(
+    await snapshotDataTransferItemsAsync(dataTransferItemsToArray(files as DataTransferItemList)),
+  )
+}
+
+/** File entries in central-directory order (same counting rules as legacy zip walk). */
+function buildZipWorkList(
+  entries: Record<string, ZipEntry>,
+): { entry: ZipEntry; fileName: string }[] {
+  const work: { entry: ZipEntry; fileName: string }[] = []
+  let fileCount = 0
+  for (const [path, entry] of Object.entries(entries)) {
+    if (entry.isDirectory) continue
+    if (path.includes(ZIP_PATH_IGNORE)) continue
+    const fileName = path.split('/').pop() ?? path
+    if (!fileName || fileName.length === 0) continue
+    fileCount += 1
+    if (fileCount > MAX_ZIP_EXTRACTED_FILES) {
+      throw new Error('ZIP contains too many files')
+    }
+    work.push({ entry, fileName })
+  }
+  return work
+}
+
+async function* collectPlainFileYield(
+  file: File,
+  ctx: IntakeContext,
+): AsyncGenerator<CollectIntakeEntry> {
+  if (isZipArchive(file.name)) {
+    if (file.size > MAX_ZIP_FILE_SIZE_BYTES) {
+      ctx.onZipArchiveOversized?.(file.name)
+      return
+    }
+    try {
+      yield* streamCollectIntakeFromZip(file, ctx)
+    } catch (error) {
+      yield createErrorCollectEntry(
+        file,
+        'ZIP extraction failed: ' + String(error),
+        ctx.createItem,
+        'direct',
+      )
+    }
+    return
+  }
+
+  const validated = await createValidatedItem(file, ctx, 'direct')
+  if (validated) yield validated
+}
+
+function createErrorCollectEntry(
   file: File,
   error: string,
-  createItem: IntakeContext['createItem']
-): ImageItem {
-  const item = createItem(file);
-  item.status = 'error';
-  item.error = error;
-  return item;
+  createItem: IntakeContext['createItem'],
+  intakeKind: IntakeOriginalKind = 'direct',
+): CollectIntakeEntry {
+  if (isZipArchive(file.name)) {
+    return {
+      item: {
+        error,
+        fileName: file.name,
+        id: nanoid(ID_RANDOM_LENGTH),
+        mimeType: file.type || DEFAULT_MIME,
+        originalFormat: 'zip',
+        originalSize: file.size,
+        originalSourceKind: intakeKind === 'direct' ? 'direct' : 'storage',
+        progress: 0,
+        results: {},
+        status: STATUS_ERROR,
+      },
+    }
+  }
+
+  const item = createItem(file, intakeKind)
+  item.status = STATUS_ERROR
+  item.error = error
+  for (const k of Object.keys(item.results)) {
+    const r = item.results[k]!
+    item.results[k] = { ...r, status: STATUS_ERROR }
+  }
+  return {
+    intakeOriginal: { file, kind: intakeKind },
+    item,
+  }
 }
 
 async function createValidatedItem(
   file: File,
-  createItem: IntakeContext['createItem']
-): Promise<ImageItem | null> {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  if (!isValidImageExtension(ext)) return null;
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    return createErrorItem(file, ERR_FILE_EXCEEDS_LIMIT, createItem);
+  ctx: IntakeContext,
+  intakeKind: IntakeOriginalKind,
+  options?: { overrideSize?: number; skipProbing?: boolean },
+): Promise<CollectIntakeEntry | null> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  if (!isValidImageExtension(ext)) return null
+
+  const effectiveSize = options?.overrideSize ?? file.size
+  if (effectiveSize > MAX_FILE_SIZE_BYTES) {
+    return createErrorCollectEntry(file, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem, intakeKind)
   }
 
-  const magicOk = await checkMagicBytes(file, ext);
-  if (!magicOk) {
-    return createErrorItem(file, ERR_INVALID_FILE, createItem);
-  }
-  if ((ext === 'heic' || ext === 'heif') && !isHeicDecodeLikelySupported()) {
-    return createErrorItem(file, ERR_HEIC_BROWSER, createItem);
+  let dimensions: undefined | { height: number; width: number }
+  let detectedMime: string | undefined
+
+  if (!options?.skipProbing) {
+    try {
+      // Attempt to get dimensions and type from stream with a 150ms timeout
+      const result = await Promise.race([
+        imageDimensionsFromStream(file.stream()),
+        new Promise<typeof DETECTION_TIMEOUT>((resolve) =>
+          setTimeout(() => resolve(DETECTION_TIMEOUT), 150),
+        ),
+      ])
+
+      if (result && result !== DETECTION_TIMEOUT) {
+        dimensions = { height: result.height, width: result.width }
+        detectedMime = mimeByFormat(result.type)
+
+        if (dimensions.width * dimensions.height > MAX_PIXELS) {
+          const errEnt = createErrorCollectEntry(
+            file,
+            `Image dimensions too large (max ${Math.round(MAX_PIXELS / 1_000_000)} megapixels)`,
+            ctx.createItem,
+            intakeKind,
+          )
+          errEnt.item.width = dimensions.width
+          errEnt.item.height = dimensions.height
+          return errEnt
+        }
+      } else if (result === undefined && ext !== 'svg') {
+        // Library returned undefined definitively -> invalid image content
+        return createErrorCollectEntry(file, ERR_INVALID_FILE, ctx.createItem, intakeKind)
+      }
+    } catch {
+      // Ignore errors for now (e.g. stream failure), we'll fall back to browser decode in thumbnail worker
+    }
   }
 
-  return createItem(file);
+  const item = ctx.createItem(file, intakeKind, dimensions)
+  if (detectedMime) {
+    item.mimeType = detectedMime
+  }
+  if (options?.overrideSize !== undefined) {
+    item.originalSize = options.overrideSize
+  }
+
+  return {
+    intakeOriginal: { file, kind: intakeKind },
+    item,
+  }
 }
 
-async function traverseEntry(
-  entry: FileSystemEntry,
-  items: ImageItem[],
-  ctx: IntakeContext
-): Promise<void> {
-  if (entry.isFile) {
-    const file = await new Promise<File>((resolve) =>
-      (entry as FileSystemFileEntry).file(resolve)
-    );
-    
-    // Handle ZIP files dropped via FileSystemEntry
-    if (file.name.endsWith('.zip')) {
-      if (file.size > MAX_ZIP_FILE_SIZE_BYTES) {
-        items.push(createErrorItem(file, ERR_ZIP_EXCEEDS_LIMIT, ctx.createItem));
-        return;
-      }
+function isFileUploadSource(source: IntakeUploadSource): source is File[] {
+  if (source.length === 0) return true
+  return source[0] instanceof File
+}
+
+async function* streamCollectIntakeFromZip(
+  file: File,
+  ctx: IntakeContext,
+): AsyncGenerator<CollectIntakeEntry> {
+  ctx.onExtractingArchive?.(file.name)
+  let extractedBytes = 0
+  try {
+    const { entries } = await unzip(file)
+    const work = buildZipWorkList(entries)
+    ctx.onZipManifest?.(file.name, work.length)
+
+    let processed = 0
+    for (const { entry, fileName } of work) {
       try {
-        const zipItems = await collectItemsFromZip(file, ctx);
-        items.push(...zipItems);
-      } catch (err) {
-        items.push(createErrorItem(file, 'ZIP extraction failed: ' + String(err), ctx.createItem));
+        extractedBytes += entry.size
+        if (extractedBytes > MAX_ZIP_EXTRACTED_TOTAL_BYTES) {
+          throw new Error('ZIP uncompressed data too large')
+        }
+
+        if (entry.size === 0) {
+          continue
+        }
+        if (entry.size > MAX_FILE_SIZE_BYTES) {
+          const oversized = new File([], fileName, {
+            type: getMimeType(fileName),
+          })
+          const errEnt = createErrorCollectEntry(
+            oversized,
+            ERR_FILE_EXCEEDS_LIMIT,
+            ctx.createItem,
+            'buffered',
+          )
+          errEnt.item.originalSize = entry.size
+          yield errEnt
+          continue
+        }
+
+        if (getMimeType(fileName) === DEFAULT_MIME) {
+          continue
+        }
+
+        const ext = (fileName.split('.').pop() ?? '').toLowerCase()
+        if (!isValidImageExtension(ext)) {
+          continue
+        }
+
+        const mime = getMimeType(fileName)
+        const stubFile = new File([], fileName, { type: mime })
+        const validated = await createValidatedItem(stubFile, ctx, 'buffered', {
+          overrideSize: entry.size,
+          skipProbing: true,
+        })
+        if (!validated) continue
+        if (validated.item.status === STATUS_ERROR) {
+          // If it's a resolution error from createValidatedItem, it already has dimensions and intakeOriginal if it could get them.
+          // But for ZIP entries we might need to attach the buffered source if it's already there.
+          yield validated
+          continue
+        }
+
+        validated.item.originalSize = entry.size
+
+        try {
+          const storage = await getSessionBinaryStorage()
+          await streamZipEntryToStorageKey(entry, storage, srcKey(validated.item.id))
+          validated.intakeOriginal = {
+            itemId: validated.item.id,
+            kind: 'buffered-session',
+          }
+
+          // Try to get dimensions from stored file if we didn't get them from stream (unlikely for zip but for consistency)
+          if (!validated.item.width || !validated.item.height) {
+            try {
+              const storedFile = await storage.getBackedFile(srcKey(validated.item.id))
+              if (storedFile) {
+                const result = await Promise.race([
+                  imageDimensionsFromStream(storedFile.stream()),
+                  new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 100)),
+                ])
+                if (result) {
+                  validated.item.width = result.width
+                  validated.item.height = result.height
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+
+          yield validated
+        } catch {
+          const storage = await getSessionBinaryStorage()
+          await storage.delete(srcKey(validated.item.id)).catch(() => {})
+          const blob = await readZipEntryAsBlob(entry)
+          const validFile = new File([blob], fileName, { type: mime })
+          const fallback = await createValidatedItem(validFile, ctx, 'buffered')
+          if (fallback) yield fallback
+        }
+      } finally {
+        processed += 1
+        ctx.onZipProgress?.(processed, work.length)
       }
-      return;
     }
-    
-    const validated = await createValidatedItem(file, ctx.createItem);
-    if (validated) items.push(validated);
-    return;
+  } catch (error) {
+    ctx.onZipStreamEnd?.()
+    throw error
+  }
+  ctx.onZipStreamEnd?.()
+}
+
+async function* traverseDirectoryHandleYield(
+  dirHandle: FileSystemDirectoryHandle,
+  ctx: IntakeContext,
+): AsyncGenerator<CollectIntakeEntry> {
+  for await (const [, handle] of (dirHandle as FileSystemDirectoryHandleWithEntries).entries()) {
+    if (handle.kind === 'file') {
+      const file = await (handle as FileSystemFileHandle).getFile()
+      yield* collectPlainFileYield(file, ctx)
+    } else {
+      yield* traverseDirectoryHandleYield(handle as FileSystemDirectoryHandle, ctx)
+    }
+  }
+}
+
+async function* traverseYield(
+  entry: FileSystemEntry,
+  ctx: IntakeContext,
+): AsyncGenerator<CollectIntakeEntry> {
+  if (entry.isFile) {
+    const file = await new Promise<File>((resolve) => (entry as FileSystemFileEntry).file(resolve))
+    yield* collectPlainFileYield(file, ctx)
+    return
   }
 
   if (entry.isDirectory) {
-    const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+    const dirReader = (entry as FileSystemDirectoryEntry).createReader()
     while (true) {
       const batch = await new Promise<FileSystemEntry[]>((resolve) =>
-        dirReader.readEntries(resolve)
-      );
-      if (batch.length === 0) break;
+        dirReader.readEntries(resolve),
+      )
+      if (batch.length === 0) break
       for (const childEntry of batch) {
-        await traverseEntry(childEntry, items, ctx);
+        yield* traverseYield(childEntry, ctx)
       }
     }
   }
 }
-
-export async function collectItemsFromFiles(
-  files: FileList | File[] | DataTransferItemList | DataTransferItem[],
-  ctx: IntakeContext
-): Promise<ImageItem[]> {
-  const items: ImageItem[] = [];
-
-  if (
-    files instanceof DataTransferItemList ||
-    (Array.isArray(files) && isDataTransferItemArray(files))
-  ) {
-    const droppedPayloads = Array.from(files as ArrayLike<DataTransferItem>).map((item) => {
-      const entry = (
-        item as DataTransferItem & {
-          webkitGetAsEntry?: () => FileSystemEntry | null;
-        }
-      ).webkitGetAsEntry?.() ?? null;
-
-      if (entry) {
-        return { entry };
-      }
-
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file) {
-          return { file };
-        }
-      }
-
-      return null;
-    });
-
-    for (const payload of droppedPayloads) {
-      if (!payload) continue;
-
-      if ('entry' in payload) {
-        await traverseEntry(payload.entry, items, ctx);
-        continue;
-      }
-
-      const validated = await createValidatedItem(payload.file, ctx.createItem);
-      if (validated) items.push(validated);
-    }
-    return items;
-  }
-
-  for (const file of Array.from(files)) {
-    if (file.name.endsWith('.zip')) {
-      if (file.size > MAX_ZIP_FILE_SIZE_BYTES) {
-        items.push(createErrorItem(file, ERR_ZIP_EXCEEDS_LIMIT, ctx.createItem));
-        continue;
-      }
-
-      try {
-        const zipItems = await collectItemsFromZip(file, ctx);
-        items.push(...zipItems);
-      } catch (err) {
-        items.push(createErrorItem(file, 'ZIP extraction failed: ' + String(err), ctx.createItem));
-      }
-      continue;
-    }
-
-    const validated = await createValidatedItem(file, ctx.createItem);
-    if (validated) items.push(validated);
-  }
-
-  return items;
-}
-
-export async function collectItemsFromZip(
-  file: File,
-  ctx: IntakeContext
-): Promise<ImageItem[]> {
-  const { unzip } = await import('fflate');
-  return new Promise((resolve, reject) => {
-    const items: ImageItem[] = [];
-    const reader = new FileReader();
-
-    reader.onload = (event) => {
-      const data = new Uint8Array(event.target?.result as ArrayBuffer);
-      unzip(data, (err, unzipped) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        let extractedCount = 0;
-        let extractedBytes = 0;
-
-        for (const [path, bytes] of Object.entries(unzipped)) {
-          extractedCount += 1;
-          extractedBytes += bytes.length;
-
-          if (extractedCount > MAX_ZIP_EXTRACTED_FILES) {
-            reject(new Error('ZIP contains too many files'));
-            return;
-          }
-          if (extractedBytes > MAX_ZIP_EXTRACTED_TOTAL_BYTES) {
-            reject(new Error('ZIP uncompressed data too large'));
-            return;
-          }
-
-          if (bytes.length === 0 || path.includes(ZIP_PATH_IGNORE)) continue;
-
-          const fileName = path.split('/').pop() ?? 'unnamed';
-          if (bytes.length > MAX_FILE_SIZE_BYTES) {
-            const oversized = new File([new Uint8Array(0)], fileName, {
-              type: getMimeType(fileName),
-            });
-            items.push(createErrorItem(oversized, ERR_FILE_EXCEEDS_LIMIT, ctx.createItem));
-            continue;
-          }
-
-          const ext = (fileName.split('.').pop() ?? '').toLowerCase();
-          if (getMimeType(fileName) === DEFAULT_MIME) continue;
-
-          const bytesArr =
-            bytes instanceof Uint8Array
-              ? bytes
-              : new Uint8Array(bytes as ArrayBuffer);
-
-          if (!checkMagicBytesFromBufferExport(bytesArr, ext)) {
-            const invalid = new File([new Uint8Array(0)], fileName, {
-              type: getMimeType(fileName),
-            });
-            items.push(createErrorItem(invalid, ERR_INVALID_FILE, ctx.createItem));
-            continue;
-          }
-
-          const validFile = new File([bytes as unknown as BlobPart], fileName, {
-            type: getMimeType(fileName),
-          });
-          items.push(ctx.createItem(validFile));
-        }
-
-        resolve(items);
-      });
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
-}
-

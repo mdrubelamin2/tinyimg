@@ -1,0 +1,5 @@
+{
+  "$comment": "Soft targets for gzip-compressed JS assets under dist/assets (run after npm run build). Adjust as the app grows.",
+  "maxAnyChunkGzipBytes": 750000,
+  "maxTotalJsGzipBytes": 3500000
+}

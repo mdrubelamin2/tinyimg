@@ -1,34 +1,25 @@
 /**
- * Settings store: persisted global options via Zustand + localStorage.
+ * Settings store: global options via Zustand.
+ * Ephemeral state that resets on page refresh.
  * Separated from image state to keep settings independent of queue lifecycle.
  */
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { GlobalOptions } from '@/constants/index.ts';
-import { DEFAULT_GLOBAL_OPTIONS } from '@/constants/index.ts';
+import { create } from 'zustand'
 
-const STORAGE_KEY = 'tinyimg_config';
+import type { GlobalOptions } from '@/constants'
+
+import { DEFAULT_GLOBAL_OPTIONS } from '@/constants'
 
 interface SettingsState {
-  options: GlobalOptions;
-  setOptions: (options: GlobalOptions) => void;
-  updateOption: <K extends keyof GlobalOptions>(key: K, value: GlobalOptions[K]) => void;
-  resetToDefaults: () => void;
+  options: GlobalOptions
+  resetToDefaults: () => void
+  setOptions: (options: GlobalOptions) => void
+  updateOption: <K extends keyof GlobalOptions>(key: K, value: GlobalOptions[K]) => void
 }
 
-export const useSettingsStore = create<SettingsState>()(
-  persist(
-    (set) => ({
-      options: { ...DEFAULT_GLOBAL_OPTIONS },
-      setOptions: (options) => set({ options }),
-      updateOption: (key, value) =>
-        set((state) => ({ options: { ...state.options, [key]: value } })),
-      resetToDefaults: () => set({ options: { ...DEFAULT_GLOBAL_OPTIONS } }),
-    }),
-    {
-      name: STORAGE_KEY,
-      partialize: (state) => ({ options: state.options }),
-    }
-  )
-);
+export const useSettingsStore = create<SettingsState>()((set) => ({
+  options: { ...DEFAULT_GLOBAL_OPTIONS },
+  resetToDefaults: () => set({ options: { ...DEFAULT_GLOBAL_OPTIONS } }),
+  setOptions: (options) => set({ options }),
+  updateOption: (key, value) => set((state) => ({ options: { ...state.options, [key]: value } })),
+}))
