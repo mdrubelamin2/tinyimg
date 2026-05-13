@@ -16,7 +16,7 @@ const mkcertPlugin = !isCI ? await import('vite-plugin-mkcert').then((m) => m.de
 
 /** COOP + COEP — cross-origin isolation (SharedArrayBuffer / WASM); keep in sync with `public/_headers`. */
 const crossOriginIsolationHeaders = {
-  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'cross-origin',
 } as const
