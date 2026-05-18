@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, ViewTransition } from 'react'
 import type { ImageItem, ImageResult } from '@/lib/queue/types'
 
 import { ImageCompareViewer } from '@/components/preview/ImageCompareViewer'
+import { CrownIcon } from '@/components/ui/CrownIcon'
 import { BYTES_PER_KB, mimeForOutputFormat, STATUS_SUCCESS } from '@/constants'
 import { downloadStoredOutput } from '@/lib/download'
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name'
@@ -44,6 +45,19 @@ const ImagePreview = ({ itemId, onClose, onResultChange, selectedResultId }: Ima
         .filter((r) => r.status === STATUS_SUCCESS)
         .sort((a, b) => a.resultId.localeCompare(b.resultId))
     : []
+
+  const championResultId = (() => {
+    if (successResults.length <= 1) return null
+    let minSize = Infinity
+    let champId = null
+    for (const r of successResults) {
+      if (r.size != null && r.size > 0 && r.size < minSize) {
+        minSize = r.size
+        champId = r.resultId
+      }
+    }
+    return champId
+  })()
 
   const currentResult = item?.results[selectedResultId]
   const originalUrl = resolvedOriginalObjectUrl
@@ -199,6 +213,7 @@ const ImagePreview = ({ itemId, onClose, onResultChange, selectedResultId }: Ima
             <div className='border-border/50 from-muted/20 via-muted/30 to-muted/20 scrollbar-hide flex items-center gap-1.5 overflow-x-auto border-b bg-gradient-to-r px-4 py-2'>
               {successResults.map((result) => {
                 const isActive = result.resultId === selectedResultId
+                const isChampion = result.resultId === championResultId
                 const formatSavings =
                   originalSize > 0 && result.size && result.size > 0
                     ? (((originalSize - result.size) / originalSize) * 100).toFixed(0)
@@ -207,21 +222,34 @@ const ImagePreview = ({ itemId, onClose, onResultChange, selectedResultId }: Ima
                 return (
                   <button
                     className={cn(
-                      'group relative flex-shrink-0 cursor-pointer rounded-xl px-3 py-1.5 text-[11px] font-bold tracking-wide transition-all duration-200 ease-out',
+                      'group relative flex-shrink-0 cursor-pointer rounded-xl border px-3 py-1.5 text-[11px] font-bold tracking-wide transition-all duration-200 ease-out',
                       isActive
-                        ? 'from-primary to-primary/80 text-primary-foreground shadow-primary/20 bg-gradient-to-br shadow-md'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/60 focus-visible:ring-primary/40 focus-visible:ring-2 focus-visible:outline-none',
+                        ? isChampion
+                          ? 'border-amber-400/40 bg-gradient-to-br from-amber-500 to-amber-600 text-amber-950 shadow-md shadow-amber-500/20'
+                          : 'from-primary to-primary/80 text-primary-foreground shadow-primary/20 border-transparent bg-gradient-to-br shadow-md'
+                        : isChampion
+                          ? 'border-amber-500/30 bg-amber-500/5 text-amber-500 hover:border-amber-500/50 hover:bg-amber-500/10'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/60 focus-visible:ring-primary/40 border-transparent focus-visible:ring-2 focus-visible:outline-none',
                     )}
                     key={result.resultId}
                     onClick={() => onResultChange(result.resultId)}
                   >
+                    {isChampion && (
+                      <div className='animate-bounce-subtle pointer-events-none absolute -top-2 -right-2 z-10 rotate-[45deg]'>
+                        <CrownIcon className='h-5 w-5' />
+                      </div>
+                    )}
                     <span className='flex items-center gap-1.5 whitespace-nowrap'>
                       <span
                         className={cn(
                           'h-1 w-1 rounded-full',
                           isActive
-                            ? 'bg-white/80'
-                            : 'bg-muted-foreground/50 group-hover:bg-success',
+                            ? isChampion
+                              ? 'bg-amber-950/80'
+                              : 'bg-white/80'
+                            : isChampion
+                              ? 'bg-amber-500/80'
+                              : 'bg-muted-foreground/50 group-hover:bg-success',
                         )}
                       />
                       <span className='uppercase'>{chipTitleForResult(result)}</span>
@@ -230,8 +258,12 @@ const ImagePreview = ({ itemId, onClose, onResultChange, selectedResultId }: Ima
                           className={cn(
                             'ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-black',
                             isActive
-                              ? 'bg-white/20 text-white/90'
-                              : 'bg-success/20 text-success group-hover:bg-success/30',
+                              ? isChampion
+                                ? 'bg-amber-950/20 text-amber-950'
+                                : 'bg-white/20 text-white/90'
+                              : isChampion
+                                ? 'bg-amber-500/20 text-amber-600'
+                                : 'bg-success/20 text-success group-hover:bg-success/30',
                           )}
                         >
                           ↓{formatSavings}%
