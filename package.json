@@ -19,6 +19,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test src/tests/e2e/basic.spec.ts",
+    "test:e2e:throughput": "playwright test src/tests/e2e/throughput.spec.ts",
     "test:e2e:benchmark": "playwright test src/tests/e2e/benchmarking.spec.ts",
     "test:quality": "node scripts/quality-gate.mjs test-images test-output && node scripts/quality-gate-svg.mjs test-images test-output",
     "test:full": "npm run test && npm run test:e2e && npm run test:quality",
