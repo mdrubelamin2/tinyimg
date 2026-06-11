@@ -2,7 +2,7 @@ import { computed, observable } from '@legendapp/state'
 
 import type { ImageItem } from '@/lib/queue/types'
 
-import { LARGE_FILE_SERIAL_THRESHOLD_BYTES, LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS } from '@/constants'
+import { isLargeItem } from '@/store/pending-tasks'
 import { computeConcurrency } from '@/workers/worker-pool-v2'
 
 export { pendingTasks$ } from '@/store/pending-tasks'
@@ -27,6 +27,9 @@ export const poolStats$ = observable({
 /** Track active tasks at the result level (itemId:resultId -> boolean) */
 export const inFlightTasks$ = observable({} as Record<string, boolean | undefined>)
 
+/** Incremental counter for large-file tasks in flight (avoids scanning inFlightTasks$). */
+export const largeFileInFlightCount$ = observable(0)
+
 /** Large-drop intake progress. */
 export const intake$ = observable({
   active: false,
@@ -36,20 +39,24 @@ export const intake$ = observable({
   total: 0,
 })
 
-export const isLargeFileInFlight$ = computed(() => {
-  const inFlight = inFlightTasks$.get()
-  const items = imageStore$.items
+export const isLargeFileInFlight$ = computed(() => largeFileInFlightCount$.get() > 0)
 
-  return Object.keys(inFlight).some((taskId) => {
-    if (!inFlight[taskId]) return false
-    const [itemId] = taskId.split(':') as [string]
-    const item = items[itemId]?.peek()
-    return (
-      item &&
-      (item.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES ||
-        (item.width &&
-          item.height &&
-          item.width * item.height >= LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS))
-    )
-  })
-})
+export function clearInFlightTracking(): void {
+  inFlightTasks$.set({})
+  largeFileInFlightCount$.set(0)
+}
+
+export function startInFlightTask(taskId: string, item: ImageItem): void {
+  inFlightTasks$[taskId]!.set(true)
+  if (isLargeItem(item)) {
+    largeFileInFlightCount$.set(largeFileInFlightCount$.peek() + 1)
+  }
+}
+
+export function stopInFlightTask(taskId: string, item: ImageItem | undefined): void {
+  if (!inFlightTasks$[taskId]?.peek()) return
+  inFlightTasks$[taskId]!.delete()
+  if (item && isLargeItem(item)) {
+    largeFileInFlightCount$.set(Math.max(0, largeFileInFlightCount$.peek() - 1))
+  }
+}

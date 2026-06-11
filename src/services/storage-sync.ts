@@ -14,7 +14,7 @@ import {
 import { heapMetrics } from '@/lib/dev/heap-metrics'
 import { persistEncodedOutput } from '@/storage/queue-binary'
 import { isQuotaExceededError } from '@/storage/quota'
-import { imageStore$, inFlightTasks$ } from '@/store/queue-store'
+import { imageStore$, stopInFlightTask } from '@/store/queue-store'
 
 let lastPersistErrorToastAt = 0
 const PERSIST_ERROR_TOAST_COOLDOWN_MS = 4000
@@ -42,7 +42,7 @@ function applyPersistFailure(response: WorkerOutboundResult, errorMessage: strin
     }
 
     imageStore$.items[response.id]!.set(nextItem)
-    inFlightTasks$[`${response.id}:${rid}`]!.delete()
+    stopInFlightTask(`${response.id}:${rid}`, item)
   })
 }
 
@@ -182,7 +182,7 @@ async function persistOneResponse(response: WorkerOutboundResult): Promise<void>
         }
 
         imageStore$.items[response.id]!.set(nextItem)
-        inFlightTasks$[`${response.id}:${rid}`]!.delete()
+        stopInFlightTask(`${response.id}:${rid}`, item)
       })
     } catch (error) {
       const msg = isQuotaExceededError(error) ? ERR_PERSIST_STORAGE_FULL : ERR_PERSIST_FAILED

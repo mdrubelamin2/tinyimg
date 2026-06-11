@@ -40,7 +40,7 @@ import {
 import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache'
 import { cancelThumbnail, destroyThumbnailWorker } from '@/thumbnails/thumbnail-generator'
 
-import { imageStore$, inFlightTasks$, intake$ } from './queue-store'
+import { clearInFlightTracking, imageStore$, intake$, stopInFlightTask } from './queue-store'
 
 function isTerminal(item: ImageItem): boolean {
   return !Object.values(item.results).some(
@@ -107,14 +107,14 @@ export const imageStoreSingleton = {
       if (itemTasksToCancel.length > 0) {
         for (const { itemId, resultId } of itemTasksToCancel) {
           p.cancelTask(`${itemId}:${resultId}`)
-          inFlightTasks$[`${itemId}:${resultId}`]?.delete()
+          stopInFlightTask(`${itemId}:${resultId}`, imageStore$.items[itemId]?.peek())
         }
       }
     })
   },
 
   async clearAll() {
-    inFlightTasks$.set({})
+    clearInFlightTracking()
     resetPersistChain()
     destroyThumbnailWorker()
     thumbnailCacheClear()
@@ -232,7 +232,7 @@ export const imageStoreSingleton = {
       imageStore$.items[id]?.delete()
       imageStore$.itemOrder.set(imageStore$.itemOrder.peek().filter((i) => i !== id))
       for (const rid in item.results) {
-        inFlightTasks$[`${id}:${rid}`]?.delete()
+        stopInFlightTask(`${id}:${rid}`, item)
       }
     })
   },
@@ -284,7 +284,7 @@ export const imageStoreSingleton = {
       imageStore$.items[id]!.set(nextItem)
       syncPendingTasksForItem(id, nextItem)
       for (const rid in item.results) {
-        inFlightTasks$[`${id}:${rid}`]?.delete()
+        stopInFlightTask(`${id}:${rid}`, item)
       }
     })
   },
@@ -325,7 +325,7 @@ export const imageStoreSingleton = {
       imageStore$.items[id]!.set(nextItem)
       syncPendingTasksForItem(id, nextItem)
       for (const rid in item.results) {
-        inFlightTasks$[`${id}:${rid}`]?.delete()
+        stopInFlightTask(`${id}:${rid}`, item)
       }
     })
   },
