@@ -10,11 +10,13 @@ import { downloadStoredOutput } from '@/lib/download'
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name'
 import { cn } from '@/lib/utils'
 import { isHeicDecodeLikelySupported } from '@/lib/validation'
+import { getSessionBinaryStorage } from '@/storage/hybrid-storage'
 import {
   createTransientObjectUrlForPayloadKey,
   resolveOriginalSourceFile,
 } from '@/storage/queue-binary'
 import { imageStore$ } from '@/store/image-store'
+import { generatePreviewObjectUrl } from '@/thumbnails/thumbnail-generator'
 
 interface ImagePreviewProps {
   itemId: string
@@ -69,7 +71,7 @@ const ImagePreview = ({ itemId, onClose, onResultChange, selectedResultId }: Ima
       }
       const file = await resolveOriginalSourceFile(snap.id, snap)
       if (cancelled || !file) return
-      const url = URL.createObjectURL(file)
+      const url = await generatePreviewObjectUrl(file, snap.mimeType)
       if (cancelled) {
         URL.revokeObjectURL(url)
         return
@@ -109,7 +111,11 @@ const ImagePreview = ({ itemId, onClose, onResultChange, selectedResultId }: Ima
         return
       }
       const mime = mimeForOutputFormat(r.format)
-      const url = await createTransientObjectUrlForPayloadKey(r.payloadKey, mime)
+      const storage = await getSessionBinaryStorage()
+      const backed = await storage.getBackedFile(r.payloadKey)
+      const url = backed
+        ? await generatePreviewObjectUrl(backed, mime)
+        : await createTransientObjectUrlForPayloadKey(r.payloadKey, mime)
       if (cancelled) {
         URL.revokeObjectURL(url)
         return

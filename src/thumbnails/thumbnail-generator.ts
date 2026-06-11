@@ -70,6 +70,17 @@ export function enqueueThumbnails(ids: readonly string[]): void {
   })()
 }
 
+const PREVIEW_MAX_EDGE = 2048
+
+export async function generatePreviewObjectUrl(file: File, type: string): Promise<string> {
+  const api = await ensureWorker()
+  const data = await api.generate(`preview-${file.name}`, file, type, PREVIEW_MAX_EDGE)
+  if (data.type !== 'THUMB_OK') {
+    throw new Error(data.type === 'THUMB_ERR' ? data.error : 'Preview generation failed')
+  }
+  return URL.createObjectURL(data.blob)
+}
+
 export function preloadThumbnailWorker(): Promise<void> {
   if (!workerPreload) {
     workerPreload = ensureWorker().then(() => {})
