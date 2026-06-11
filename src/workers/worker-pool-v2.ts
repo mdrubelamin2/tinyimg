@@ -81,7 +81,7 @@ export class WorkerPool {
     let changed = false
     for (const [key, entry] of this.active) {
       if (entry.task.id === id) {
-        this.terminateWorkerForTask(key)
+        this.releaseWorkerForTask(key)
         entry.controller.abort()
         this.active.delete(key)
         this.callbacks.onCancelled?.(key)
@@ -102,7 +102,7 @@ export class WorkerPool {
     let changed = false
     for (const [key, entry] of this.active) {
       if (`${entry.task.id}:${entry.task.resultId}` === taskId) {
-        this.terminateWorkerForTask(key)
+        this.releaseWorkerForTask(key)
         entry.controller.abort()
         this.active.delete(key)
         this.callbacks.onCancelled?.(taskId)
@@ -251,6 +251,18 @@ export class WorkerPool {
     }
   }
 
+  private releaseWorkerForTask(key: TaskKey) {
+    const entry = this.activeWorkers.get(key)
+    if (entry) {
+      this.activeWorkers.delete(key)
+      this.releaseWorker(entry)
+    }
+    const active = this.active.get(key)
+    if (active?.port) {
+      active.port.close()
+    }
+  }
+
   private async runTask(key: TaskKey, task: Task, workerEntry: WorkerEntry): Promise<void> {
     const channel = new MessageChannel()
     const port1 = channel.port1
@@ -270,8 +282,7 @@ export class WorkerPool {
 
     const handleError = () => {
       cleanup()
-      workerEntry.worker.terminate()
-      this.allWorkers.delete(workerEntry)
+      this.terminateWorkerForTask(key)
       this.callbacks.onError(0, task)
       void this.pump()
     }
@@ -310,9 +321,11 @@ export class WorkerPool {
   private terminateWorkerForTask(key: TaskKey) {
     const entry = this.activeWorkers.get(key)
     if (entry) {
+      clearTimeout(entry.idleTimeoutId)
       entry.worker.terminate()
       this.activeWorkers.delete(key)
       this.allWorkers.delete(entry)
+      this.idleWorkers = this.idleWorkers.filter((e) => e !== entry)
     }
     const active = this.active.get(key)
     if (active?.port) {

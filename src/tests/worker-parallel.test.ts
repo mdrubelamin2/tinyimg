@@ -74,4 +74,33 @@ describe('WorkerPool Parallel Dispatch', () => {
     // Check that we have 2 active tasks simultaneously
     expect(pool.activeCount).toBe(2)
   })
+
+  it('reuses worker on cancel instead of terminating', async () => {
+    const worker = new MockWorker()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const workerEntry = { worker } as any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(pool as any).allWorkers.add(workerEntry)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(pool as any).idleWorkers.push(workerEntry)
+
+    const task: Task = {
+      file: new File([], 'item1.webp'),
+      format: 'webp',
+      id: 'item1',
+      options: { ...MOCK_OPTIONS, resultId: 'res1' },
+      resultId: 'res1',
+    }
+
+    pool.addTask(task)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(pool.activeCount).toBe(1)
+
+    pool.cancelTask('item1:res1')
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(worker.terminate).not.toHaveBeenCalled()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((pool as any).idleWorkers).toContain(workerEntry)
+  })
 })
