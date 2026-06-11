@@ -1,7 +1,4 @@
-import '@fontsource/dm-sans/400.css'
-import '@fontsource/dm-sans/600.css'
-import '@fontsource/space-grotesk/400.css'
-import '@fontsource/space-grotesk/600.css'
+import '@fontsource-variable/dm-sans/wght.css'
 
 import './index.css'
 
@@ -13,6 +10,16 @@ import { startSessionMonitors } from '@/bootstrap/session-monitors'
 import { applyThemeFromStorage, initSystemThemeMediaListener } from '@/bootstrap/theme-dom'
 
 import App from './App.tsx'
+
+function loadSpaceGroteskFonts(): void {
+  void import('@/bootstrap/load-space-grotesk')
+}
+
+if ('requestIdleCallback' in globalThis) {
+  requestIdleCallback(() => loadSpaceGroteskFonts())
+} else {
+  setTimeout(loadSpaceGroteskFonts, 1)
+}
 
 void (async () => {
   try {
