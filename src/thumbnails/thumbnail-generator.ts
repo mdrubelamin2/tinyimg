@@ -25,7 +25,8 @@ let proxy: Comlink.Remote<ThumbnailAPI> | null = null
 let workerPreload: null | Promise<void> = null
 const queue: QueueEntry[] = []
 const queuedId = new Set<string>()
-let busy = false
+const MAX_CONCURRENT_THUMBS = 2
+let inFlightCount = 0
 
 export function cancelThumbnail(id: string): void {
   thumbnailCacheRevoke(id)
@@ -43,7 +44,7 @@ export function destroyThumbnailWorker(): void {
   workerPreload = null
   queue.length = 0
   queuedId.clear()
-  busy = false
+  inFlightCount = 0
 }
 
 export function enqueueThumbnail(id: string, file: File): void {
@@ -99,13 +100,20 @@ async function ensureWorker(): Promise<Comlink.Remote<ThumbnailAPI>> {
   return proxy
 }
 
-async function pump(): Promise<void> {
-  if (busy) return
-  const next = queue.shift()
-  if (!next) return
-  busy = true
-  queuedId.delete(next.id)
+function pump(): void {
+  while (inFlightCount < MAX_CONCURRENT_THUMBS && queue.length > 0) {
+    const next = queue.shift()
+    if (!next) break
+    queuedId.delete(next.id)
+    inFlightCount++
+    void runThumbnailJob(next).finally(() => {
+      inFlightCount--
+      pump()
+    })
+  }
+}
 
+async function runThumbnailJob(next: QueueEntry): Promise<void> {
   try {
     const api = await ensureWorker()
     const data = await api.generate(next.id, next.file, next.file.type)
@@ -137,9 +145,6 @@ async function pump(): Promise<void> {
     }
   } catch (error) {
     console.error('Thumbnail generation failed', error)
-  } finally {
-    busy = false
-    void pump()
   }
 }
 
