@@ -11,6 +11,10 @@ test.describe('TinyIMG throughput marks', () => {
     if (!fs.existsSync(filePath)) return
 
     await page.goto('/')
+    await page.evaluate(() => {
+      performance.mark('e2e-drop-start')
+    })
+
     const dropzone = page.getByRole('button', {
       name: /drop files or click to choose/i,
     })
@@ -19,11 +23,27 @@ test.describe('TinyIMG throughput marks', () => {
 
     const row = page.locator('[data-testid^="queue-row-"]').first()
     await expect(row).toBeVisible({ timeout: E2E_DEFAULT_TIMEOUT_MS })
+
+    await page.evaluate(() => {
+      performance.mark('e2e-first-row')
+    })
+
     await expect(row.getByText(/KB/i).first()).toBeVisible({
       timeout: E2E_OPTIMIZATION_TIMEOUT_MS,
     })
 
+    const timing = await page.evaluate(() => {
+      performance.mark('e2e-first-result')
+      performance.measure('e2e-drop-to-row', 'e2e-drop-start', 'e2e-first-row')
+      performance.measure('e2e-drop-to-result', 'e2e-drop-start', 'e2e-first-result')
+      const toRow = performance.getEntriesByName('e2e-drop-to-row').at(-1)?.duration ?? 0
+      const toResult = performance.getEntriesByName('e2e-drop-to-result').at(-1)?.duration ?? 0
+      return { toResult, toRow }
+    })
+
     const elapsedMs = Date.now() - t0
     expect(elapsedMs).toBeLessThan(45_000)
+    expect(timing.toRow).toBeLessThan(10_000)
+    expect(timing.toResult).toBeLessThan(45_000)
   })
 })
