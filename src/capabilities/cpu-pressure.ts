@@ -2,7 +2,7 @@ import { useImageStore } from '@/store/image-store'
 import { computeConcurrency } from '@/workers/worker-pool-v2'
 
 const PRESSURE_SAMPLE_MS = 10_000
-const OBSERVE_PRESSURE = false
+const OBSERVE_PRESSURE = true
 
 type PressureObserverCtor = new (
   callback: (records: PressureRecord[]) => void,
