@@ -51,6 +51,7 @@ export async function runOptimizeTask(
     if (
       await shouldQuickProbeSkip({
         format: requestedFormat,
+        losslessEncoding: options.losslessEncoding,
         originalSize,
         qualityPercent: options.qualityPercent,
         sourceBuffer: buffer,
