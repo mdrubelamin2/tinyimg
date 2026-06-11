@@ -16,8 +16,6 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
     return
   }
 
-  const storage = await getSessionBinaryStorage()
-
   const ts = Date.now()
   const zipDisplayName = `tinyimg-batch-${ts}.zip`
   const batchId = nanoid()
@@ -47,9 +45,12 @@ export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
         const zipStem = fullName.replace(/^tinyimg-/, '').replace(/\.[^.]+$/, '')
         const path = uniqueZipPath(zipStem, ext)
 
-        const exists = await storage.has(result.payloadKey)
-        if (!exists) {
-          console.warn(`[Main] ⚠️ PayloadKey not found in storage: ${result.payloadKey}`)
+        if (import.meta.env.DEV) {
+          const storage = await getSessionBinaryStorage()
+          const exists = await storage.has(result.payloadKey)
+          if (!exists) {
+            console.warn(`[Main] PayloadKey not found in storage: ${result.payloadKey}`)
+          }
         }
 
         manifest.push({ path, payloadKey: result.payloadKey })
