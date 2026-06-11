@@ -22,6 +22,7 @@ export interface OptimizePayload {
   file: File
   id: string
   options: TaskOptions
+  sourceBuffer?: ArrayBuffer | undefined
 }
 
 export interface OptimizerAPI {
@@ -39,7 +40,10 @@ export interface WorkerPoolCallbacks {
 type TaskKey = string
 
 interface WorkerEntry {
+  channel?: MessageChannel
   idleTimeoutId?: ReturnType<typeof setTimeout>
+  proxy?: Comlink.Remote<OptimizerAPI>
+  proxyReady?: Promise<void>
   worker: Worker
 }
 
@@ -52,7 +56,7 @@ export class WorkerPool {
   }
   private readonly active = new Map<
     TaskKey,
-    { controller: AbortController; port?: MessagePort; task: Task }
+    { controller: AbortController; retried?: boolean; task: Task }
   >()
   private activeWorkers = new Map<TaskKey, WorkerEntry>()
   private allWorkers = new Set<WorkerEntry>()
@@ -118,12 +122,12 @@ export class WorkerPool {
     this.pending.length = 0
     for (const entry of this.active.values()) {
       entry.controller.abort()
-      entry.port?.close()
     }
     this.active.clear()
 
     for (const entry of this.allWorkers) {
       clearTimeout(entry.idleTimeoutId)
+      entry.channel?.port1.close()
       entry.worker.terminate()
     }
     this.allWorkers.clear()
@@ -148,6 +152,20 @@ export class WorkerPool {
     }
   }
 
+  private async ensureWorkerProxy(workerEntry: WorkerEntry): Promise<Comlink.Remote<OptimizerAPI>> {
+    if (workerEntry.proxy) return workerEntry.proxy
+    if (!workerEntry.proxyReady) {
+      workerEntry.proxyReady = (async () => {
+        const channel = new MessageChannel()
+        workerEntry.channel = channel
+        workerEntry.worker.postMessage({ port: channel.port2, type: 'INIT' }, [channel.port2])
+        workerEntry.proxy = Comlink.wrap<OptimizerAPI>(channel.port1)
+      })()
+    }
+    await workerEntry.proxyReady
+    return workerEntry.proxy!
+  }
+
   private notifyActiveChange() {
     this.callbacks.onActiveCountChange?.(this.activeCount)
   }
@@ -158,21 +176,13 @@ export class WorkerPool {
     const workerEntry: WorkerEntry = { worker }
     this.allWorkers.add(workerEntry)
 
-    const channel = new MessageChannel()
-    const port1 = channel.port1
-    const port2 = channel.port2
-
     try {
-      worker.postMessage({ port: port2, type: 'TASK_START' }, [port2])
-      const proxy = Comlink.wrap<OptimizerAPI>(port1)
+      const proxy = await this.ensureWorkerProxy(workerEntry)
       await proxy.preloadWasm()
-      proxy[Comlink.releaseProxy]()
     } catch (error) {
       worker.terminate()
       this.allWorkers.delete(workerEntry)
       throw error
-    } finally {
-      port1.close()
     }
 
     this.releaseWorker(workerEntry)
@@ -257,30 +267,25 @@ export class WorkerPool {
       this.activeWorkers.delete(key)
       this.releaseWorker(entry)
     }
-    const active = this.active.get(key)
-    if (active?.port) {
-      active.port.close()
-    }
   }
 
   private async runTask(key: TaskKey, task: Task, workerEntry: WorkerEntry): Promise<void> {
-    const channel = new MessageChannel()
-    const port1 = channel.port1
-    const port2 = channel.port2
-
-    const activeEntry = this.active.get(key)
-    if (activeEntry) {
-      activeEntry.port = port1
-    }
-
     const cleanup = () => {
-      port1.close()
       this.activeWorkers.delete(key)
       const hadTask = this.active.delete(key)
       if (hadTask) this.notifyActiveChange()
     }
 
     const handleError = () => {
+      const activeEntry = this.active.get(key)
+      if (activeEntry && !activeEntry.retried) {
+        activeEntry.retried = true
+        activeEntry.controller = new AbortController()
+        this.terminateWorkerForTask(key)
+        this.pending.unshift(task)
+        void this.pump()
+        return
+      }
       cleanup()
       this.terminateWorkerForTask(key)
       this.callbacks.onError(0, task)
@@ -288,18 +293,18 @@ export class WorkerPool {
     }
 
     try {
-      workerEntry.worker.postMessage({ port: port2, type: 'TASK_START' }, [port2])
-      const proxy = Comlink.wrap<OptimizerAPI>(port1)
+      const proxy = await this.ensureWorkerProxy(workerEntry)
 
       const payload: OptimizePayload = {
         file: task.file,
         id: task.id,
         options: task.options,
+        ...(task.sourceBuffer ? { sourceBuffer: task.sourceBuffer } : {}),
       }
 
-      const result = await proxy.optimize(payload)
-      proxy[Comlink.releaseProxy]()
-      port1.close()
+      const result = task.sourceBuffer
+        ? await proxy.optimize(Comlink.transfer(payload, [task.sourceBuffer]))
+        : await proxy.optimize(payload)
 
       if (!this.active.has(key)) {
         this.releaseWorker(workerEntry)
@@ -322,14 +327,11 @@ export class WorkerPool {
     const entry = this.activeWorkers.get(key)
     if (entry) {
       clearTimeout(entry.idleTimeoutId)
+      entry.channel?.port1.close()
       entry.worker.terminate()
       this.activeWorkers.delete(key)
       this.allWorkers.delete(entry)
       this.idleWorkers = this.idleWorkers.filter((e) => e !== entry)
-    }
-    const active = this.active.get(key)
-    if (active?.port) {
-      active.port.close()
     }
   }
 }
