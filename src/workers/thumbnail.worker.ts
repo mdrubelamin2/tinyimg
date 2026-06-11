@@ -10,8 +10,6 @@ import { checkMagicBytesFromBufferExport } from '@/lib/validation'
 
 import type { ThumbnailWorkerOutbound } from '../thumbnails/thumbnail-protocol'
 
-import { decodeHeic } from '../lib/codecs/raster/decode-heic'
-import { ensureHeicDecoder, ensureResvg, Resvg } from './optimizer-wasm'
 import { checkPixelLimit } from './raster-encode'
 
 const MAX_EDGE_PX = 120
@@ -55,6 +53,10 @@ async function decodeSourceToBitmap(
 }
 
 async function heifBufferToBitmap(buffer: ArrayBuffer): Promise<ImageBitmap> {
+  const [{ decodeHeic }, { ensureHeicDecoder }] = await Promise.all([
+    import('../lib/codecs/raster/decode-heic'),
+    import('./optimizer-wasm'),
+  ])
   await ensureHeicDecoder()
   const raw = await decodeHeic(buffer)
   const imageData = new ImageData(new Uint8ClampedArray(raw.data), raw.width, raw.height)
@@ -63,6 +65,7 @@ async function heifBufferToBitmap(buffer: ArrayBuffer): Promise<ImageBitmap> {
 
 async function svgBufferToBitmap(buffer: ArrayBuffer, maxEdge: number): Promise<ImageBitmap> {
   const svgText = new TextDecoder().decode(buffer)
+  const { ensureResvg, Resvg } = await import('./optimizer-wasm')
   await ensureResvg()
   const resvg = new Resvg(svgText, {
     fitTo: { mode: 'width', value: maxEdge },
