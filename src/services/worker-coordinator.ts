@@ -12,6 +12,8 @@ import {
   intake$,
   isLargeFileInFlight$,
   poolStats$,
+  startInFlightTask,
+  stopInFlightTask,
 } from '@/store/queue-store'
 import { useSettingsStore } from '@/store/settings-store'
 import { computeConcurrency, WorkerPool } from '@/workers/worker-pool-v2'
@@ -113,7 +115,7 @@ export function batchApplyResults(): void {
         }
 
         imageStore$.items[response.id]!.set(nextItem)
-        inFlightTasks$[`${response.id}:${rid}`]?.delete()
+        stopInFlightTask(`${response.id}:${rid}`, item)
       }
     }
 
@@ -148,7 +150,7 @@ export function batchApplyResults(): void {
       }
 
       imageStore$.items[task.id]!.set(nextItem)
-      inFlightTasks$[`${task.id}:${rid}`]?.delete()
+      stopInFlightTask(`${task.id}:${rid}`, item)
     }
   })
 }
@@ -338,7 +340,7 @@ function dispatchRowToPool(
         ...processingItem.results,
         [rid]: { ...res, status: STATUS_PROCESSING },
       }
-      inFlightTasks$[`${id}:${rid}`]!.set(true)
+      startInFlightTask(`${id}:${rid}`, processingItem)
       removePendingTask(id, rid)
       dispatchedCount++
     }
