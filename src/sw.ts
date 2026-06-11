@@ -77,14 +77,15 @@ self.addEventListener('fetch', (event) => {
       try {
         const storage = await createNfsaAdapter()
 
-        // Send diagnostic info to all clients
-        const clients = await self.clients.matchAll()
-        for (const client of clients) {
-          client.postMessage({
-            message: `Starting ZIP with ${manifest.length} files`,
-            type: 'SW_DIAGNOSTIC',
-          })
+        async function postSwDiagnostic(message: string): Promise<void> {
+          if (!import.meta.env.DEV) return
+          const clients = await self.clients.matchAll()
+          for (const client of clients) {
+            client.postMessage({ message, type: 'SW_DIAGNOSTIC' })
+          }
         }
+
+        await postSwDiagnostic(`Starting ZIP with ${manifest.length} files`)
 
         // Create async generator that yields files as they're retrieved
         async function* fileSource() {
@@ -101,28 +102,13 @@ self.addEventListener('fetch', (event) => {
             if (fileData) {
               yield { input: fileData, name: entry.path }
               filesYielded++
-
-              // Send progress to clients
-              const clients = await self.clients.matchAll()
-              for (const client of clients) {
-                client.postMessage({
-                  message: `Added ${filesYielded}/${manifest.length} files`,
-                  type: 'SW_DIAGNOSTIC',
-                })
-              }
+              await postSwDiagnostic(`Added ${filesYielded}/${manifest.length} files`)
             } else {
               console.warn(`[SW] Missing file: ${entry.path}`)
             }
           }
 
-          // Send final stats to clients
-          const clients = await self.clients.matchAll()
-          for (const client of clients) {
-            client.postMessage({
-              message: `Complete - ${filesYielded} files zipped`,
-              type: 'SW_DIAGNOSTIC',
-            })
-          }
+          await postSwDiagnostic(`Complete - ${filesYielded} files zipped`)
         }
 
         const zipOutput = downloadZip(fileSource())
@@ -134,14 +120,12 @@ self.addEventListener('fetch', (event) => {
           },
         })
       } catch (error) {
-        // Send error to clients
-        const clients = await self.clients.matchAll()
-        const errMsg = error instanceof Error ? error.message : String(error)
-        for (const client of clients) {
-          client.postMessage({
-            message: `SW: ERROR - ${errMsg}`,
-            type: 'SW_DIAGNOSTIC',
-          })
+        if (import.meta.env.DEV) {
+          const clients = await self.clients.matchAll()
+          const errMsg = error instanceof Error ? error.message : String(error)
+          for (const client of clients) {
+            client.postMessage({ message: `SW: ERROR - ${errMsg}`, type: 'SW_DIAGNOSTIC' })
+          }
         }
 
         return new Response('Streaming Failed', { status: 500 })
