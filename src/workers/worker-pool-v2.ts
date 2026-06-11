@@ -41,6 +41,7 @@ type TaskKey = string
 
 interface WorkerEntry {
   channel?: MessageChannel
+  crashed?: boolean
   idleTimeoutId?: ReturnType<typeof setTimeout>
   proxy?: Comlink.Remote<OptimizerAPI>
   proxyReady?: Promise<void>
@@ -56,7 +57,7 @@ export class WorkerPool {
   }
   private readonly active = new Map<
     TaskKey,
-    { controller: AbortController; retried?: boolean; task: Task }
+    { controller: AbortController; respawned?: boolean; retried?: boolean; task: Task }
   >()
   private activeWorkers = new Map<TaskKey, WorkerEntry>()
   private allWorkers = new Set<WorkerEntry>()
@@ -172,15 +173,13 @@ export class WorkerPool {
 
   private async primeWasmIdleWorker(): Promise<void> {
     this.lastWorkerCreatedMs = Date.now()
-    const worker = new Worker(optimizerWorkerUrl, { type: 'module' })
-    const workerEntry: WorkerEntry = { worker }
-    this.allWorkers.add(workerEntry)
+    const workerEntry = this.spawnWorkerEntry()
 
     try {
       const proxy = await this.ensureWorkerProxy(workerEntry)
       await proxy.preloadWasm()
     } catch (error) {
-      worker.terminate()
+      workerEntry.worker.terminate()
       this.allWorkers.delete(workerEntry)
       throw error
     }
@@ -234,9 +233,7 @@ export class WorkerPool {
         const controller = new AbortController()
 
         this.lastWorkerCreatedMs = Date.now()
-        const worker = new Worker(optimizerWorkerUrl, { type: 'module' })
-        const workerEntry: WorkerEntry = { worker }
-        this.allWorkers.add(workerEntry)
+        const workerEntry = this.spawnWorkerEntry()
 
         this.active.set(key, { controller, task })
         this.activeWorkers.set(key, workerEntry)
@@ -276,16 +273,33 @@ export class WorkerPool {
       if (hadTask) this.notifyActiveChange()
     }
 
-    const handleError = () => {
+    const handleError = (workerCrashed = false) => {
       const activeEntry = this.active.get(key)
+      const entry = this.activeWorkers.get(key)
+      const crashed = workerCrashed || entry?.crashed === true
+
       if (activeEntry && !activeEntry.retried) {
         activeEntry.retried = true
+        activeEntry.controller = new AbortController()
+        if (crashed) {
+          this.terminateWorkerForTask(key)
+        } else {
+          this.releaseWorkerForTask(key)
+        }
+        this.pending.unshift(task)
+        void this.pump()
+        return
+      }
+
+      if (activeEntry && !activeEntry.respawned) {
+        activeEntry.respawned = true
         activeEntry.controller = new AbortController()
         this.terminateWorkerForTask(key)
         this.pending.unshift(task)
         void this.pump()
         return
       }
+
       cleanup()
       this.terminateWorkerForTask(key)
       this.callbacks.onError(0, task)
@@ -318,9 +332,19 @@ export class WorkerPool {
     } catch (error) {
       if (this.active.get(key)) {
         console.error('Failed to run optimize task via Comlink', error)
-        handleError()
+        handleError(workerEntry.crashed === true)
       }
     }
+  }
+
+  private spawnWorkerEntry(): WorkerEntry {
+    const worker = new Worker(optimizerWorkerUrl, { type: 'module' })
+    const workerEntry: WorkerEntry = { worker }
+    worker.onerror = () => {
+      workerEntry.crashed = true
+    }
+    this.allWorkers.add(workerEntry)
+    return workerEntry
   }
 
   private terminateWorkerForTask(key: TaskKey) {
