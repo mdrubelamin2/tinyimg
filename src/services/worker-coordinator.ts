@@ -251,17 +251,7 @@ export async function processNextAsync(options: GlobalOptions): Promise<void> {
         if (!sourceFile) continue
 
         const toDispatch = info.resultIds.slice(0, Math.min(2, capacity))
-        const sourceBuffer =
-          item.originalSourceKind === 'storage' ? await sourceFile.arrayBuffer() : undefined
-        const count = dispatchRowToPool(
-          itemId,
-          item,
-          sourceFile,
-          currentPool,
-          options,
-          toDispatch,
-          sourceBuffer,
-        )
+        const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch)
         capacity -= count
         break
       }
@@ -269,18 +259,8 @@ export async function processNextAsync(options: GlobalOptions): Promise<void> {
       const sourceFile = await resolveOriginalSourceFile(itemId, item)
       if (!sourceFile) continue
 
-      const sourceBuffer =
-        item.originalSourceKind === 'storage' ? await sourceFile.arrayBuffer() : undefined
       const toDispatch = info.resultIds.slice(0, capacity)
-      const count = dispatchRowToPool(
-        itemId,
-        item,
-        sourceFile,
-        currentPool,
-        options,
-        toDispatch,
-        sourceBuffer,
-      )
+      const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch)
 
       capacity -= count
     }
@@ -296,7 +276,6 @@ function dispatchRowToPool(
   currentPool: WorkerPool,
   options: GlobalOptions,
   resultIds: string[],
-  sourceBuffer?: ArrayBuffer,
 ): number {
   const processingItem: ImageItem = {
     ...candidateItem,
@@ -330,9 +309,6 @@ function dispatchRowToPool(
           svgRasterizer: 'resvg' as const,
         },
         resultId: rid,
-        ...(processingItem.originalSourceKind === 'storage' && sourceBuffer
-          ? { sourceBuffer }
-          : {}),
       }
 
       currentPool.addTask(task)
