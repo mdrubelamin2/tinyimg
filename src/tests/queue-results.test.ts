@@ -116,7 +116,7 @@ describe('queue worker results via image-store', () => {
     expect(updated?.results['webp']?.size).toBe(3)
   })
 
-  it('serializes persistEncodedOutput when two RESULTs flush in one RAF batch', async () => {
+  it('persists two small RESULTs with bounded parallel inflight', async () => {
     const rafQ: FrameRequestCallback[] = []
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       rafQ.push(cb)
@@ -169,7 +169,8 @@ describe('queue worker results via image-store', () => {
       timeout: 3000,
     })
 
-    expect(maxInflight).toBe(1)
+    expect(maxInflight).toBeLessThanOrEqual(2)
+    expect(maxInflight).toBeGreaterThanOrEqual(1)
     expect(persistSpy).toHaveBeenCalledTimes(2)
   })
 

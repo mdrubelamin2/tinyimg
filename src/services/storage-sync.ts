@@ -62,6 +62,11 @@ function maybeToastPersistError(message: string): void {
 /** Serializes persist work to prevent side effects and out-of-sync state. */
 let resultPersistChain: Promise<void> = Promise.resolve()
 
+const SMALL_PERSIST_MAX_BYTES = 512 * 1024
+const MAX_PARALLEL_SMALL_PERSISTS = 2
+let inFlightSmallPersistBytes = 0
+let inFlightSmallPersistCount = 0
+
 /** Split RESULT batches so the main thread does not retain multiple huge `ArrayBuffer`s at once. */
 export function chunkResultResponsesForPersist(
   results: WorkerOutboundResult[],
@@ -88,6 +93,8 @@ export function chunkResultResponsesForPersist(
 
 export function resetPersistChain() {
   resultPersistChain = Promise.resolve()
+  inFlightSmallPersistBytes = 0
+  inFlightSmallPersistCount = 0
 }
 
 export function schedulePersistWorkerResults(results: WorkerOutboundResult[]): void {
@@ -96,81 +103,95 @@ export function schedulePersistWorkerResults(results: WorkerOutboundResult[]): v
   heapMetrics.resultBatchReceived(results.length, totalBytes)
   const queue = [...results]
 
-  resultPersistChain = resultPersistChain
-    .then(async () => {
-      while (queue.length > 0) {
-        let response: null | WorkerOutboundResult = queue.shift()!
-        if (!response) continue
-        const byteLen = response.encodedBytes.byteLength
-        heapMetrics.persistPipelineEnter()
-        const t0 = performance.now()
-        try {
-          const snapshot = imageStore$.items[response.id]?.peek()
-          if (!snapshot) continue
-          const rid = response.resultId
-          const prevResult = snapshot.results[rid]
-          if (!prevResult) continue
+  for (const response of queue) {
+    const byteLen = response.encodedBytes.byteLength
+    const canParallelSmall =
+      byteLen < SMALL_PERSIST_MAX_BYTES &&
+      inFlightSmallPersistCount < MAX_PARALLEL_SMALL_PERSISTS &&
+      inFlightSmallPersistBytes + byteLen <= RESULT_PERSIST_BATCH_MAX_BYTES
 
-          if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl)
-          try {
-            const { payloadKey } = await persistEncodedOutput(
-              response.id,
-              rid,
-              response.encodedBytes,
-              response.mimeType,
-            )
+    if (canParallelSmall) {
+      inFlightSmallPersistCount++
+      inFlightSmallPersistBytes += byteLen
+      void persistOneResponse(response)
+        .catch((error) => {
+          console.error('parallel persist (unexpected)', error)
+        })
+        .finally(() => {
+          inFlightSmallPersistCount--
+          inFlightSmallPersistBytes -= byteLen
+        })
+    } else {
+      resultPersistChain = resultPersistChain
+        .then(() => persistOneResponse(response))
+        .catch((error) => {
+          console.error('result persist chain (unexpected)', error)
+        })
+    }
+  }
+}
 
-            batch(() => {
-              const item = imageStore$.items[response!.id]?.peek()
-              if (!item) return
-              const result = item.results[rid]
-              if (!result) return
+async function persistOneResponse(response: WorkerOutboundResult): Promise<void> {
+  const byteLen = response.encodedBytes.byteLength
+  heapMetrics.persistPipelineEnter()
+  const t0 = performance.now()
+  try {
+    const snapshot = imageStore$.items[response.id]?.peek()
+    if (!snapshot) return
+    const rid = response.resultId
+    const prevResult = snapshot.results[rid]
+    if (!prevResult) return
 
-              const nextItem = {
-                ...item,
-                results: {
-                  ...item.results,
-                  [rid]: {
-                    ...result,
-                    downloadUrl: undefined,
-                    formattedSize: response!.formattedSize,
-                    label: response!.label,
-                    lossless: response!.lossless,
-                    payloadKey,
-                    savingsPercent: response!.savingsPercent,
-                    size: response!.size,
-                    status: STATUS_SUCCESS,
-                  },
-                },
-              }
+    if (prevResult.downloadUrl) URL.revokeObjectURL(prevResult.downloadUrl)
+    try {
+      const { payloadKey } = await persistEncodedOutput(
+        response.id,
+        rid,
+        response.encodedBytes,
+        response.mimeType,
+      )
 
-              if (isTerminal(nextItem)) {
-                const anyError = Object.values(nextItem.results).some(
-                  (r) => r.status === STATUS_ERROR,
-                )
-                nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS
-                nextItem.progress = 100
-              }
+      batch(() => {
+        const item = imageStore$.items[response.id]?.peek()
+        if (!item) return
+        const result = item.results[rid]
+        if (!result) return
 
-              imageStore$.items[response!.id]!.set(nextItem)
-              inFlightTasks$[`${response!.id}:${rid}`]!.delete()
-            })
-          } catch (error) {
-            const msg = isQuotaExceededError(error) ? ERR_PERSIST_STORAGE_FULL : ERR_PERSIST_FAILED
-            maybeToastPersistError(msg)
-            applyPersistFailure(response, msg)
-          }
-        } finally {
-          heapMetrics.persistDurationMs(performance.now() - t0, byteLen)
-          heapMetrics.persistPipelineExit()
-          if (response) {
-            response.encodedBytes = null as unknown as ArrayBuffer
-            response = null
-          }
+        const nextItem = {
+          ...item,
+          results: {
+            ...item.results,
+            [rid]: {
+              ...result,
+              downloadUrl: undefined,
+              formattedSize: response.formattedSize,
+              label: response.label,
+              lossless: response.lossless,
+              payloadKey,
+              savingsPercent: response.savingsPercent,
+              size: response.size,
+              status: STATUS_SUCCESS,
+            },
+          },
         }
-      }
-    })
-    .catch((error) => {
-      console.error('result persist chain (unexpected)', error)
-    })
+
+        if (isTerminal(nextItem)) {
+          const anyError = Object.values(nextItem.results).some((r) => r.status === STATUS_ERROR)
+          nextItem.status = anyError ? STATUS_ERROR : STATUS_SUCCESS
+          nextItem.progress = 100
+        }
+
+        imageStore$.items[response.id]!.set(nextItem)
+        inFlightTasks$[`${response.id}:${rid}`]!.delete()
+      })
+    } catch (error) {
+      const msg = isQuotaExceededError(error) ? ERR_PERSIST_STORAGE_FULL : ERR_PERSIST_FAILED
+      maybeToastPersistError(msg)
+      applyPersistFailure(response, msg)
+    }
+  } finally {
+    heapMetrics.persistDurationMs(performance.now() - t0, byteLen)
+    heapMetrics.persistPipelineExit()
+    response.encodedBytes = null as unknown as ArrayBuffer
+  }
 }
