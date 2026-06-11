@@ -11,13 +11,16 @@ import type { EncoderStrategy, OptimizeTaskInput } from './encoder-types'
 import { BitmapEncoderStrategy } from './encoder-bitmap'
 import { SvgEncoderStrategy } from './encoder-svg'
 import { Logger } from './logger'
+import { shouldQuickProbeSkip } from './quick-probe'
 import { toErrorMessage } from './raster-encode'
 
 /**
  * Runs one optimization job and returns the wire message (RESULT or ERROR).
  */
-export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerOutbound> {
-  const { file, id, options } = input
+export async function runOptimizeTask(
+  input: OptimizeTaskInput & { sourceBuffer?: ArrayBuffer | undefined },
+): Promise<WorkerOutbound> {
+  const { file, id, options, sourceBuffer } = input
   const requestedFormat = options.format
   const resultId = options.resultId
   const originalExtension = options.originalExtension ?? ''
@@ -44,7 +47,31 @@ export async function runOptimizeTask(input: OptimizeTaskInput): Promise<WorkerO
   }, TASK_TIMEOUT_MS)
 
   try {
-    const buffer = await file.arrayBuffer()
+    const buffer = sourceBuffer ?? (await file.arrayBuffer())
+    if (
+      await shouldQuickProbeSkip({
+        format: requestedFormat,
+        originalSize,
+        qualityPercent: options.qualityPercent,
+        sourceBuffer: buffer,
+      })
+    ) {
+      finish({
+        encodedBytes: buffer.slice(0),
+        format: requestedFormat,
+        formattedSize: (originalSize / BYTES_PER_KB).toFixed(1),
+        id,
+        label: 'original',
+        lossless: true,
+        mimeType: file.type || `image/${requestedFormat}`,
+        resultId,
+        savingsPercent: 0,
+        size: originalSize,
+        type: 'RESULT',
+      })
+      return result!
+    }
+
     const taskInput = { ...input, buffer }
 
     const strategy: EncoderStrategy =
