@@ -12,6 +12,7 @@ const optimizer: OptimizerAPI = {
       file: payload.file,
       id: payload.id,
       options: payload.options,
+      sourceBuffer: payload.sourceBuffer,
     })
 
     if (
@@ -30,7 +31,7 @@ const optimizer: OptimizerAPI = {
 }
 
 globalThis.onmessage = (event: MessageEvent<{ port: MessagePort; type: string }>) => {
-  if (event.data?.type === 'TASK_START') {
+  if (event.data?.type === 'INIT') {
     const port = event.data.port
     Comlink.expose(optimizer, port)
     port.start()
