@@ -131,12 +131,13 @@ self.addEventListener('fetch', (event) => {
           },
         })
       } catch (error) {
-        if (import.meta.env.DEV) {
-          const clients = await self.clients.matchAll()
-          const errMsg = error instanceof Error ? error.message : String(error)
-          for (const client of clients) {
+        const errMsg = error instanceof Error ? error.message : String(error)
+        const clients = await self.clients.matchAll()
+        for (const client of clients) {
+          if (import.meta.env.DEV) {
             client.postMessage({ message: `SW: ERROR - ${errMsg}`, type: 'SW_DIAGNOSTIC' })
           }
+          client.postMessage({ message: errMsg, type: 'SW_ZIP_ERROR' })
         }
 
         return new Response('Streaming Failed', { status: 500 })

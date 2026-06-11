@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { toast } from 'sonner'
 
 import { DOWNLOAD_URL_REVOKE_DELAY_MS, mimeForOutputFormat, STATUS_SUCCESS } from '@/constants'
 import { buildOptimizedDownloadFilename } from '@/lib/result-download-name'
@@ -10,7 +11,11 @@ import {
 
 import type { ImageItem, ImageResult } from './queue/types'
 
+let zipErrorListenerRegistered = false
+
 export async function buildAndDownloadZip(items: ImageItem[]): Promise<void> {
+  ensureZipErrorListener()
+
   if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
     alert('Service worker is initializing. Please try again in a few seconds.')
     return
@@ -139,4 +144,17 @@ export function revokeResultUrls(item: ImageItem): void {
 
 export function revokeResultUrlsForItems(items: ImageItem[]): void {
   items.forEach(revokeResultUrls)
+}
+
+function ensureZipErrorListener(): void {
+  if (zipErrorListenerRegistered || !navigator.serviceWorker) return
+  zipErrorListenerRegistered = true
+  navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
+    if (event.data?.type === 'SW_ZIP_ERROR') {
+      toast.error('Batch download failed. Please try again.', {
+        description: typeof event.data.message === 'string' ? event.data.message : undefined,
+        id: 'zip-download-error',
+      })
+    }
+  })
 }
