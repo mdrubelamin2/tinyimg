@@ -40,5 +40,8 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Perf budgets
+        run: npm run check:perf:all
+
       - name: Quality gates
         run: npm run test:quality
