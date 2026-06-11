@@ -27,6 +27,16 @@
   --font-body: 'DM Sans', system-ui, sans-serif;
 }
 
+@font-face {
+  font-family: 'DM Sans';
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-display: swap;
+}
+
 :root {
   --background: oklch(0.985 0.002 247.858);
   --foreground: oklch(0.145 0.024 265.755);
