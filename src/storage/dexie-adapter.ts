@@ -78,8 +78,8 @@ export function createDexieAdapter(dbName?: string): StorageAdapter {
     },
 
     async has(key: string): Promise<boolean> {
-      const count = await db.files.where('key').equals(key).count()
-      return count > 0
+      const entry = await db.files.get(key)
+      return entry !== undefined
     },
 
     async quota(): Promise<QuotaInfo> {
