@@ -4,7 +4,18 @@ import { downloadZip } from 'client-zip'
 import { setCacheNameDetails } from 'workbox-core'
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
 
+import type { StorageAdapter } from './storage/storage-adapter'
+
 import { createNfsaAdapter } from './storage/nfsa-adapter'
+
+let cachedStorage: null | StorageAdapter = null
+
+async function getCachedStorage(): Promise<StorageAdapter> {
+  if (!cachedStorage) {
+    cachedStorage = await createNfsaAdapter()
+  }
+  return cachedStorage
+}
 
 declare const __BUILD_TIME__: string
 
@@ -75,7 +86,7 @@ self.addEventListener('fetch', (event) => {
       zipManifests.delete(batchId)
 
       try {
-        const storage = await createNfsaAdapter()
+        const storage = await getCachedStorage()
 
         async function postSwDiagnostic(message: string): Promise<void> {
           if (!import.meta.env.DEV) return
