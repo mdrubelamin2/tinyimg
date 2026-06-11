@@ -46,7 +46,27 @@ export async function deleteOutputPayloadKey(key: string | undefined): Promise<v
 /** Persist ZIP / synthetic `File` originals into the hybrid session store. */
 export async function persistBufferedOriginalSource(itemId: string, file: File): Promise<void> {
   const storage = await getSessionBinaryStorage()
-  await storage.set(srcKey(itemId), await file.arrayBuffer())
+  const key = srcKey(itemId)
+
+  try {
+    const handle = await storage.getWritableHandle(key)
+    const writable = await handle.createWritable()
+    const reader = file.stream().getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) await writable.write(value)
+      }
+      await writable.close()
+      return
+    } catch (error) {
+      await writable.abort().catch(() => {})
+      throw error
+    }
+  } catch {
+    await storage.set(key, await file.arrayBuffer())
+  }
 }
 
 /**
