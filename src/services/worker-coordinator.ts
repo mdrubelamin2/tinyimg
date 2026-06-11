@@ -6,12 +6,12 @@ import type { ImageItem, ImageResult, Task, WorkerOutbound } from '@/lib/queue/t
 import { ERR_WORKER, STATUS_ERROR, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants'
 import { buildOutputSlots } from '@/lib/queue/output-slots'
 import { resolveOriginalSourceFile } from '@/storage/queue-binary'
+import { pendingTasks$, rebuildAllPendingTasks, removePendingTask } from '@/store/pending-tasks'
 import {
   imageStore$,
   inFlightTasks$,
   intake$,
   isLargeFileInFlight$,
-  pendingTasks$,
   poolStats$,
 } from '@/store/queue-store'
 import { useSettingsStore } from '@/store/settings-store'
@@ -194,7 +194,19 @@ export async function processNextAsync(options: GlobalOptions): Promise<void> {
 
     if (remainingCapacity <= 0) return
 
-    const rawPending = pendingTasks$.peek()
+    let rawPending = pendingTasks$.peek()
+    if (rawPending.length === 0) {
+      const items = imageStore$.items.peek()
+      const order = imageStore$.itemOrder.peek()
+      const hasOrphanPending = order.some((id) => {
+        const item = items[id]
+        return item && Object.values(item.results).some((r) => r.status === 'pending')
+      })
+      if (hasOrphanPending) {
+        rebuildAllPendingTasks(items, order)
+        rawPending = pendingTasks$.peek()
+      }
+    }
     if (rawPending.length === 0) return
 
     const visibleSet = new Set(imageStore$.visibleItemIds.get())
@@ -307,6 +319,7 @@ function dispatchRowToPool(
         [rid]: { ...res, status: STATUS_PROCESSING },
       }
       inFlightTasks$[`${id}:${rid}`]!.set(true)
+      removePendingTask(id, rid)
       dispatchedCount++
     }
 

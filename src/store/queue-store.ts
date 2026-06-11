@@ -2,12 +2,10 @@ import { computed, observable } from '@legendapp/state'
 
 import type { ImageItem } from '@/lib/queue/types'
 
-import {
-  LARGE_FILE_SERIAL_THRESHOLD_BYTES,
-  LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS,
-  STATUS_PENDING,
-} from '@/constants'
+import { LARGE_FILE_SERIAL_THRESHOLD_BYTES, LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS } from '@/constants'
 import { computeConcurrency } from '@/workers/worker-pool-v2'
+
+export { pendingTasks$ } from '@/store/pending-tasks'
 
 /**
  * Pure reactive state for the image queue.
@@ -36,35 +34,6 @@ export const intake$ = observable({
   phase: 'idle' as 'collecting' | 'idle' | 'merging',
   processed: 0,
   total: 0,
-})
-
-/** Derived work queue: flattened list of (itemId, resultId) for results with STATUS_PENDING */
-export const pendingTasks$ = computed(() => {
-  const items = imageStore$.items.get()
-  const order = imageStore$.itemOrder.get()
-
-  const pending: { isLarge: boolean; itemId: string; resultId: string }[] = []
-
-  for (const id of order) {
-    const item = items[id]
-    if (!item) continue
-
-    const isLarge =
-      item.originalSize >= LARGE_FILE_SERIAL_THRESHOLD_BYTES ||
-      (!!item.width &&
-        !!item.height &&
-        item.width * item.height >= LARGE_IMAGE_SERIAL_THRESHOLD_PIXELS)
-
-    const results = item.results
-    for (const rid in results) {
-      const result = results[rid]
-      if (result?.status === STATUS_PENDING) {
-        pending.push({ isLarge, itemId: id, resultId: rid })
-      }
-    }
-  }
-
-  return pending
 })
 
 export const isLargeFileInFlight$ = computed(() => {

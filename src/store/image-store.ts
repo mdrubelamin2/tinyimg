@@ -32,6 +32,11 @@ import {
   releaseDirectDropOriginal,
 } from '@/storage/dropped-original-files'
 import { deleteItemPayloads, invalidateSourceFileCache } from '@/storage/queue-binary'
+import {
+  clearAllPendingTasks,
+  clearPendingTasksForItem,
+  syncPendingTasksForItem,
+} from '@/store/pending-tasks'
 import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache'
 import { cancelThumbnail, destroyThumbnailWorker } from '@/thumbnails/thumbnail-generator'
 
@@ -96,6 +101,7 @@ export const imageStoreSingleton = {
           })),
         )
         imageStore$.items[id]!.set(result.nextItem)
+        syncPendingTasksForItem(id, result.nextItem)
       }
 
       if (itemTasksToCancel.length > 0) {
@@ -123,6 +129,7 @@ export const imageStoreSingleton = {
     }
     clearDirectDropOriginals()
     invalidateSourceFileCache()
+    clearAllPendingTasks()
     await destroyPool()
 
     batch(() => {
@@ -157,6 +164,7 @@ export const imageStoreSingleton = {
         revokeResultUrls(item)
         releaseDirectDropOriginal(id)
         invalidateSourceFileCache(id)
+        clearPendingTasksForItem(id)
         void deleteItemPayloads(id)
         imageStore$.items[id]?.delete()
       }
@@ -217,6 +225,7 @@ export const imageStoreSingleton = {
     revokeResultUrls(item)
     releaseDirectDropOriginal(id)
     invalidateSourceFileCache(id)
+    clearPendingTasksForItem(id)
     void deleteItemPayloads(id)
 
     batch(() => {
@@ -272,6 +281,7 @@ export const imageStoreSingleton = {
 
     batch(() => {
       imageStore$.items[id]!.set(nextItem)
+      syncPendingTasksForItem(id, nextItem)
       for (const rid in item.results) {
         inFlightTasks$[`${id}:${rid}`]?.delete()
       }
@@ -311,6 +321,7 @@ export const imageStoreSingleton = {
 
     batch(() => {
       imageStore$.items[id]!.set(nextItem)
+      syncPendingTasksForItem(id, nextItem)
       for (const rid in item.results) {
         inFlightTasks$[`${id}:${rid}`]?.delete()
       }

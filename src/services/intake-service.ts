@@ -20,6 +20,7 @@ import { createQueueItem } from '@/lib/queue/queue-item'
 import { registerDirectDropOriginal } from '@/storage/dropped-original-files'
 import { persistBufferedOriginalSource } from '@/storage/queue-binary'
 import { isQuotaExceededError } from '@/storage/quota'
+import { syncPendingTasksForItem } from '@/store/pending-tasks'
 import { imageStore$, intake$ } from '@/store/queue-store'
 import { enqueueThumbnails } from '@/thumbnails/thumbnail-generator'
 
@@ -67,6 +68,7 @@ const mergeChunkToStore = (chunk: CollectIntakeEntry[]) => {
 
     for (const ent of chunk) {
       imageStore$.items[ent.item.id]!.set(ent.item)
+      syncPendingTasksForItem(ent.item.id, ent.item)
       if (!orderSet.has(ent.item.id)) {
         order.push(ent.item.id)
         orderSet.add(ent.item.id)
