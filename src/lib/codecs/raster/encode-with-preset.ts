@@ -4,12 +4,6 @@ import { isSmallAndTransparent } from '@/workers/classify'
 
 import type { AllRasterFormat, EncodeResult, RasterEncodePreset } from './types.ts'
 
-import { encodeAvifWithPreset } from './encode-avif.ts'
-import { encodeHeicWithPreset } from './encode-heic.ts'
-import { encodeJpegWithPreset } from './encode-jpeg.ts'
-import { encodePngWithPreset } from './encode-png.ts'
-import { encodeWebpWithPreset } from './encode-webp.ts'
-
 export async function encodeRasterWithPreset(
   imageData: ImageData,
   format: AllRasterFormat,
@@ -21,19 +15,24 @@ export async function encodeRasterWithPreset(
 
   switch (format) {
     case 'avif': {
+      const { encodeAvifWithPreset } = await import('./encode-avif.ts')
       return encodeAvifWithPreset(imageData, pTry)
     }
     case 'heic':
     case 'heif': {
+      const { encodeHeicWithPreset } = await import('./encode-heic.ts')
       return encodeHeicWithPreset(imageData, pTry)
     }
     case 'jpeg': {
+      const { encodeJpegWithPreset } = await import('./encode-jpeg.ts')
       return encodeJpegWithPreset(imageData, pTry)
     }
     case 'png': {
+      const { encodePngWithPreset } = await import('./encode-png.ts')
       return encodePngWithPreset(imageData, pTry, smallTransparent, contentPreset)
     }
     case 'webp': {
+      const { encodeWebpWithPreset } = await import('./encode-webp.ts')
       return encodeWebpWithPreset(
         imageData,
         pTry,
@@ -42,6 +41,7 @@ export async function encodeRasterWithPreset(
       )
     }
     default: {
+      const { encodeWebpWithPreset } = await import('./encode-webp.ts')
       return encodeWebpWithPreset(
         imageData,
         pTry,
