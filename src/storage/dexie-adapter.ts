@@ -72,8 +72,7 @@ export function createDexieAdapter(dbName?: string): StorageAdapter {
             abort: async () => {},
             close: async () => {
               const blob = new Blob(chunks)
-              const ab = await blob.arrayBuffer()
-              await db.files.put({ data: ab, key, scope: scopeForKey(key) })
+              await db.files.put({ data: blob, key, scope: scopeForKey(key) })
             },
             write: async (data: BlobPart) => {
               chunks.push(data)
