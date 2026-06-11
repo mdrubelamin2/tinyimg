@@ -4,7 +4,6 @@ import type { GlobalOptions } from '@/constants'
 import type { ImageItem, ImageResult, Task, WorkerOutbound } from '@/lib/queue/types'
 
 import { ERR_WORKER, STATUS_ERROR, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants'
-import { buildOutputSlots } from '@/lib/queue/output-slots'
 import { resolveOriginalSourceFile } from '@/storage/queue-binary'
 import { pendingTasks$, rebuildAllPendingTasks, removePendingTask } from '@/store/pending-tasks'
 import {
@@ -250,7 +249,17 @@ export async function processNextAsync(options: GlobalOptions): Promise<void> {
         if (!sourceFile) continue
 
         const toDispatch = info.resultIds.slice(0, Math.min(2, capacity))
-        const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch)
+        const sourceBuffer =
+          item.originalSourceKind === 'storage' ? await sourceFile.arrayBuffer() : undefined
+        const count = dispatchRowToPool(
+          itemId,
+          item,
+          sourceFile,
+          currentPool,
+          options,
+          toDispatch,
+          sourceBuffer,
+        )
         capacity -= count
         break
       }
@@ -258,8 +267,18 @@ export async function processNextAsync(options: GlobalOptions): Promise<void> {
       const sourceFile = await resolveOriginalSourceFile(itemId, item)
       if (!sourceFile) continue
 
+      const sourceBuffer =
+        item.originalSourceKind === 'storage' ? await sourceFile.arrayBuffer() : undefined
       const toDispatch = info.resultIds.slice(0, capacity)
-      const count = dispatchRowToPool(itemId, item, sourceFile, currentPool, options, toDispatch)
+      const count = dispatchRowToPool(
+        itemId,
+        item,
+        sourceFile,
+        currentPool,
+        options,
+        toDispatch,
+        sourceBuffer,
+      )
 
       capacity -= count
     }
@@ -275,6 +294,7 @@ function dispatchRowToPool(
   currentPool: WorkerPool,
   options: GlobalOptions,
   resultIds: string[],
+  sourceBuffer?: ArrayBuffer,
 ): number {
   const processingItem: ImageItem = {
     ...candidateItem,
@@ -282,27 +302,24 @@ function dispatchRowToPool(
   }
   let dispatchedCount = 0
 
-  const slots = buildOutputSlots(processingItem, options)
-
   batch(() => {
     for (const rid of resultIds) {
       const res = processingItem.results[rid]
       if (!res || res.status === STATUS_SUCCESS || res.status === STATUS_PROCESSING) continue
 
-      const slot = slots.find((s) => s.resultId === rid)
-      if (!slot) continue
+      const resizePreset = res.resizePreset ?? { kind: 'native' as const }
 
       const task: Task = {
         file: sourceFile,
-        format: slot.format,
+        format: res.format as Task['format'],
         id: processingItem.id,
         options: {
-          format: slot.format,
+          format: res.format as Task['format'],
           losslessEncoding: options.losslessEncoding,
           originalExtension: processingItem.originalFormat,
           originalSize: processingItem.originalSize,
           qualityPercent: processingItem.qualityPercentOverride ?? options.qualityPercent,
-          resizePreset: slot.resizePreset,
+          resizePreset,
           resultId: rid,
           stripMetadata: options.stripMetadata,
           svgDisplayDpr: 2,
@@ -311,6 +328,9 @@ function dispatchRowToPool(
           svgRasterizer: 'resvg' as const,
         },
         resultId: rid,
+        ...(processingItem.originalSourceKind === 'storage' && sourceBuffer
+          ? { sourceBuffer }
+          : {}),
       }
 
       currentPool.addTask(task)

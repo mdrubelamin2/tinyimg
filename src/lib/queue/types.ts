@@ -45,6 +45,8 @@ export interface ImageResult {
   lossless?: boolean
   /** Session hybrid storage key (`out:id:resultId`); encoded bytes live here, not in Legend state */
   payloadKey?: string | undefined
+  /** Resize intent captured at slot creation (avoids rebuild in dispatch). */
+  resizePreset?: TaskResizePreset | undefined
   /** Stable map key and storage suffix (`out:id:resultId`) */
   resultId: string
   savingsPercent?: number | undefined
@@ -77,6 +79,8 @@ export interface Task {
   id: string
   options: TaskOptions
   resultId: string
+  /** Pre-read source bytes for storage-backed originals (transferable). */
+  sourceBuffer?: ArrayBuffer | undefined
 }
 
 // ---------------------------------------------------------------------------

@@ -48,6 +48,7 @@ export function createQueueItem(
   for (const slot of slots) {
     item.results[slot.resultId] = {
       format: slot.format,
+      resizePreset: slot.resizePreset,
       resultId: slot.resultId,
       status: STATUS_PENDING,
       variantLabel: slot.variantLabel,
@@ -108,6 +109,7 @@ export function resetItemResultsForOptions(
       // Reset PENDING, ERROR, or new results to PENDING
       results[newSlot.resultId] = {
         format: newSlot.format,
+        resizePreset: newSlot.resizePreset,
         resultId: newSlot.resultId,
         status: STATUS_PENDING,
         variantLabel: newSlot.variantLabel,

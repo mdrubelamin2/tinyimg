@@ -272,6 +272,7 @@ export const imageStoreSingleton = {
         slot.resultId,
         {
           format: slot.format,
+          resizePreset: slot.resizePreset,
           resultId: slot.resultId,
           status: STATUS_PENDING,
           variantLabel: slot.variantLabel,
@@ -312,6 +313,7 @@ export const imageStoreSingleton = {
         slot.resultId,
         {
           format: slot.format,
+          resizePreset: slot.resizePreset,
           resultId: slot.resultId,
           status: STATUS_PENDING,
           variantLabel: slot.variantLabel,
