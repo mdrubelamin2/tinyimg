@@ -65,8 +65,9 @@ async function heifBufferToBitmap(buffer: ArrayBuffer): Promise<ImageBitmap> {
 
 async function svgBufferToBitmap(buffer: ArrayBuffer, maxEdge: number): Promise<ImageBitmap> {
   const svgText = new TextDecoder().decode(buffer)
-  const { ensureResvg, Resvg } = await import('./optimizer-wasm')
+  const { ensureResvg } = await import('./optimizer-wasm')
   await ensureResvg()
+  const { Resvg } = await import('@resvg/resvg-wasm')
   const resvg = new Resvg(svgText, {
     fitTo: { mode: 'width', value: maxEdge },
   })

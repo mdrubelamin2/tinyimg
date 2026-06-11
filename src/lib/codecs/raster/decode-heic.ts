@@ -1,5 +1,3 @@
-import { heic } from 'icodec'
-
 import { ensureHeicDecoder } from '@/workers/optimizer-wasm'
 
 /**
@@ -8,5 +6,6 @@ import { ensureHeicDecoder } from '@/workers/optimizer-wasm'
  */
 export async function decodeHeic(buffer: ArrayBuffer): Promise<ImageData> {
   await ensureHeicDecoder()
+  const { heic } = await import('icodec')
   return heic.decode(new Uint8Array(buffer))
 }

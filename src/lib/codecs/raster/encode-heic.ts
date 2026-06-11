@@ -1,5 +1,3 @@
-import { heic } from 'icodec'
-
 import { ensureHeicEncoder } from '@/workers/optimizer-wasm'
 
 import type { EncodeResult, RasterEncodePreset } from './types.ts'
@@ -15,6 +13,7 @@ const getEncodedBuffer = (data: Uint8Array): ArrayBuffer => {
 
 export async function encodeHeicLossless(imageData: ImageData): Promise<EncodeResult> {
   await ensureHeicEncoder()
+  const { heic } = await import('icodec')
   const data = heic.encode(
     {
       data: imageData.data,
@@ -35,6 +34,7 @@ export async function encodeHeicWithPreset(
   pTry: RasterEncodePreset,
 ): Promise<EncodeResult> {
   await ensureHeicEncoder()
+  const { heic } = await import('icodec')
   const data = heic.encode(
     {
       data: imageData.data,

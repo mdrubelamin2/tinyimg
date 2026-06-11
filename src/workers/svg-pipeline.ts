@@ -2,8 +2,6 @@
  * SVG pipeline: SVGO optimize, rasterize (browser-first or resvg), display-density or legacy pixel-lock, encode/wrap.
  */
 
-import { Resvg } from '@resvg/resvg-wasm'
-
 import type { LosslessEncoding, SvgInternalFormat } from '@/constants'
 import type { RasterFormat } from '@/lib/codecs/raster/types'
 import type { TaskResizePreset } from '@/lib/queue/types'
@@ -23,7 +21,6 @@ import { encodeLossless } from '@/lib/codecs/raster/lossless'
 import { encodeSvgRasterForOutput } from '@/lib/codecs/raster/output-encode'
 import { optimizeSvg } from '@/lib/optimizer/svg-optimizer'
 
-import { ensureResvg } from './optimizer-wasm'
 import { checkPixelLimit, toBase64 } from './raster-encode'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -298,7 +295,7 @@ async function buildSvgRaster(
   let naturalWidth = logicalW
   let naturalHeight = logicalH
 
-  await ensureResvg()
+  const Resvg = await loadResvgCtor()
   const meta = new Resvg(svgText)
   try {
     if (naturalWidth <= 0) naturalWidth = meta.width
@@ -337,12 +334,19 @@ async function buildSvgRaster(
   }
 }
 
+async function loadResvgCtor() {
+  const { ensureResvg } = await import('./optimizer-wasm')
+  await ensureResvg()
+  const { Resvg } = await import('@resvg/resvg-wasm')
+  return Resvg
+}
+
 function mimeByFormat(format: SvgInternalFormat): string {
   return `image/${format === 'jpeg' ? 'jpeg' : format}`
 }
 
 async function rasterizeWithResvg(svgText: string, renderWidth: number): Promise<RasterizeResult> {
-  await ensureResvg()
+  const Resvg = await loadResvgCtor()
   const resvg = new Resvg(svgText, {
     fitTo: { mode: 'width', value: renderWidth },
   })

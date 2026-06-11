@@ -11,7 +11,6 @@ import { resizeImageDataHighQuality } from '@/lib/codecs/raster/resize-jsquash'
 
 import type { EncoderResult, EncoderStrategy, StrategyInput } from './encoder-types'
 
-import { decodeHeic } from '../lib/codecs/raster/decode-heic'
 import { classifyContent } from './classify'
 import { checkPixelLimit, getImageData, normalizeOutputFormat } from './raster-encode'
 import { resolveResizeTarget } from './resize-preset'
@@ -25,6 +24,7 @@ export class BitmapEncoderStrategy implements EncoderStrategy {
     const isHeifInput = options.originalExtension === 'heic' || options.originalExtension === 'heif'
 
     if (isHeifInput) {
+      const { decodeHeic } = await import('../lib/codecs/raster/decode-heic')
       imageData = await decodeHeic(buffer)
     } else {
       let imageBitmap: ImageBitmap
