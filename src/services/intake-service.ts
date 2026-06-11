@@ -10,6 +10,7 @@ import {
   INTAKE_UI_CHUNK,
   INTAKE_UI_CHUNK_FIRST,
 } from '@/constants'
+import { perfMark } from '@/lib/dev/perf-marks'
 import {
   type CollectIntakeEntry,
   type IntakeOriginalKind,
@@ -88,6 +89,7 @@ export async function addFiles(
   files: DataTransferItem[] | DataTransferItemList | File[] | FileList,
   options: GlobalOptions,
 ): Promise<void> {
+  perfMark('intake:start')
   batch(() => {
     intake$.active.set(true)
     intake$.phase.set('collecting')
@@ -188,6 +190,7 @@ export async function addFiles(
       }
     }
   } finally {
+    perfMark('intake:complete')
     setTimeout(() => {
       batch(() => {
         intake$.active.set(false)
