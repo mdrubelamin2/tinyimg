@@ -15,7 +15,6 @@ import {
   poolStats$,
 } from '@/store/queue-store'
 import { useSettingsStore } from '@/store/settings-store'
-import { prioritizeThumbnails } from '@/thumbnails/thumbnail-generator'
 import { computeConcurrency, WorkerPool } from '@/workers/worker-pool-v2'
 
 import { schedulePersistWorkerResults } from './storage-sync'
@@ -334,10 +333,4 @@ observe(() => {
   if (pending && pending.length > 0 && inFlightCount < limit && !isLargeBusy && !isIntakeActive) {
     void processNextAsync(useSettingsStore.getState().options)
   }
-})
-
-// Reactive thumbnail prioritizer
-observe(() => {
-  const visibleIds = imageStore$.visibleItemIds.get()
-  prioritizeThumbnails(visibleIds)
 })
