@@ -30,10 +30,7 @@ export async function createTransientObjectUrlForPayloadKey(
 
 export async function deleteItemPayloads(id: string): Promise<void> {
   const storage = await getSessionBinaryStorage()
-  const sk = srcKey(id)
-  if (await storage.has(sk)) {
-    await storage.delete(sk)
-  }
+  await storage.delete(srcKey(id))
   await storage.deleteByPrefix(outKeyPrefix(id))
 }
 
