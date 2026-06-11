@@ -3,21 +3,10 @@ import { toast } from 'sonner'
 
 import type { ImageItem } from '@/lib/queue/types'
 
-import { STATUS_ERROR, STATUS_PENDING, STATUS_PROCESSING, STATUS_SUCCESS } from '@/constants'
 import { syncIntakeProgressToast } from '@/notifications/toast-emitter'
 import { imageStore$, intake$ } from '@/store/image-store'
 
-/** Heuristic typical savings % by MIME for pre-result estimate (instant feedback). */
-const SAVINGS_TYPICAL_BY_MIME: Record<string, number> = {
-  'image/avif': 15,
-  'image/bmp': 50,
-  'image/gif': 40,
-  'image/jpeg': 35,
-  'image/png': 55,
-  'image/svg+xml': 35,
-  'image/tiff': 30,
-  'image/webp': 25,
-}
+import { QueueStatsAggregator } from './queue-stats-incremental'
 
 export interface QueueStats {
   allDone: boolean
@@ -36,94 +25,23 @@ export interface QueueStats {
   totalOutputCount: number
 }
 
-function computeQueueStats(): QueueStats {
-  const order = imageStore$.itemOrder.peek()
-  const itemCount = order.length
-  let totalOriginal = 0
-  let totalOptimized = 0
-  let estimatedOptimizedBytes = 0
+const statsAggregator = new QueueStatsAggregator()
+const trackedItemObservers = new Set<string>()
 
-  let successfulCount = 0
-  let hasFinishedItems = false
-  let processingCount = 0
-
-  let totalOutputCount = 0
-  let successfulOutputCount = 0
-
-  for (const id of order) {
-    const item = imageStore$.items[id]?.peek() as ImageItem | undefined
-    if (!item) continue
-
-    totalOriginal += item.originalSize
-
-    if (item.status === STATUS_SUCCESS) successfulCount++
-    if (item.status === STATUS_SUCCESS || item.status === STATUS_ERROR) {
-      hasFinishedItems = true
-    }
-    if (item.status === STATUS_PROCESSING) processingCount++
-
-    if (item.status === STATUS_PENDING || item.status === STATUS_PROCESSING) {
-      const mime = mimeForItem(item)
-      const pct = SAVINGS_TYPICAL_BY_MIME[mime] ?? 28
-      estimatedOptimizedBytes += item.originalSize * (1 - pct / 100)
-    }
-
-    for (const res of Object.values(item.results)) {
-      totalOutputCount += 1
-      if (res.status === STATUS_SUCCESS && res.size && res.size > 0) {
-        totalOptimized += res.size
-        successfulOutputCount += 1
-      }
-    }
-  }
-
-  const savingsPercent =
-    totalOriginal > 0
-      ? totalOptimized === 0
-        ? '0'
-        : (((totalOriginal - totalOptimized) / totalOriginal) * 100).toFixed(1)
-      : '0'
-
-  const allDone =
-    itemCount > 0 &&
-    order.every((id) => {
-      const item = imageStore$.items[id]?.peek() as ImageItem | undefined
-      return item?.status === STATUS_SUCCESS || item?.status === STATUS_ERROR
-    })
-
-  const allSuccessful =
-    itemCount > 0 &&
-    order.every((id) => {
-      const item = imageStore$.items[id]?.peek() as ImageItem | undefined
-      return item?.status === STATUS_SUCCESS
-    })
-
-  const estLabel =
-    itemCount > 0 && totalOriginal > 0
-      ? `~${((1 - estimatedOptimizedBytes / totalOriginal) * 100).toFixed(0)}% est. while processing`
-      : ''
-
-  return {
-    allDone,
-    allSuccessful,
-    doneCount: successfulCount,
-    estimatedOptimizedBytes,
-    estimatedSavingsLabel: estLabel,
-    hasFinishedItems,
-    itemCount,
-    processingCount,
-    savingsPercent,
-    successfulCount,
-    successfulOutputCount,
-    totalOutputCount,
-  }
+function flushIncrementalStats(): QueueStats {
+  return statsAggregator.toStats()
 }
 
-function mimeForItem(item: ImageItem): string {
-  if (item.mimeType) return item.mimeType
-  const ext = item.originalFormat.toLowerCase()
-  if (ext === 'jpg') return 'image/jpeg'
-  return `image/${ext}`
+function observeItemStats(id: string): void {
+  observe(() => {
+    const node = imageStore$.items[id]
+    if (!node) return
+    node.status.get()
+    node.results.get()
+    const item = node.peek() as ImageItem | undefined
+    if (item) statsAggregator.upsertItem(id, item)
+    scheduleStatsFlush()
+  })
 }
 
 function statsEqual(a: QueueStats, b: QueueStats): boolean {
@@ -147,7 +65,7 @@ function statsEqual(a: QueueStats, b: QueueStats): boolean {
  * Aggregated queue metrics for the UI. Updates are debounced to at most once per animation frame
  * when the store churns (e.g. many worker completions per frame), capping main-thread work.
  */
-export const queueStats$ = observable<QueueStats>(computeQueueStats())
+export const queueStats$ = observable<QueueStats>(flushIncrementalStats())
 
 let rafId = 0
 let confettiFiredForAllSuccessful = false
@@ -165,7 +83,7 @@ function scheduleStatsFlush(): void {
   if (rafId !== 0) return
   rafId = requestAnimationFrame(() => {
     rafId = 0
-    const next = computeQueueStats()
+    const next = flushIncrementalStats()
     const prev = queueStats$.peek()
     if (statsEqual(prev, next)) return
     maybeFireAllSuccessfulConfetti(prev, next)
@@ -199,13 +117,24 @@ function showStatToast(stats: QueueStats): void {
 
 observe(() => {
   const order = imageStore$.itemOrder.get()
+  statsAggregator.setItemCount(order.length)
+
   for (const id of order) {
-    const node = imageStore$.items[id]
-    if (node) {
-      node.status.get()
-      node.results.get()
+    if (!trackedItemObservers.has(id)) {
+      trackedItemObservers.add(id)
+      observeItemStats(id)
+      const item = imageStore$.items[id]?.peek() as ImageItem | undefined
+      if (item) statsAggregator.upsertItem(id, item)
     }
   }
+
+  for (const id of trackedItemObservers) {
+    if (!order.includes(id)) {
+      trackedItemObservers.delete(id)
+      statsAggregator.removeItem(id)
+    }
+  }
+
   scheduleStatsFlush()
 })
 
