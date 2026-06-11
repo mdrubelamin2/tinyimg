@@ -26,6 +26,7 @@ vi.mock('@/storage/queue-binary', () => {
   return {
     deleteItemPayloads: vi.fn().mockResolvedValue(undefined),
     deleteOutputPayloadKey: vi.fn().mockResolvedValue(undefined),
+    invalidateSourceFileCache: vi.fn(),
     outKey: vi.fn().mockReturnValue('out:mock'),
     outKeyPrefix: vi.fn().mockReturnValue('out:'),
     persistBufferedOriginalSource: vi.fn().mockResolvedValue(undefined),

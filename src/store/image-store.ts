@@ -31,7 +31,7 @@ import {
   clearDirectDropOriginals,
   releaseDirectDropOriginal,
 } from '@/storage/dropped-original-files'
-import { deleteItemPayloads } from '@/storage/queue-binary'
+import { deleteItemPayloads, invalidateSourceFileCache } from '@/storage/queue-binary'
 import { thumbnailCacheClear } from '@/thumbnails/thumbnail-cache'
 import { cancelThumbnail, destroyThumbnailWorker } from '@/thumbnails/thumbnail-generator'
 
@@ -122,6 +122,7 @@ export const imageStoreSingleton = {
       void deleteItemPayloads(id)
     }
     clearDirectDropOriginals()
+    invalidateSourceFileCache()
     await destroyPool()
 
     batch(() => {
@@ -155,6 +156,7 @@ export const imageStoreSingleton = {
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
         revokeResultUrls(item)
         releaseDirectDropOriginal(id)
+        invalidateSourceFileCache(id)
         void deleteItemPayloads(id)
         imageStore$.items[id]?.delete()
       }
@@ -214,6 +216,7 @@ export const imageStoreSingleton = {
     if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
     revokeResultUrls(item)
     releaseDirectDropOriginal(id)
+    invalidateSourceFileCache(id)
     void deleteItemPayloads(id)
 
     batch(() => {

@@ -13,8 +13,11 @@ import { mimeForOutputFormat } from '@/constants'
 import { peekDirectDropOriginal } from '@/storage/dropped-original-files'
 import { getSessionBinaryStorage } from '@/storage/hybrid-storage'
 import { outKey, outKeyPrefix, srcKey } from '@/storage/keys'
+import { getCachedSourceFile, setCachedSourceFile } from '@/storage/source-file-cache'
 
 export { outKey as outputStorageKey, srcKey as sourceStorageKey } from '@/storage/keys'
+
+export { invalidateSourceFileCache } from '@/storage/source-file-cache'
 
 /** Short-lived object URL for a stored output; caller must {@link URL.revokeObjectURL}. */
 export async function createTransientObjectUrlForPayloadKey(
@@ -86,14 +89,23 @@ export async function resolveOriginalSourceFile(
   itemId: string,
   item: ImageItem,
 ): Promise<File | null> {
+  const cached = getCachedSourceFile(itemId)
+  if (cached) return cached
+
   const fromDrop = peekDirectDropOriginal(itemId)
-  if (fromDrop) return fromDrop
+  if (fromDrop) {
+    setCachedSourceFile(itemId, fromDrop)
+    return fromDrop
+  }
 
   const storage = await getSessionBinaryStorage()
   const sk = srcKey(itemId)
   if (await storage.has(sk)) {
     const fromStore = await loadSourceFileFromStorageOnly(itemId, item)
-    if (fromStore) return fromStore
+    if (fromStore) {
+      setCachedSourceFile(itemId, fromStore)
+      return fromStore
+    }
   }
 
   return null
