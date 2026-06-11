@@ -5,6 +5,8 @@ import type { QuotaInfo, StorageAdapter } from '@/storage/storage-adapter'
 interface FileEntry {
   data: ArrayBuffer | Blob
   key: string
+  /** Scope prefix for O(log n) grouped deletes (e.g. out:itemId). */
+  scope: string
 }
 
 export function createDexieAdapter(dbName?: string): StorageAdapter {
@@ -16,6 +18,18 @@ export function createDexieAdapter(dbName?: string): StorageAdapter {
       this.version(1).stores({
         files: 'key',
       })
+      this.version(2)
+        .stores({
+          files: 'key, scope',
+        })
+        .upgrade(async (tx) => {
+          await tx
+            .table('files')
+            .toCollection()
+            .modify((entry: FileEntry) => {
+              entry.scope = scopeForKey(entry.key)
+            })
+        })
     }
   }
 
@@ -32,10 +46,8 @@ export function createDexieAdapter(dbName?: string): StorageAdapter {
     },
 
     async deleteByPrefix(prefix: string): Promise<number> {
-      const collection = db.files.where('key').startsWith(prefix)
-      const count = await collection.count()
-      await collection.delete()
-      return count
+      const scope = prefix.endsWith(':') ? prefix.slice(0, -1) : prefix
+      return db.files.where('scope').equals(scope).delete()
     },
 
     async get(key: string): Promise<ArrayBuffer | null> {
@@ -60,7 +72,8 @@ export function createDexieAdapter(dbName?: string): StorageAdapter {
             abort: async () => {},
             close: async () => {
               const blob = new Blob(chunks)
-              await adapter.set(key, await blob.arrayBuffer())
+              const ab = await blob.arrayBuffer()
+              await db.files.put({ data: ab, key, scope: scopeForKey(key) })
             },
             write: async (data: BlobPart) => {
               chunks.push(data)
@@ -88,8 +101,16 @@ export function createDexieAdapter(dbName?: string): StorageAdapter {
     },
 
     async set(key: string, data: ArrayBuffer): Promise<void> {
-      await db.files.put({ data, key })
+      await db.files.put({ data, key, scope: scopeForKey(key) })
     },
   }
   return adapter
+}
+
+function scopeForKey(key: string): string {
+  if (key.startsWith('out:')) {
+    const parts = key.split(':')
+    if (parts.length >= 2) return `${parts[0]}:${parts[1]}`
+  }
+  return key
 }
